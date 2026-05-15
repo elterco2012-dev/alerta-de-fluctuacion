@@ -1,4 +1,13 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# Variables de entorno con credenciales reales
 .env
+
+# Estado de alertas (archivo runtime, no va en repo)
+data/estado_alertas.json
+
+# IMPORTANTE: cuando conectes Informix, ejecutar:
+#   git update-index --skip-worktree data/wurth.db
+# para evitar commitear datos reales accidentalmente.

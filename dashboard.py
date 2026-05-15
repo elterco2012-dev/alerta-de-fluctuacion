@@ -174,6 +174,11 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, ventanas_df = cargar_datos()
 
+# ── Navegación ─────────────────────────────────────────────────────────────────
+_, nav_col = st.columns([5, 1])
+with nav_col:
+    st.page_link("pages/Supervisor.py", label="👤 Vista por supervisor", icon="→")
+
 # ── KPIs ───────────────────────────────────────────────────────────────────────
 total          = len(scores_df)
 en_critica     = len(scores_df[scores_df.nivel_riesgo.isin(["critico", "alto"])])

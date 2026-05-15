@@ -252,6 +252,25 @@ def resumen_grupos() -> pd.DataFrame:
     return df.merge(ventas_grupo, on="nombre_grupo")
 
 
+def obtener_sparklines(meses: int = 3) -> dict:
+    """Retorna {id_vendedor: [pct_plan_mes_viejo, ..., pct_plan_mes_reciente]} para activos."""
+    con = get_connection()
+    df = pd.read_sql("""
+        SELECT vm.id_vendedor, vm.pct_plan
+        FROM ventas_mensual vm
+        JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
+        WHERE v.activo = 1
+        ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
+    """, con)
+    con.close()
+
+    result = {}
+    for vid, group in df.groupby("id_vendedor"):
+        vals = group["pct_plan"].head(meses).values[::-1].tolist()
+        result[int(vid)] = [round(v, 1) for v in vals]
+    return result
+
+
 if __name__ == "__main__":
     df = calcular_scores()
     print(f"\nVendedores activos evaluados: {len(df)}")

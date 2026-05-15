@@ -286,9 +286,151 @@ def crear_db(vendedores, ventas):
     print(f"  Vendedores: {len(vendedores)}")
     print(f"  Registros mensuales: {len(ventas)}")
 
+def generar_vendedores_en_riesgo():
+    """
+    Genera ~20 vendedores activos que muestran señales de deterioro temprano.
+    Son los casos que el sistema DEBE detectar: aún no renunciaron pero las métricas caen.
+    """
+    vendedores = []
+    fecha_hoy = date(2025, 1, 24)
+
+    escenarios = [
+        # (id, tipo, grupo_idx, meses_activo, perfil_riesgo)
+        # perfil: "caida_plan", "onboarding_alto_riesgo", "deterioro_cobranza", "zona_quemada"
+        (10001, "Viajante",   0, 5,  "caida_plan"),
+        (10002, "Televentas", 1, 3,  "onboarding_alto_riesgo"),
+        (10003, "Viajante",   0, 8,  "deterioro_cobranza"),
+        (10004, "Viajante",   1, 2,  "onboarding_alto_riesgo"),
+        (10005, "Televentas", 6, 6,  "caida_plan"),
+        (10006, "Viajante",   0, 4,  "caida_plan"),
+        (10007, "Viajante",   1, 7,  "deterioro_cobranza"),
+        (10008, "Televentas", 0, 3,  "onboarding_alto_riesgo"),
+        (10009, "Viajante",   6, 5,  "caida_plan"),
+        (10010, "Televentas", 2, 9,  "deterioro_cobranza"),
+        (10011, "Viajante",   0, 4,  "caida_plan"),
+        (10012, "Viajante",   1, 2,  "onboarding_alto_riesgo"),
+        (10013, "Televentas", 6, 6,  "caida_plan"),
+        (10014, "Viajante",   0, 11, "deterioro_cobranza"),
+        (10015, "Viajante",   2, 5,  "caida_plan"),
+    ]
+
+    for vid, tipo, gidx, meses, perfil in escenarios:
+        grupo = GRUPOS[gidx]
+        fecha_ingreso = fecha_hoy - timedelta(days=meses * 30)
+        vendedores.append({
+            "id_vendedor": vid,
+            "tipo": tipo,
+            "id_grupo": grupo["id"],
+            "nombre_grupo": grupo["nombre"],
+            "supervisor": grupo["supervisor"],
+            "fecha_ingreso": fecha_ingreso.isoformat(),
+            "fecha_egreso": None,
+            "motivo_egreso": None,
+            "activo": 1,
+            "_perfil": perfil,
+            "_meses": meses,
+        })
+
+    return vendedores
+
+
+def generar_ventas_en_riesgo(vendedores_riesgo):
+    """Genera métricas mensuales con señales de deterioro para vendedores en riesgo."""
+    registros = []
+    fecha_hoy = date(2025, 1, 24)
+
+    for v in vendedores_riesgo:
+        perfil = v.pop("_perfil")
+        meses  = v.pop("_meses")
+        ingreso = date.fromisoformat(v["fecha_ingreso"])
+        plan_base = random.randint(8_000_000, 15_000_000)
+
+        cur = date(ingreso.year, ingreso.month, 1)
+        mes_num = 0
+
+        while cur <= fecha_hoy:
+            mes_num += 1
+            es_reciente = mes_num >= max(1, meses - 2)
+
+            if perfil == "caida_plan":
+                if es_reciente:
+                    caida = (mes_num - (meses - 3)) / 3
+                    pct_plan = random.gauss(95 - caida * 18, 6)
+                    dias_cero = random.randint(3, 7)
+                    activos_pct = random.uniform(0.50, 0.62)
+                    pct_cob = random.gauss(91, 6)
+                else:
+                    pct_plan = random.gauss(100, 10)
+                    dias_cero = random.randint(0, 2)
+                    activos_pct = random.uniform(0.62, 0.75)
+                    pct_cob = random.gauss(102, 5)
+
+            elif perfil == "onboarding_alto_riesgo":
+                pct_plan = random.gauss(78 - mes_num * 3, 12)
+                dias_cero = random.randint(2, 6)
+                activos_pct = random.uniform(0.45, 0.60)
+                pct_cob = random.gauss(88, 8)
+
+            elif perfil == "deterioro_cobranza":
+                pct_plan = random.gauss(90, 10)
+                dias_cero = random.randint(2, 5) if es_reciente else random.randint(0, 2)
+                activos_pct = random.uniform(0.55, 0.65)
+                pct_cob = random.gauss(82 if es_reciente else 98, 6)
+
+            else:
+                pct_plan = random.gauss(100, 12)
+                dias_cero = random.randint(0, 2)
+                activos_pct = random.uniform(0.62, 0.75)
+                pct_cob = random.gauss(100, 5)
+
+            pct_plan = max(30, min(180, pct_plan))
+            total_clientes = random.randint(180, 250)
+            activos = int(total_clientes * activos_pct)
+            venta = plan_base * (pct_plan / 100)
+            cob_teorica = venta * random.uniform(0.95, 1.05)
+            cob_real = cob_teorica * (pct_cob / 100)
+
+            registros.append({
+                "id_vendedor": v["id_vendedor"],
+                "anio": cur.year,
+                "mes": cur.month,
+                "mes_numero": mes_num,
+                "dias_trabajados": random.randint(18, 23),
+                "dias_venta_cero": dias_cero,
+                "venta_total": round(venta),
+                "plan": round(plan_base),
+                "pct_plan": round(pct_plan, 2),
+                "venta_anio_anterior": round(venta * random.uniform(0.8, 1.2)),
+                "crecimiento_pct": round(random.gauss(0, 15), 2),
+                "pedidos_por_dia": round(random.gauss(2.0, 0.5), 2),
+                "cant_pedidos": random.randint(30, 80),
+                "total_clientes": total_clientes,
+                "clientes_activos": activos,
+                "clientes_inactivos": total_clientes - activos,
+                "clientes_nuevos": 0 if es_reciente else random.randint(0, 3),
+                "cobranza_teorica": round(cob_teorica),
+                "cobranza_real": round(cob_real),
+                "pct_cobranza": round(pct_cob, 2),
+                "dias_cobro": round(random.gauss(58, 6), 1),
+                "cheques_rechazados": random.randint(1, 3) if es_reciente else 0,
+                "en_deterioro": 1,
+            })
+
+            if cur.month == 12:
+                cur = date(cur.year + 1, 1, 1)
+            else:
+                cur = date(cur.year, cur.month + 1, 1)
+
+    return registros
+
+
 if __name__ == "__main__":
     print("Generando datos simulados Wurth...")
-    v = generar_vendedores(1100)
+    v  = generar_vendedores(1100)
     vm = generar_ventas_mensual(v)
-    crear_db(v, vm)
+
+    vr  = generar_vendedores_en_riesgo()
+    vmr = generar_ventas_en_riesgo(vr)
+
+    crear_db(v + vr, vm + vmr)
     print("Listo.")

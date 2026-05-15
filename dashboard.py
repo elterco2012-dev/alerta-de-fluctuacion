@@ -177,7 +177,7 @@ scores_df, grupos_df, sparks, ventanas_df = cargar_datos()
 # ── Navegación ─────────────────────────────────────────────────────────────────
 _, nav_col = st.columns([5, 1])
 with nav_col:
-    st.page_link("pages/Supervisor.py", label="👤 Vista por supervisor", icon="→")
+    st.page_link("pages/Supervisor.py", label="👤 Vista por supervisor")
 
 # ── KPIs ───────────────────────────────────────────────────────────────────────
 total          = len(scores_df)

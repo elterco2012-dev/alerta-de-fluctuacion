@@ -83,8 +83,16 @@ def generar_vendedores(n=1100):
             motivo = None
             activo = 1
 
+        apellidos = ["García","López","Martínez","Rodríguez","González","Pérez","Sánchez",
+                     "Romero","Torres","Flores","Díaz","Moreno","Álvarez","Ruiz","Jiménez",
+                     "Fernández","Herrera","Medina","Castro","Ortiz","Vargas","Guerrero"]
+        nombres_p = ["Juan","María","Carlos","Ana","Luis","Laura","Jorge","Sofía","Diego",
+                     "Valeria","Martín","Paula","Nicolás","Lucía","Alejandro","Natalia"]
+        nombre = f"{random.choice(apellidos)}, {random.choice(nombres_p)}"
+
         vendedores.append({
             "id_vendedor": vid,
+            "nombre": nombre,
             "tipo": tipo,
             "id_grupo": grupo["id"],
             "nombre_grupo": grupo["nombre"],
@@ -216,6 +224,7 @@ def crear_db(vendedores, ventas):
 
         CREATE TABLE vendedores (
             id_vendedor  INTEGER PRIMARY KEY,
+            nombre       TEXT,
             tipo         TEXT,
             id_grupo     INTEGER,
             nombre_grupo TEXT,
@@ -264,7 +273,7 @@ def crear_db(vendedores, ventas):
                     (g["id"], g["nombre"], g["supervisor"], g["riesgo_base"]))
 
     cur.executemany("""INSERT INTO vendedores VALUES
-        (:id_vendedor,:tipo,:id_grupo,:nombre_grupo,:supervisor,
+        (:id_vendedor,:nombre,:tipo,:id_grupo,:nombre_grupo,:supervisor,
          :fecha_ingreso,:fecha_egreso,:motivo_egreso,:activo)""", vendedores)
 
     cur.executemany("""INSERT INTO ventas_mensual
@@ -319,6 +328,7 @@ def generar_vendedores_en_riesgo():
         fecha_ingreso = fecha_hoy - timedelta(days=meses * 30)
         vendedores.append({
             "id_vendedor": vid,
+            "nombre": f"Demo {perfil.replace('_',' ').title()} {vid}",
             "tipo": tipo,
             "id_grupo": grupo["id"],
             "nombre_grupo": grupo["nombre"],

@@ -194,7 +194,7 @@ excluidos_zona = 0
 for row in vendedores_raw:
     vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup_name1, sup_name2 = row
 
-    nombre = f"{(name1 or '').strip()} {(name2 or '').strip()}".strip()
+    nombre = (name1 or '').strip()
     if not nombre:
         nombre = f"Vendedor {vertr}"
 
@@ -213,12 +213,17 @@ for row in vendedores_raw:
     else:
         activo = 0
 
+    if tipo == "Televentas":
+        nombre_grupo = "Televentas"
+    else:
+        nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"
+
     vendedores.append({
         "id_vendedor":  vertr,
         "tipo":         tipo,
         "nombre":       nombre,
         "id_grupo":     vgrp or 0,
-        "nombre_grupo": f"Grupo {vgrp}" if vgrp else "Sin grupo",
+        "nombre_grupo": nombre_grupo,
         "supervisor":   supervisor,
         "fecha_ingreso": fmt_date(eintrdat),
         "fecha_egreso":  fmt_date(austrdat),

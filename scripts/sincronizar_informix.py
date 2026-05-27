@@ -260,10 +260,11 @@ else:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PASO 3: Plan de vplan + ventas reales de sbpr
+# PASO 3: Plan de vplan + ventas reales de sbas (facturas belegart=11)
 # ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "─" * 65)
-print("PASO 3: Leyendo plan de vplan + ventas reales de sbpr...")
+print("PASO 3: Leyendo plan de vplan + ventas reales de sbas...")
+print("  sbas: facturas (belegart=11), vertr1=vendedor, netwert=importe neto")
 
 # Período a sincronizar
 hoy = date.today()
@@ -299,27 +300,35 @@ for row in vplan_rows:
         "dias_off": int((tg_krank or 0) + (tg_unfall or 0) + (tg_urlaub or 0)),
     }
 
-# Leer ventas reales de sbpr (vertr + bujahr + bumonat + umsatz)
-print("\n  Leyendo ventas reales de sbpr...", end=" ")
+# Leer ventas reales de sbas (facturas belegart=11)
+# vertr1 = vendedor principal, netwert = importe neto facturado
+# COUNT(DISTINCT kdnr) = clientes únicos facturados ese mes
+print("\n  Leyendo ventas reales de sbas (puede tardar ~1 min)...", end=" ")
 ventas_dict = {}
 try:
     icur.execute(f"""
-        SELECT vertr, bujahr, bumonat, umsatz
-        FROM sbpr
+        SELECT vertr1, bujahr, bumonat,
+               SUM(netwert) AS venta_total,
+               COUNT(DISTINCT kdnr) AS clientes_unicos
+        FROM sbas
         WHERE firma = {FIRMA}
+          AND belegart = 11
+          AND vertr1 > 0
           AND (bujahr > {anio_inicio}
                OR (bujahr = {anio_inicio} AND bumonat >= {mes_inicio}))
-        ORDER BY vertr, bujahr, bumonat
+        GROUP BY vertr1, bujahr, bumonat
+        ORDER BY vertr1, bujahr, bumonat
     """)
-    sbpr_rows = icur.fetchall()
-    print(f"{len(sbpr_rows)} filas")
-    for row in sbpr_rows:
-        vertr, bujahr, bumonat, umsatz = row
-        ventas_dict[(vertr, bujahr, bumonat)] = {
-            "venta_total": float(umsatz or 0),
+    sbas_rows = icur.fetchall()
+    print(f"{len(sbas_rows)} combinaciones vendedor/mes")
+    for row in sbas_rows:
+        vertr, bujahr, bumonat, venta_total, clientes_unicos = row
+        ventas_dict[(int(vertr), int(bujahr), int(bumonat))] = {
+            "venta_total":     float(venta_total or 0),
+            "clientes_unicos": int(clientes_unicos or 0),
         }
 except Exception as e:
-    print(f"\n  AVISO: no se pudo leer sbpr: {e}")
+    print(f"\n  AVISO: error leyendo sbas: {e}")
     print("  Continuando solo con datos de plan de vplan.")
 
 # Construir ventas_mensual
@@ -338,10 +347,15 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
     plan_data = plan_dict.get((vertr, bujahr, bumonat), {})
     venta_data = ventas_dict.get((vertr, bujahr, bumonat), {})
 
-    plan_val    = plan_data.get("plan", 0)
-    aktivkd     = plan_data.get("aktivkd", 0)
-    dias_off    = plan_data.get("dias_off", 0)
-    venta_total = venta_data.get("venta_total", 0)
+    plan_val         = plan_data.get("plan", 0)
+    aktivkd          = plan_data.get("aktivkd", 0)
+    dias_off         = plan_data.get("dias_off", 0)
+    venta_total      = venta_data.get("venta_total", 0)
+    clientes_unicos  = venta_data.get("clientes_unicos", 0)
+
+    # Clientes activos: usar COUNT(DISTINCT kdnr) de sbas si hay datos,
+    # si no, usar aktivkd de vplan como fallback
+    clientes_activos = clientes_unicos if clientes_unicos > 0 else aktivkd
 
     pct_plan = round((venta_total / plan_val * 100), 1) if plan_val > 0 else 0
 
@@ -371,9 +385,9 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
         "venta_total":       round(venta_total, 2),
         "plan":              round(plan_val, 2),
         "pct_plan":          pct_plan,
-        "clientes_activos":  aktivkd,
-        "total_clientes":    aktivkd,
-        "clientes_inactivos": 0,
+        "clientes_activos":  clientes_activos,
+        "total_clientes":    max(clientes_activos, aktivkd),
+        "clientes_inactivos": max(0, aktivkd - clientes_activos),
         "clientes_nuevos":   0,  # sin datos granulares por ahora
         "cobranza_teorica":  round(venta_total * 0.95, 2),  # estimado
         "cobranza_real":     round(venta_total * 0.95, 2),  # sin datos reales aún

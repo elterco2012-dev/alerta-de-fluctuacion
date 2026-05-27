@@ -246,13 +246,15 @@ perm_zona    = grupo_info["permanencia_promedio_meses"].values[0] if not grupo_i
 perm_general = grupos_df["permanencia_promedio_meses"].mean()
 
 # Navegación
-nav1, nav2, _ = st.columns([1, 1, 4])
+nav1, nav2, nav3, _ = st.columns([1, 1, 1, 3])
 with nav1:
     st.page_link("dashboard.py", label="← Dashboard", icon="📊")
 with nav2:
     if st.button("← Todas las zonas"):
         st.query_params.clear()
         st.rerun()
+with nav3:
+    st.page_link("pages/Intervenciones.py", label="📝 Intervenciones")
 
 # Header
 st.markdown(f"""

@@ -286,7 +286,7 @@ def dias_entre(d1, d2):
         return None
 
 for row in vendedores_raw:
-    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter = row
+    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup_name1, sup_name2 = row
     if vgrp is None or eintrdat is None:
         continue
     grupo_stats[vgrp]["total"] += 1

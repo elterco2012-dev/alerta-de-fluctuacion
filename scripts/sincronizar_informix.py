@@ -127,43 +127,78 @@ sqlite.commit()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PASO 1: Vendedores desde f040
+# PASO 1: Vendedores desde f040 (con supervisor real via bvertr JOIN)
 # ══════════════════════════════════════════════════════════════════════════════
 print("─" * 65)
-print("PASO 1: Leyendo vendedores de f040...")
+print("PASO 1: Leyendo vendedores de f040 (con supervisores reales)...")
 
+# Traer todos los vendedores (activos + bajas) para calcular riesgo histórico
+# Usar el filtro correcto de activos + JOIN para nombre del supervisor
 icur.execute(f"""
-    SELECT vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter
-    FROM f040
-    WHERE firma = {FIRMA}
-    ORDER BY vertr
+    SELECT v.vertr, v.name1, v.name2, v.vgrp, v.vart,
+           v.eintrdat, v.austrdat, v.bvertr, v.prof,
+           s.name1 AS sup_name1, s.name2 AS sup_name2
+    FROM f040 v
+    LEFT OUTER JOIN f040 s ON s.vertr = v.bvertr AND s.firma = {FIRMA}
+    WHERE v.firma = {FIRMA}
+      AND v.vgrp <> 777
+      AND v.vgrp <> 0
+    ORDER BY v.vertr
 """)
 vendedores_raw = icur.fetchall()
-print(f"  {len(vendedores_raw)} registros encontrados en f040")
+print(f"  {len(vendedores_raw)} registros en f040 (excl. grupos 0 y 777)")
 
-# Contar activos vs bajas
 activos  = [v for v in vendedores_raw if v[6] is None]
 con_baja = [v for v in vendedores_raw if v[6] is not None]
 print(f"  Activos (austrdat IS NULL): {len(activos)}")
 print(f"  Con baja (austrdat IS NOT NULL): {len(con_baja)}")
 
+# Segunda query solo para activos con todos los campos incluyendo zone
+# (zone es palabra reservada, la traemos por separado con alias)
+print("  Leyendo zona geográfica de vendedores activos...", end=" ")
+try:
+    icur.execute(f"""
+        SELECT vertr, prof
+        FROM f040
+        WHERE firma = {FIRMA}
+          AND vgrp <> 777
+          AND vgrp <> 0
+          AND eintrdat IS NOT NULL
+          AND austrdat IS NULL
+    """)
+    zona_map = {}
+    for row in icur.fetchall():
+        zona_map[row[0]] = row[1]  # prof = T0 en la query del usuario
+    print(f"{len(zona_map)} registros")
+except Exception as e:
+    print(f"error ({e}), continuando sin zona")
+    zona_map = {}
+
+# Convertir fechas
+def fmt_date(d):
+    if d is None:
+        return None
+    if isinstance(d, (date, datetime)):
+        return d.strftime("%Y-%m-%d")
+    return str(d)[:10]
+
 # Mapear vendedores
 vendedores = []
 for row in vendedores_raw:
-    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter = row
+    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup_name1, sup_name2 = row
+
     nombre = f"{(name1 or '').strip()} {(name2 or '').strip()}".strip()
     if not nombre:
         nombre = f"Vendedor {vertr}"
+
+    # Nombre real del supervisor desde el JOIN
+    if sup_name1 or sup_name2:
+        supervisor = f"{(sup_name1 or '').strip()} {(sup_name2 or '').strip()}".strip()
+    else:
+        supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
+
     tipo = VART_TIPO.get(vart, "Viajante")
     activo = 1 if austrdat is None else 0
-
-    # Convertir fechas
-    def fmt_date(d):
-        if d is None:
-            return None
-        if isinstance(d, (date, datetime)):
-            return d.strftime("%Y-%m-%d")
-        return str(d)[:10]
 
     vendedores.append({
         "id_vendedor":  vertr,
@@ -171,7 +206,7 @@ for row in vendedores_raw:
         "nombre":       nombre,
         "id_grupo":     vgrp or 0,
         "nombre_grupo": f"Grupo {vgrp}" if vgrp else "Sin grupo",
-        "supervisor":   f"Supervisor G{vgrp}" if vgrp else "Sin supervisor",
+        "supervisor":   supervisor,
         "fecha_ingreso": fmt_date(eintrdat),
         "fecha_egreso":  fmt_date(austrdat),
         "motivo_egreso": None,

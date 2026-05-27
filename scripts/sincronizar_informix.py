@@ -156,7 +156,6 @@ for r in vendedores_raw_base:
     vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof = r
     sup = sup_map.get(bvertr, (None, None))
     vendedores_raw.append((vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup[0], sup[1]))
-vendedores_raw = icur.fetchall()
 print(f"  {len(vendedores_raw)} registros en f040 (excl. grupos 0 y 777)")
 
 activos  = [v for v in vendedores_raw if v[6] is None]

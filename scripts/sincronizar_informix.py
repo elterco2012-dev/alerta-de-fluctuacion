@@ -135,17 +135,27 @@ print("PASO 1: Leyendo vendedores de f040 (con supervisores reales)...")
 # Traer todos los vendedores (activos + bajas) para calcular riesgo histórico
 # Usar el filtro correcto de activos + JOIN para nombre del supervisor
 icur.execute(f"""
-    SELECT v.vertr, v.name1, v.name2, v.vgrp, v.vart,
-           v.eintrdat, v.austrdat, v.bvertr, v.prof,
-           s.name1 AS sup_name1, s.name2 AS sup_name2
-    FROM f040 v
-    LEFT OUTER JOIN f040 s ON s.vertr = v.bvertr AND s.firma = {FIRMA}
-    WHERE v.firma = {FIRMA}
-      AND v.vgrp <> 777
-      AND v.vgrp <> 0
-      AND v.eintrdat IS NOT NULL
-    ORDER BY v.vertr
+    SELECT vertr, name1, name2, vgrp, vart,
+           eintrdat, austrdat, bvertr, prof
+    FROM f040
+    WHERE firma = {FIRMA}
+      AND vgrp <> 777
+      AND vgrp <> 0
+      AND eintrdat IS NOT NULL
+    ORDER BY vertr
 """)
+vendedores_raw_base = icur.fetchall()
+
+# Lookup de supervisores: vertr → (name1, name2)
+icur.execute(f"SELECT vertr, name1, name2 FROM f040 WHERE firma = {FIRMA}")
+sup_map = {r[0]: (r[1], r[2]) for r in icur.fetchall()}
+
+# Agregar nombres de supervisor a cada fila
+vendedores_raw = []
+for r in vendedores_raw_base:
+    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof = r
+    sup = sup_map.get(bvertr, (None, None))
+    vendedores_raw.append((vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup[0], sup[1]))
 vendedores_raw = icur.fetchall()
 print(f"  {len(vendedores_raw)} registros en f040 (excl. grupos 0 y 777)")
 

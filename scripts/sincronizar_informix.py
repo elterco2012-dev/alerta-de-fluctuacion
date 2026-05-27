@@ -171,7 +171,7 @@ zona_map = {}   # vertr → zona
 excluir_zone = set()  # vertrs con zone='xxx0000' a excluir
 try:
     icur.execute(f"""
-        SELECT vertr, prof
+        SELECT vertr, "zone"
         FROM f040
         WHERE firma = {FIRMA}
           AND vgrp <> 777
@@ -213,7 +213,15 @@ for row in vendedores_raw:
     else:
         supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
 
-    tipo = VART_TIPO.get(vart, "Viajante")
+    zona_val = zona_map.get(vertr, "")
+    # Televentas se detecta por zone='TVTAS', no por vart
+    if zona_val == "TVTAS":
+        tipo = "Televentas"
+        nombre_grupo = "Televentas"
+    else:
+        tipo = VART_TIPO.get(vart, "Viajante")
+        nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"
+
     # Activo solo si pasó el filtro completo (eintrdat, zone, vgrp)
     if austrdat is None:
         activo = 1 if vertr in activos_validos else 0
@@ -221,11 +229,6 @@ for row in vendedores_raw:
             excluidos_zona += 1
     else:
         activo = 0
-
-    if tipo == "Televentas":
-        nombre_grupo = "Televentas"
-    else:
-        nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"
 
     vendedores.append({
         "id_vendedor":  vertr,

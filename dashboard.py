@@ -245,7 +245,7 @@ for _, r in df.iterrows():
     rows += f"""
     <tr>
       <td>
-        <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">#{vid}</span></div>
+        <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
         <div class="vsb">{r['tipo']} · {r['meses_activo']}m antigüedad</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
@@ -350,7 +350,7 @@ if not onb.empty:
         nivel  = r["nivel_riesgo"]
         ob_rows += f"""
         <tr>
-          <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">#{int(r['id_vendedor'])}</span></td>
+          <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
           <td>{r['tipo']}</td>
           <td>Mes {r['meses_activo']}</td>
           <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>

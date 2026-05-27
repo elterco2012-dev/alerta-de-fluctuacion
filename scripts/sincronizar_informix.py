@@ -171,7 +171,7 @@ zona_map = {}   # vertr → zona
 excluir_zone = set()  # vertrs con zone='xxx0000' a excluir
 try:
     icur.execute(f"""
-        SELECT vertr, "zone"
+        SELECT vertr, TRIM(zone)
         FROM f040
         WHERE firma = {FIRMA}
           AND vgrp <> 777

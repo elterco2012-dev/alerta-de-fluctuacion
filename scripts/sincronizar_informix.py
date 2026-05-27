@@ -133,7 +133,7 @@ print("─" * 65)
 print("PASO 1: Leyendo vendedores de f040...")
 
 icur.execute(f"""
-    SELECT vertr, name1, name2, vgrp, vart, eintrdat, austrdat, zone, kzleiter
+    SELECT vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter
     FROM f040
     WHERE firma = {FIRMA}
     ORDER BY vertr
@@ -150,7 +150,7 @@ print(f"  Con baja (austrdat IS NOT NULL): {len(con_baja)}")
 # Mapear vendedores
 vendedores = []
 for row in vendedores_raw:
-    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, zone, kzleiter = row
+    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter = row
     nombre = f"{(name1 or '').strip()} {(name2 or '').strip()}".strip()
     if not nombre:
         nombre = f"Vendedor {vertr}"
@@ -200,37 +200,48 @@ print("\n" + "─" * 65)
 print("PASO 2: Calculando grupos y riesgo_base desde historial...")
 
 # riesgo_base = % de vendedores que se fueron en menos de 6 meses
-icur.execute(f"""
-    SELECT vgrp,
-           COUNT(*) as total,
-           SUM(CASE WHEN austrdat IS NOT NULL THEN 1 ELSE 0 END) as bajas,
-           SUM(CASE
-               WHEN austrdat IS NOT NULL
-                AND (austrdat - eintrdat) < 180
-               THEN 1 ELSE 0 END) as bajas_rapidas
-    FROM f040
-    WHERE firma = {FIRMA}
-      AND vgrp IS NOT NULL
-      AND eintrdat IS NOT NULL
-    GROUP BY vgrp
-    ORDER BY vgrp
-""")
-grupos_raw = icur.fetchall()
-print(f"  {len(grupos_raw)} grupos encontrados")
+# Calculado en Python con los datos ya leídos de vendedores_raw
+from collections import defaultdict
+
+grupo_stats = defaultdict(lambda: {"total": 0, "bajas_rapidas": 0})
+
+def dias_entre(d1, d2):
+    if d1 is None or d2 is None:
+        return None
+    try:
+        if isinstance(d1, (date, datetime)):
+            d1 = d1.date() if isinstance(d1, datetime) else d1
+        else:
+            d1 = datetime.strptime(str(d1)[:10], "%Y-%m-%d").date()
+        if isinstance(d2, (date, datetime)):
+            d2 = d2.date() if isinstance(d2, datetime) else d2
+        else:
+            d2 = datetime.strptime(str(d2)[:10], "%Y-%m-%d").date()
+        return (d2 - d1).days
+    except Exception:
+        return None
+
+for row in vendedores_raw:
+    vertr, name1, name2, vgrp, vart, eintrdat, austrdat, region, kzleiter = row
+    if vgrp is None or eintrdat is None:
+        continue
+    grupo_stats[vgrp]["total"] += 1
+    if austrdat is not None:
+        d = dias_entre(eintrdat, austrdat)
+        if d is not None and d < 180:
+            grupo_stats[vgrp]["bajas_rapidas"] += 1
 
 grupos = []
-for row in grupos_raw:
-    vgrp, total, bajas, bajas_rapidas = row
-    if total and total > 0:
-        riesgo = round(bajas_rapidas / total, 3) if bajas_rapidas else 0
-    else:
-        riesgo = 0
+for vgrp, stats in sorted(grupo_stats.items()):
+    total = stats["total"]
+    riesgo = round(stats["bajas_rapidas"] / total, 3) if total > 0 else 0
     grupos.append({
-        "id_grupo":    vgrp,
+        "id_grupo":     vgrp,
         "nombre_grupo": f"Grupo {vgrp}",
         "supervisor":   f"Supervisor G{vgrp}",
         "riesgo_base":  riesgo,
     })
+print(f"  {len(grupos)} grupos calculados")
 
 if not DRY_RUN:
     scur.execute("DELETE FROM grupos")
@@ -252,22 +263,9 @@ else:
 # PASO 3: Ventas reales desde bujo + plan desde vplan
 # ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "─" * 65)
-print("PASO 3: Leyendo plan de vplan + ventas reales de bujo...")
-
-# Detectar columnas disponibles en bujo
-bujo_cols = [c.column_name.lower() for c in icur.columns(table="bujo")]
-tiene_umsatz = "umsatz" in bujo_cols
-tiene_vertr  = "vertr"  in bujo_cols
-tiene_bujahr = "bujahr" in bujo_cols
-tiene_kdnr   = "kdnr"   in bujo_cols
-tiene_bumonat = "bumonat" in bujo_cols
-
-print(f"  bujo columnas detectadas:")
-print(f"    vertr:   {'SI' if tiene_vertr else 'NO - no se pueden calcular ventas por vendedor'}")
-print(f"    bujahr:  {'SI' if tiene_bujahr else 'NO'}")
-print(f"    bumonat: {'SI' if tiene_bumonat else 'NO'}")
-print(f"    umsatz:  {'SI' if tiene_umsatz else 'NO - no se pueden calcular ventas totales'}")
-print(f"    kdnr:    {'SI' if tiene_kdnr else 'NO - no se pueden contar clientes únicos'}")
+print("PASO 3: Leyendo plan de vplan...")
+print("  (bujo = diario de almacén, no tiene ventas por vendedor)")
+print("  Ventas reales se agregarán cuando se identifique la tabla correcta.")
 
 # Período a sincronizar
 hoy = date.today()
@@ -303,39 +301,9 @@ for row in vplan_rows:
         "dias_off": int((tg_krank or 0) + (tg_unfall or 0) + (tg_urlaub or 0)),
     }
 
-# Leer ventas reales de bujo (si tiene las columnas)
+# Ventas reales: por ahora solo tenemos plan de vplan.
+# La tabla de ventas reales se identificará con explorar_ventas.py.
 ventas_dict = {}
-if tiene_umsatz and tiene_vertr and tiene_bujahr and tiene_bumonat:
-    print("  Leyendo ventas reales de bujo...", end=" ")
-    try:
-        kdnr_select = ", COUNT(DISTINCT kdnr) as clientes_unicos" if tiene_kdnr else ", 0 as clientes_unicos"
-        icur.execute(f"""
-            SELECT vertr, bujahr, bumonat,
-                   SUM(umsatz) as venta_total,
-                   COUNT(*) as num_trans
-                   {kdnr_select}
-            FROM bujo
-            WHERE firma = {FIRMA}
-              AND (bujahr > {anio_inicio}
-                   OR (bujahr = {anio_inicio} AND bumonat >= {mes_inicio}))
-            GROUP BY vertr, bujahr, bumonat
-            ORDER BY vertr, bujahr, bumonat
-        """)
-        bujo_rows = icur.fetchall()
-        print(f"{len(bujo_rows)} combinaciones vertr/año/mes")
-        for row in bujo_rows:
-            vertr, bujahr, bumonat, venta_total, num_trans, clientes_unicos = row
-            ventas_dict[(vertr, bujahr, bumonat)] = {
-                "venta_total":    float(venta_total or 0),
-                "num_trans":      int(num_trans or 0),
-                "clientes_unicos": int(clientes_unicos or 0),
-            }
-    except Exception as e:
-        print(f"  Error leyendo bujo: {e}")
-        print("  Continuando sin ventas reales (score usará solo plan)")
-else:
-    print("  AVISO: bujo no tiene columnas esperadas — usando solo datos de vplan")
-    print("         Ejecutá scripts/explorar_bujo.py para diagnosticar")
 
 # Construir ventas_mensual
 print("\n  Construyendo ventas_mensual...")

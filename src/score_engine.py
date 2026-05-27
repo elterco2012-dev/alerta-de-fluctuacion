@@ -101,7 +101,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
     vendedores["fecha_ingreso"] = pd.to_datetime(vendedores["fecha_ingreso"])
     vendedores["meses_activo"] = (
         (today - vendedores["fecha_ingreso"]).dt.days / 30
-    ).round().astype(int)
+    ).round().fillna(0).astype(int)
 
     scores = []
 

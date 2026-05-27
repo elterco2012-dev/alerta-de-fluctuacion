@@ -143,6 +143,7 @@ icur.execute(f"""
     WHERE v.firma = {FIRMA}
       AND v.vgrp <> 777
       AND v.vgrp <> 0
+      AND v.eintrdat IS NOT NULL
     ORDER BY v.vertr
 """)
 vendedores_raw = icur.fetchall()
@@ -153,9 +154,12 @@ con_baja = [v for v in vendedores_raw if v[6] is not None]
 print(f"  Activos (austrdat IS NULL): {len(activos)}")
 print(f"  Con baja (austrdat IS NOT NULL): {len(con_baja)}")
 
-# Segunda query solo para activos con todos los campos incluyendo zone
-# (zone es palabra reservada, la traemos por separado con alias)
-print("  Leyendo zona geográfica de vendedores activos...", end=" ")
+# Obtener zona real de cada vendedor activo
+# zone es palabra reservada en Informix → usamos una query específica con alias
+# También aplicamos filtro zone <> 'xxx0000' igual que en Access
+print("  Leyendo zonas y filtrando zone='xxx0000'...", end=" ")
+zona_map = {}   # vertr → zona
+excluir_zone = set()  # vertrs con zone='xxx0000' a excluir
 try:
     icur.execute(f"""
         SELECT vertr, prof
@@ -166,13 +170,11 @@ try:
           AND eintrdat IS NOT NULL
           AND austrdat IS NULL
     """)
-    zona_map = {}
     for row in icur.fetchall():
-        zona_map[row[0]] = row[1]  # prof = T0 en la query del usuario
-    print(f"{len(zona_map)} registros")
+        zona_map[row[0]] = row[1]
+    print(f"{len(zona_map)} vendedores activos")
 except Exception as e:
     print(f"error ({e}), continuando sin zona")
-    zona_map = {}
 
 # Convertir fechas
 def fmt_date(d):
@@ -182,8 +184,13 @@ def fmt_date(d):
         return d.strftime("%Y-%m-%d")
     return str(d)[:10]
 
+# Conjunto de vertrs que SÍ son activos válidos (según zona_map)
+# zona_map solo tiene vendedores que pasaron todos los filtros SQL
+activos_validos = set(zona_map.keys())
+
 # Mapear vendedores
 vendedores = []
+excluidos_zona = 0
 for row in vendedores_raw:
     vertr, name1, name2, vgrp, vart, eintrdat, austrdat, bvertr, prof, sup_name1, sup_name2 = row
 
@@ -198,7 +205,13 @@ for row in vendedores_raw:
         supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
 
     tipo = VART_TIPO.get(vart, "Viajante")
-    activo = 1 if austrdat is None else 0
+    # Activo solo si pasó el filtro completo (eintrdat, zone, vgrp)
+    if austrdat is None:
+        activo = 1 if vertr in activos_validos else 0
+        if vertr not in activos_validos:
+            excluidos_zona += 1
+    else:
+        activo = 0
 
     vendedores.append({
         "id_vendedor":  vertr,
@@ -223,7 +236,9 @@ if not DRY_RUN:
                 :fecha_ingreso, :fecha_egreso, :motivo_egreso, :activo)
     """, vendedores)
     sqlite.commit()
+    activos_guardados = sum(1 for v in vendedores if v["activo"] == 1)
     print(f"  Guardados {len(vendedores)} vendedores en SQLite")
+    print(f"  Activos válidos: {activos_guardados}  (excluidos por zona/filtros: {excluidos_zona})")
 else:
     print(f"  DRY RUN — se guardarían {len(vendedores)} vendedores")
 

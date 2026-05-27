@@ -63,16 +63,20 @@ def registrar(id_vendedor: int, tipo: str, supervisor: str,
 
 def obtener_todas() -> pd.DataFrame:
     """Retorna todas las intervenciones ordenadas por fecha desc."""
-    con = get_connection()
-    df = pd.read_sql("""
-        SELECT i.*, v.tipo as tipo_vendedor, v.nombre_grupo, v.supervisor as supervisor_zona,
-               v.activo, v.motivo_egreso
-        FROM intervenciones i
-        JOIN vendedores v ON i.id_vendedor = v.id_vendedor
-        ORDER BY i.fecha DESC, i.id DESC
-    """, con)
-    con.close()
-    return df
+    try:
+        _init_table()
+        con = get_connection()
+        df = pd.read_sql("""
+            SELECT i.*, v.tipo as tipo_vendedor, v.nombre_grupo, v.supervisor as supervisor_zona,
+                   v.activo, v.motivo_egreso
+            FROM intervenciones i
+            JOIN vendedores v ON i.id_vendedor = v.id_vendedor
+            ORDER BY i.fecha DESC, i.id DESC
+        """, con)
+        con.close()
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 
 def calcular_impacto(intervenciones: pd.DataFrame,
@@ -109,10 +113,14 @@ def calcular_impacto(intervenciones: pd.DataFrame,
 
 
 def hay_datos_demo() -> bool:
-    con = get_connection()
-    n = con.execute("SELECT COUNT(*) FROM intervenciones").fetchone()[0]
-    con.close()
-    return n > 0
+    try:
+        _init_table()
+        con = get_connection()
+        n = con.execute("SELECT COUNT(*) FROM intervenciones").fetchone()[0]
+        con.close()
+        return n > 0
+    except Exception:
+        return False
 
 
 def cargar_demo(scores: pd.DataFrame):

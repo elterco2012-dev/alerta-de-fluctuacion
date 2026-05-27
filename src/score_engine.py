@@ -76,7 +76,9 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
 
     # ── 1. Vendedores activos ──────────────────────────────────────────────
     vendedores = pd.read_sql("""
-        SELECT v.id_vendedor, v.tipo, v.nombre_grupo, v.supervisor,
+        SELECT v.id_vendedor,
+               COALESCE(v.nombre, 'ID ' || v.id_vendedor) as nombre,
+               v.tipo, v.nombre_grupo, v.supervisor,
                v.fecha_ingreso, g.riesgo_base
         FROM vendedores v
         JOIN grupos g ON v.id_grupo = g.id_grupo
@@ -93,8 +95,9 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
     """, con)
     con.close()
 
-    # Fecha de hoy aproximada al último registro disponible
-    today = pd.Timestamp("2025-01-24")
+    # Fecha de referencia: usar la fecha actual
+    import datetime
+    today = pd.Timestamp(datetime.date.today())
     vendedores["fecha_ingreso"] = pd.to_datetime(vendedores["fecha_ingreso"])
     vendedores["meses_activo"] = (
         (today - vendedores["fecha_ingreso"]).dt.days / 30
@@ -200,6 +203,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
 
         scores.append({
             "id_vendedor": vid,
+            "nombre": v["nombre"],
             "tipo": v["tipo"],
             "nombre_grupo": v["nombre_grupo"],
             "supervisor": v["supervisor"],
@@ -222,22 +226,12 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
 
 def resumen_grupos() -> pd.DataFrame:
     """Ranking de grupos por rotación histórica."""
+    import datetime
     con = get_connection()
-    df = pd.read_sql("""
-        SELECT
-            v.nombre_grupo,
-            v.supervisor,
-            COUNT(*) as total_vendedores,
-            ROUND(AVG(
-                CASE WHEN v.fecha_egreso IS NOT NULL
-                THEN CAST((julianday(v.fecha_egreso) - julianday(v.fecha_ingreso)) / 30 AS REAL)
-                ELSE NULL END
-            ), 1) as permanencia_promedio_meses,
-            SUM(CASE WHEN v.activo = 0 THEN 1 ELSE 0 END) as bajas,
-            SUM(CASE WHEN v.activo = 1 THEN 1 ELSE 0 END) as activos_hoy
+    vend_df = pd.read_sql("""
+        SELECT v.nombre_grupo, v.supervisor, v.activo,
+               v.fecha_ingreso, v.fecha_egreso
         FROM vendedores v
-        GROUP BY v.nombre_grupo, v.supervisor
-        ORDER BY permanencia_promedio_meses ASC
     """, con)
 
     ventas_grupo = pd.read_sql("""
@@ -249,7 +243,30 @@ def resumen_grupos() -> pd.DataFrame:
     """, con)
     con.close()
 
-    return df.merge(ventas_grupo, on="nombre_grupo")
+    # Calcular permanencia en Python (evita julianday que es SQLite-specific)
+    vend_df["fecha_ingreso"] = pd.to_datetime(vend_df["fecha_ingreso"], errors="coerce")
+    vend_df["fecha_egreso"]  = pd.to_datetime(vend_df["fecha_egreso"],  errors="coerce")
+    today = pd.Timestamp(datetime.date.today())
+    vend_df["meses"] = (
+        (vend_df["fecha_egreso"].fillna(today) - vend_df["fecha_ingreso"]).dt.days / 30
+    )
+
+    df = (
+        vend_df
+        .groupby(["nombre_grupo", "supervisor"])
+        .agg(
+            total_vendedores=("activo", "count"),
+            bajas=("activo", lambda x: (x == 0).sum()),
+            activos_hoy=("activo", lambda x: (x == 1).sum()),
+            permanencia_promedio_meses=("meses", "mean"),
+        )
+        .reset_index()
+    )
+    df["permanencia_promedio_meses"] = df["permanencia_promedio_meses"].round(1)
+
+    return df.merge(ventas_grupo, on="nombre_grupo", how="left").sort_values(
+        "permanencia_promedio_meses"
+    )
 
 
 def obtener_sparklines(meses: int = 3) -> dict:

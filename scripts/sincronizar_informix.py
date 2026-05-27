@@ -72,6 +72,7 @@ except Exception as e:
     sys.exit(1)
 
 print("Abriendo SQLite...", end=" ")
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 sqlite = sqlite3.connect(DB_PATH)
 print("OK\n")
 

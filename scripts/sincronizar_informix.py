@@ -407,7 +407,7 @@ if not DRY_RUN:
     n_grupos = scur.fetchone()[0]
     scur.execute("SELECT COUNT(*) FROM ventas_mensual")
     n_ventas = scur.fetchone()[0]
-    scur.execute("SELECT MAX(anio), MAX(bumonat) FROM ventas_mensual vm JOIN vendedores v ON vm.id_vendedor=v.id_vendedor WHERE v.activo=1")
+    scur.execute("SELECT MAX(anio), MAX(mes) FROM ventas_mensual vm JOIN vendedores v ON vm.id_vendedor=v.id_vendedor WHERE v.activo=1")
     ultimo = scur.fetchone()
 
     print(f"  Vendedores activos:  {n_activos}")

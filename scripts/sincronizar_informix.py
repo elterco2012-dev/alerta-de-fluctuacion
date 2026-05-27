@@ -260,12 +260,10 @@ else:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PASO 3: Ventas reales desde bujo + plan desde vplan
+# PASO 3: Plan de vplan + ventas reales de sbpr
 # ══════════════════════════════════════════════════════════════════════════════
 print("\n" + "─" * 65)
-print("PASO 3: Leyendo plan de vplan...")
-print("  (bujo = diario de almacén, no tiene ventas por vendedor)")
-print("  Ventas reales se agregarán cuando se identifique la tabla correcta.")
+print("PASO 3: Leyendo plan de vplan + ventas reales de sbpr...")
 
 # Período a sincronizar
 hoy = date.today()
@@ -301,9 +299,28 @@ for row in vplan_rows:
         "dias_off": int((tg_krank or 0) + (tg_unfall or 0) + (tg_urlaub or 0)),
     }
 
-# Ventas reales: por ahora solo tenemos plan de vplan.
-# La tabla de ventas reales se identificará con explorar_ventas.py.
+# Leer ventas reales de sbpr (vertr + bujahr + bumonat + umsatz)
+print("\n  Leyendo ventas reales de sbpr...", end=" ")
 ventas_dict = {}
+try:
+    icur.execute(f"""
+        SELECT vertr, bujahr, bumonat, umsatz
+        FROM sbpr
+        WHERE firma = {FIRMA}
+          AND (bujahr > {anio_inicio}
+               OR (bujahr = {anio_inicio} AND bumonat >= {mes_inicio}))
+        ORDER BY vertr, bujahr, bumonat
+    """)
+    sbpr_rows = icur.fetchall()
+    print(f"{len(sbpr_rows)} filas")
+    for row in sbpr_rows:
+        vertr, bujahr, bumonat, umsatz = row
+        ventas_dict[(vertr, bujahr, bumonat)] = {
+            "venta_total": float(umsatz or 0),
+        }
+except Exception as e:
+    print(f"\n  AVISO: no se pudo leer sbpr: {e}")
+    print("  Continuando solo con datos de plan de vplan.")
 
 # Construir ventas_mensual
 print("\n  Construyendo ventas_mensual...")
@@ -321,11 +338,10 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
     plan_data = plan_dict.get((vertr, bujahr, bumonat), {})
     venta_data = ventas_dict.get((vertr, bujahr, bumonat), {})
 
-    plan_val = plan_data.get("plan", 0)
-    aktivkd  = plan_data.get("aktivkd", 0)
-    dias_off = plan_data.get("dias_off", 0)
+    plan_val    = plan_data.get("plan", 0)
+    aktivkd     = plan_data.get("aktivkd", 0)
+    dias_off    = plan_data.get("dias_off", 0)
     venta_total = venta_data.get("venta_total", 0)
-    clientes_unicos = venta_data.get("clientes_unicos", aktivkd)
 
     pct_plan = round((venta_total / plan_val * 100), 1) if plan_val > 0 else 0
 
@@ -356,8 +372,8 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
         "plan":              round(plan_val, 2),
         "pct_plan":          pct_plan,
         "clientes_activos":  aktivkd,
-        "total_clientes":    max(aktivkd, clientes_unicos),
-        "clientes_inactivos": max(0, clientes_unicos - aktivkd) if clientes_unicos > aktivkd else 0,
+        "total_clientes":    aktivkd,
+        "clientes_inactivos": 0,
         "clientes_nuevos":   0,  # sin datos granulares por ahora
         "cobranza_teorica":  round(venta_total * 0.95, 2),  # estimado
         "cobranza_real":     round(venta_total * 0.95, 2),  # sin datos reales aún

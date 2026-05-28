@@ -336,6 +336,31 @@ print("\n" + "─" * 65)
 print("PASO 3: Leyendo plan de vplan + ventas reales de sbas...")
 print("  sbas: facturas (belegart=11), vertr1=vendedor, netwert=importe neto")
 
+# Cargar calendario de días hábiles
+DIAS_HABILES_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'dias_habiles.csv')
+dias_habiles_set = set()       # set de date objects: días hábiles
+dias_habiles_por_mes = {}      # (año, mes) → set de date objects
+if os.path.exists(DIAS_HABILES_PATH):
+    with open(DIAS_HABILES_PATH) as _f:
+        next(_f)  # saltar header
+        for line in _f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = datetime.strptime(line, "%Y-%m-%d").date()
+                dias_habiles_set.add(d)
+                key = (d.year, d.month)
+                if key not in dias_habiles_por_mes:
+                    dias_habiles_por_mes[key] = set()
+                dias_habiles_por_mes[key].add(d)
+            except ValueError:
+                pass
+    print(f"  Calendario días hábiles: {len(dias_habiles_set)} días cargados "
+          f"({min(dias_habiles_por_mes)} → {max(dias_habiles_por_mes)})")
+else:
+    print("  AVISO: data/dias_habiles.csv no encontrado — dias_venta_cero = 0")
+
 # Período a sincronizar
 hoy = date.today()
 anio_inicio = hoy.year
@@ -400,6 +425,45 @@ try:
 except Exception as e:
     print(f"\n  AVISO: error leyendo sbas: {e}")
     print("  Continuando solo con datos de plan de vplan.")
+
+# Días con al menos una factura por vendedor (para calcular dias_venta_cero)
+# budat = fecha del comprobante en sbas (verificar nombre real del campo si da error)
+print("\n  Leyendo días con facturación por vendedor...", end=" ")
+dias_con_venta = {}  # (vertr, año, mes) → set de date objects con al menos 1 factura
+if dias_habiles_set:
+    try:
+        icur.execute(f"""
+            SELECT vertr1, budat
+            FROM sbas
+            WHERE firma = {FIRMA}
+              AND belegart = 11
+              AND vertr1 > 0
+              AND (bujahr > {anio_inicio}
+                   OR (bujahr = {anio_inicio} AND bumonat >= {mes_inicio}))
+            GROUP BY vertr1, budat
+        """)
+        budat_rows = icur.fetchall()
+        print(f"{len(budat_rows)} pares vendedor/fecha")
+        for row in budat_rows:
+            vertr, budat = row
+            if budat is None:
+                continue
+            if isinstance(budat, (date, datetime)):
+                d = budat.date() if isinstance(budat, datetime) else budat
+            else:
+                try:
+                    d = datetime.strptime(str(budat)[:10], "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+            key = (int(vertr), d.year, d.month)
+            if key not in dias_con_venta:
+                dias_con_venta[key] = set()
+            dias_con_venta[key].add(d)
+    except Exception as e:
+        print(f"\n  AVISO: error leyendo fechas de sbas (budat): {e}")
+        print("  dias_venta_cero = 0 este ciclo. Verificar nombre del campo de fecha en sbas.")
+else:
+    print("omitido (sin calendario)")
 
 # Leer clientes nuevos de adrchr + kund
 # adrchr.erfdat = fecha de alta del cliente, adrart=2 = cliente
@@ -472,19 +536,25 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
         except Exception:
             pass
 
-    # Días trabajados estimados (días hábiles - días ausente)
-    dias_habiles = 22
-    dias_trabajados = max(0, dias_habiles - dias_off)
-
     clientes_nuevos = nuevos_dict.get((int(vertr), int(bujahr), int(bumonat)), 0)
+
+    # dias_venta_cero: días hábiles del mes donde el vendedor no tuvo ninguna factura
+    habiles_mes = dias_habiles_por_mes.get((int(bujahr), int(bumonat)), set())
+    con_venta   = dias_con_venta.get((int(vertr), int(bujahr), int(bumonat)), set())
+    if habiles_mes:
+        dias_sin_venta = len(habiles_mes - con_venta)
+        dias_trabajados_real = len(habiles_mes)
+    else:
+        dias_sin_venta = 0
+        dias_trabajados_real = max(0, dias_habiles - dias_off)
 
     ventas_mensual.append({
         "id_vendedor":       vertr,
         "anio":              bujahr,
         "mes":               bumonat,
         "mes_numero":        mes_numero,
-        "dias_trabajados":   dias_trabajados,
-        "dias_venta_cero":   0,  # sin datos granulares por ahora
+        "dias_trabajados":   dias_trabajados_real,
+        "dias_venta_cero":   dias_sin_venta,
         "venta_total":       round(venta_total, 2),
         "plan":              round(plan_val, 2),
         "pct_plan":          pct_plan,

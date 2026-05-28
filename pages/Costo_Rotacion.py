@@ -20,17 +20,38 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
 
-# ── Parámetros de costo (ajustables) ──────────────────────────────────────────
+# ── Parámetros de costo (ajustables mensualmente) ─────────────────────────────
 SALARIO_INDUCCION   = 1_400_000   # Viajante/Ejecutivo mes 1-6
 SALARIO_PRODUCTIVO  = 1_800_000   # Viajante/Ejecutivo mes 7+
 SALARIO_TELEVENTAS  = 1_215_298   # CCT Comercio (actualizar mensualmente)
 
-MESES_REEMPLAZO     = 3           # tiempo promedio hasta nuevo vendedor operativo
-PCT_CARTERA_PERDIDA = 0.15        # 15% de la cartera estimada que no regresa
+MESES_REEMPLAZO     = 3           # meses hasta nuevo vendedor operativo
+PCT_CARTERA_PERDIDA = 0.15        # % de cartera que no regresa con el nuevo vendedor
 
-# Plan mensual promedio por tipo (de datos históricos Wurth)
-PLAN_MENSUAL_VIAJANTE   = 17_000_000
-PLAN_MENSUAL_TELEVENTAS = 6_000_000
+# Fallbacks si no hay datos reales de plan
+_PLAN_FALLBACK_VIAJANTE   = 17_000_000
+_PLAN_FALLBACK_TELEVENTAS =  6_000_000
+
+
+@st.cache_data(ttl=600)
+def _cargar_plan_promedio() -> dict:
+    """Calcula el plan mensual promedio por tipo desde los últimos 3 meses con datos."""
+    con = get_connection()
+    df = pd.read_sql("""
+        SELECT v.tipo, AVG(vm.plan) as plan_prom
+        FROM ventas_mensual vm
+        JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
+        WHERE vm.plan > 0
+          AND vm.anio * 12 + vm.mes >= (
+              SELECT MAX(anio * 12 + mes) - 2 FROM ventas_mensual
+          )
+        GROUP BY v.tipo
+    """, con)
+    con.close()
+    result = {}
+    for _, row in df.iterrows():
+        result[row["tipo"]] = int(row["plan_prom"])
+    return result
 
 
 def salario_mensual(tipo: str, meses_activo: int) -> int:
@@ -41,14 +62,17 @@ def salario_mensual(tipo: str, meses_activo: int) -> int:
     return SALARIO_PRODUCTIVO
 
 
-def plan_mensual(tipo: str) -> int:
-    return PLAN_MENSUAL_TELEVENTAS if "Televentas" in tipo else PLAN_MENSUAL_VIAJANTE
-
-
-def calcular_costo_rotacion(row) -> dict:
+def calcular_costo_rotacion(row, planes: dict | None = None) -> dict:
     """Calcula costo estimado de baja para un vendedor."""
     sal = salario_mensual(row["tipo"], row["meses_activo"])
-    plan = plan_mensual(row["tipo"])
+
+    # Plan: usa dato real del período actual si está disponible
+    if planes:
+        plan = planes.get(row["tipo"]) or (
+            _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
+        )
+    else:
+        plan = _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
 
     # Costo directo: salario ya pagado en período improductivo + reclutamiento (1 mes)
     # + salario del nuevo en inducción (3 meses sin venta efectiva)
@@ -155,14 +179,15 @@ def _get_scores():
     return calcular_scores()
 
 with st.spinner("Calculando..."):
-    df = _get_scores()
+    df     = _get_scores()
+    planes = _cargar_plan_promedio()
 
 if df.empty:
     st.warning("No hay datos disponibles.")
     st.stop()
 
-# Calcular costo por vendedor
-costos = df.apply(calcular_costo_rotacion, axis=1, result_type="expand")
+# Calcular costo por vendedor usando plan real del período actual
+costos = df.apply(lambda row: calcular_costo_rotacion(row, planes), axis=1, result_type="expand")
 df = pd.concat([df, costos], axis=1)
 
 # ── Filtros ────────────────────────────────────────────────────────────────────
@@ -309,30 +334,47 @@ else:
 
 
 # ── Nota metodológica ──────────────────────────────────────────────────────────
+_plan_v  = planes.get("Viajante",   _PLAN_FALLBACK_VIAJANTE)
+_plan_tv = planes.get("Televentas", _PLAN_FALLBACK_TELEVENTAS)
+_meses_sin_atencion = MESES_REEMPLAZO + 2
+
 st.markdown("---")
-with st.expander("Metodología de cálculo"):
-    st.caption("Los valores de salario se actualizan mensualmente según CCT y acuerdos internos. Ajustar las constantes en pages/Costo_Rotacion.py al inicio de cada mes.")
+with st.expander("Metodología de cálculo — ¿de dónde salen los números?"):
+    st.caption(
+        "Los salarios se actualizan mensualmente en pages/Costo_Rotacion.py. "
+        "El plan mensual se calcula automáticamente del promedio real de los últimos 3 meses en Informix."
+    )
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"""
-**Costos directos incluidos:**
-- Último mes improductivo del vendedor saliente
-- Reclutamiento (publicación, entrevistas, trámites): 1 mes salario
-- Inducción del nuevo vendedor: {MESES_REEMPLAZO} meses a salario mínimo garantizado
+**Costos directos — ejemplo Televentas:**
+
+| Concepto | Cálculo | Total |
+|---|---|---|
+| Último mes improductivo | {_fmt_pesos(SALARIO_TELEVENTAS)} × 1 mes | {_fmt_pesos(SALARIO_TELEVENTAS)} |
+| Reclutamiento | {_fmt_pesos(SALARIO_TELEVENTAS)} × 1 mes | {_fmt_pesos(SALARIO_TELEVENTAS)} |
+| Inducción nuevo | {_fmt_pesos(SALARIO_INDUCCION)} × {MESES_REEMPLAZO} meses | {_fmt_pesos(SALARIO_INDUCCION * MESES_REEMPLAZO)} |
+| **Total directo** | | **{_fmt_pesos(SALARIO_TELEVENTAS*2 + SALARIO_INDUCCION*MESES_REEMPLAZO)}** |
 
 **Salarios base:**
-- Viajante/Ejecutivo en inducción (0-6 meses): {_fmt_pesos(SALARIO_INDUCCION)}/mes
-- Viajante/Ejecutivo productivo (7+ meses): {_fmt_pesos(SALARIO_PRODUCTIVO)}/mes
-- Televentas (CCT Comercio): {_fmt_pesos(SALARIO_TELEVENTAS)}/mes
+- Viajante en inducción (0-6m): {_fmt_pesos(SALARIO_INDUCCION)}/mes
+- Viajante productivo (7+m): {_fmt_pesos(SALARIO_PRODUCTIVO)}/mes
+- Televentas CCT: {_fmt_pesos(SALARIO_TELEVENTAS)}/mes
 """)
     with col2:
         st.markdown(f"""
-**Costo indirecto — pérdida de cartera:**
-- Período sin atención: {MESES_REEMPLAZO + 2} meses (vacante + rampa del nuevo)
-- % de la cartera estimado que no regresa: {int(PCT_CARTERA_PERDIDA * 100)}%
-- Plan mensual Viajante referencia: {_fmt_pesos(PLAN_MENSUAL_VIAJANTE)}
-- Plan mensual Televentas referencia: {_fmt_pesos(PLAN_MENSUAL_TELEVENTAS)}
+**Costo indirecto — pérdida de cartera — ejemplo Televentas:**
 
-*Los valores de pérdida de cartera son estimaciones conservadoras.*
-*El porcentaje real puede variar según el perfil de clientes de cada zona.*
+| Concepto | Cálculo | Total |
+|---|---|---|
+| Plan mensual Televentas (real) | promedio últimos 3m | {_fmt_pesos(_plan_tv)} |
+| Meses sin atención | vacante ({MESES_REEMPLAZO}m) + rampa nuevo (2m) | {_meses_sin_atencion} meses |
+| % cartera que no regresa | estimación conservadora | {int(PCT_CARTERA_PERDIDA*100)}% |
+| **Pérdida estimada** | {_fmt_pesos(_plan_tv)} × {_meses_sin_atencion} × {int(PCT_CARTERA_PERDIDA*100)}% | **{_fmt_pesos(_plan_tv * _meses_sin_atencion * PCT_CARTERA_PERDIDA)}** |
+
+**Plan promedio actual usado (últimos 3 meses):**
+- Viajante: {_fmt_pesos(_plan_v)}/mes
+- Televentas: {_fmt_pesos(_plan_tv)}/mes
+
+*El % de cartera perdida puede variar según la zona y el perfil de clientes.*
 """)

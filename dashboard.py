@@ -217,7 +217,7 @@ total          = len(scores_df)
 en_critica     = len(scores_df[scores_df.nivel_riesgo.isin(["critico", "alto"])])
 perm_prom      = scores_df["meses_activo"].mean()   # solo vendedores activos, sin supervisores
 ob_critico     = len(scores_df[
-    (scores_df.meses_activo <= 3) & (scores_df.nivel_riesgo.isin(["critico", "alto"]))
+    (scores_df.meses_activo <= 6) & (scores_df.nivel_riesgo.isin(["critico", "alto"]))
 ])
 _sup_color = "kc" if _sup_con_muchos_nuevos > 0 else "ki"
 
@@ -240,8 +240,8 @@ st.markdown(f"""
   </div>
   <div class="kpi-card ki">
     <div class="kpi-value" style="color:#4A90D9">{ob_critico}</div>
-    <div class="kpi-label">En onboarding crítico</div>
-    <div class="kpi-sub">Primeros 3 meses, riesgo alto/crítico</div>
+    <div class="kpi-label">Onboarding en riesgo elevado</div>
+    <div class="kpi-sub">Score ≥ 6 en sus primeros 6 meses</div>
   </div>
   <div class="kpi-card {_sup_color}">
     <div class="kpi-value">{_n_supervisores}</div>
@@ -407,12 +407,29 @@ with col2:
     st.plotly_chart(fig, use_container_width=True)
 
 # ── Onboarding en curso ────────────────────────────────────────────────────────
-onb = scores_df[scores_df.meses_activo <= 3].sort_values("score", ascending=False)
+# Onboarding = meses 1-6 (ventana crítica completa según histórico Wurth)
+# Mes 1-3: riesgo muy alto (57% de bajas de toda la carrera ocurren acá)
+# Mes 4-6: riesgo alto (se requiere seguimiento activo del supervisor)
+# A partir del mes 7 el riesgo cae significativamente.
+onb = scores_df[scores_df.meses_activo <= 6].sort_values("score", ascending=False)
 
 if not onb.empty:
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="sec-header">👥 Onboarding en curso — primeros 90 días</div>',
-                unsafe_allow_html=True)
+    n_onb_13 = len(onb[onb.meses_activo <= 3])
+    n_onb_46 = len(onb[(onb.meses_activo >= 4) & (onb.meses_activo <= 6)])
+    st.markdown(
+        f'<div class="sec-header">👥 Onboarding activo — meses 1 a 6 '
+        f'<span style="font-weight:400;color:#888;font-size:13px;">'
+        f'{len(onb)} vendedores · {n_onb_13} en mes 1-3 (riesgo muy alto) · {n_onb_46} en mes 4-6 (riesgo alto)'
+        f'</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Onboarding = los primeros 6 meses. "
+        "Históricamente, más de la mitad de las renuncias ocurren antes del mes 7. "
+        "Mes 1-3: período de adaptación inicial donde el supervisor debe reunirse semanalmente. "
+        "Mes 4-6: el vendedor ya tiene cartera asignada pero aún no alcanzó velocidad de crucero."
+    )
 
     ob_rows = ""
     for _, r in onb.iterrows():
@@ -434,8 +451,8 @@ if not onb.empty:
     <div class="card">
     <table class="ot">
     <thead><tr>
-      <th>Vendedor</th><th>Tipo</th><th>Mes</th>
-      <th>Zona asignada</th><th>% Plan</th><th>Riesgo</th>
+      <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
+      <th>Zona asignada</th><th>% Plan 3m</th><th>Riesgo</th>
     </tr></thead>
     <tbody>{ob_rows}</tbody>
     </table>

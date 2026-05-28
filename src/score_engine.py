@@ -74,7 +74,9 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
     """
     con = get_connection()
 
-    # ── 1. Vendedores activos ──────────────────────────────────────────────
+    # ── 1. Vendedores activos (excluye supervisores) ───────────────────────
+    # Un supervisor tiene su nombre en la columna supervisor de otros vendedores;
+    # no vende ni cobra, por lo que no debe aparecer en el scoring.
     vendedores = pd.read_sql("""
         SELECT v.id_vendedor,
                COALESCE(v.nombre, 'ID ' || v.id_vendedor) as nombre,
@@ -83,6 +85,10 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         FROM vendedores v
         JOIN grupos g ON v.id_grupo = g.id_grupo
         WHERE v.activo = 1
+          AND v.nombre NOT IN (
+              SELECT DISTINCT supervisor FROM vendedores
+              WHERE supervisor IS NOT NULL AND supervisor != ''
+          )
     """, con)
 
     # ── 2. Últimos N meses de ventas por vendedor activo ───────────────────

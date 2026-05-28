@@ -15,6 +15,9 @@ from datetime import date
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import get_connection
 
+# Grupos excluidos del análisis (grupos administrativos, catch-all, o sin actividad comercial real)
+GRUPOS_EXCLUIDOS = {"Grupo 999"}
+
 st.set_page_config(
     page_title="Wurth | Historial de Rotación",
     page_icon="📈",
@@ -110,6 +113,10 @@ def cargar_historial():
     df["nombre_grupo"]     = df["nombre_grupo"].apply(_remap_grupo)
     sup_df["nombre_grupo"] = sup_df["nombre_grupo"].apply(_remap_grupo)
 
+    # Excluir grupos administrativos
+    df     = df[~df["nombre_grupo"].isin(GRUPOS_EXCLUIDOS)]
+    sup_df = sup_df[~sup_df["nombre_grupo"].isin(GRUPOS_EXCLUIDOS)]
+
     # Mapa grupo → supervisor principal y cantidad activa
     sup_map = {}
     cnt_map = {}
@@ -148,8 +155,8 @@ st.markdown(f"""<div class="kpi-row">
   </div>
   <div class="kpi-card ko">
     <div class="kpi-value">{perm_bajas:.0f} m</div>
-    <div class="kpi-label">Permanencia mediana (dados de baja)</div>
-    <div class="kpi-sub">La mitad se fue antes de este número. Era 18m hace 10 años.</div>
+    <div class="kpi-label">Permanencia mediana — dados de baja</div>
+    <div class="kpi-sub">La mitad de los que se fueron lo hizo antes de este mes · Era 18m hace 10 años</div>
   </div>
   <div class="kpi-card kr">
     <div class="kpi-value">{pct_menos6:.0f}%</div>
@@ -164,7 +171,7 @@ st.markdown(f"""<div class="kpi-row">
   <div class="kpi-card kg">
     <div class="kpi-value">{len(df_activo)}</div>
     <div class="kpi-label">Vendedores activos hoy</div>
-    <div class="kpi-sub">Antigüedad promedio: {df_activo['permanencia_meses'].mean():.0f} m</div>
+    <div class="kpi-sub">Antigüedad promedio: {df_activo['permanencia_meses'].mean():.0f} m (solo los que siguen — no incluye bajas)</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -173,7 +180,9 @@ st.markdown(f"""<div class="kpi-row">
 st.markdown('<div class="sec-header">📊 Tendencia de permanencia — últimos 10 años (solo vendedores dados de baja)</div>',
             unsafe_allow_html=True)
 st.caption(
-    "Cada punto = mediana de meses que duraron los vendedores que entraron ese año y luego se fueron. "
+    "Cada punto = mediana de meses que duraron los vendedores que **entraron ese año** y luego se fueron. "
+    "Ejemplo: el punto 2026 con '13 bajas' no es 'todos los que se fueron en 2026', "
+    "son los 13 vendedores que entraron en 2026 y ya se fueron — por eso la mediana es 1m. "
     "Los activos no se incluyen porque su ciclo todavía no cerró. "
     "La línea roja punteada muestra la tendencia: si baja, el problema se está profundizando."
 )

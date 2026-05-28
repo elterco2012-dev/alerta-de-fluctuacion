@@ -23,7 +23,7 @@ from score_engine import calcular_scores, get_connection
 # ── Parámetros de costo (ajustables) ──────────────────────────────────────────
 SALARIO_INDUCCION   = 1_400_000   # Viajante/Ejecutivo mes 1-6
 SALARIO_PRODUCTIVO  = 1_800_000   # Viajante/Ejecutivo mes 7+
-SALARIO_TELEVENTAS  = 800_000     # CCT Comercio (estimado)
+SALARIO_TELEVENTAS  = 1_215_298   # CCT Comercio (actualizar mensualmente)
 
 MESES_REEMPLAZO     = 3           # tiempo promedio hasta nuevo vendedor operativo
 PCT_CARTERA_PERDIDA = 0.15        # 15% de la cartera estimada que no regresa
@@ -311,6 +311,7 @@ else:
 # ── Nota metodológica ──────────────────────────────────────────────────────────
 st.markdown("---")
 with st.expander("Metodología de cálculo"):
+    st.caption("Los valores de salario se actualizan mensualmente según CCT y acuerdos internos. Ajustar las constantes en pages/Costo_Rotacion.py al inicio de cada mes.")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"""
@@ -322,7 +323,7 @@ with st.expander("Metodología de cálculo"):
 **Salarios base:**
 - Viajante/Ejecutivo en inducción (0-6 meses): {_fmt_pesos(SALARIO_INDUCCION)}/mes
 - Viajante/Ejecutivo productivo (7+ meses): {_fmt_pesos(SALARIO_PRODUCTIVO)}/mes
-- Televentas (CCT Comercio estimado): {_fmt_pesos(SALARIO_TELEVENTAS)}/mes
+- Televentas (CCT Comercio): {_fmt_pesos(SALARIO_TELEVENTAS)}/mes
 """)
     with col2:
         st.markdown(f"""

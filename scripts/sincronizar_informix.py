@@ -225,6 +225,11 @@ for row in vendedores_raw:
         tipo = "Viajante"
         nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"
 
+    # Excluir vendedores que ingresaron y salieron el mismo día (no llegaron a trabajar)
+    if austrdat is not None and eintrdat is not None and austrdat == eintrdat:
+        excluidos_zona += 1
+        continue
+
     # Activo solo si pasó el filtro completo (eintrdat, zone, vgrp)
     if austrdat is None:
         activo = 1 if vertr in activos_validos else 0

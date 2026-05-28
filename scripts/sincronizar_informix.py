@@ -402,8 +402,7 @@ except Exception as e:
     print("  Continuando solo con datos de plan de vplan.")
 
 # Leer clientes nuevos de adrchr + kund
-# adrchr.erfdat = fecha de alta del cliente, adrart=1 = cliente (Access mostraba adrart=2,
-# verificar con el equipo si el valor correcto es 1 o 2)
+# adrchr.erfdat = fecha de alta del cliente, adrart=2 = cliente
 # kund.vertr1 = vendedor asignado al cliente
 print("\n  Leyendo clientes nuevos de adrchr + kund...", end=" ")
 nuevos_dict = {}  # (vertr, año, mes) → count
@@ -417,7 +416,7 @@ try:
         FROM adrchr a
         JOIN kund k ON a.kdnr = k.kdnr AND k.firma = {FIRMA}
         WHERE a.firma = {FIRMA}
-          AND a.adrart = 1
+          AND a.adrart = 2
           AND a.erfdat >= '{fecha_inicio_str}'
           AND k.vertr1 > 0
         GROUP BY k.vertr1, YEAR(a.erfdat), MONTH(a.erfdat)

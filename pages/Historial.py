@@ -129,8 +129,39 @@ def cargar_historial():
     return df[df["permanencia_meses"] > 0].copy(), sup_map, cnt_map
 
 
+@st.cache_data(ttl=600)
+def cargar_rotacion_anual():
+    """Bajas por año de egreso + headcount aproximado para calcular tasa."""
+    con = get_connection()
+    bajas = pd.read_sql("""
+        SELECT CAST(strftime('%Y', fecha_egreso) AS INTEGER) as anio,
+               COUNT(*) as bajas
+        FROM vendedores
+        WHERE fecha_egreso IS NOT NULL AND fecha_ingreso IS NOT NULL
+        GROUP BY anio ORDER BY anio
+    """, con)
+    # Headcount: cuántos estuvieron activos en algún punto de ese año
+    hc = pd.read_sql("""
+        SELECT years.anio, COUNT(*) as headcount
+        FROM (
+            SELECT DISTINCT CAST(strftime('%Y', fecha_egreso) AS INTEGER) as anio
+            FROM vendedores WHERE fecha_egreso IS NOT NULL
+        ) years
+        JOIN vendedores v ON
+            CAST(strftime('%Y', v.fecha_ingreso) AS INTEGER) <= years.anio
+            AND (v.fecha_egreso IS NULL
+                 OR CAST(strftime('%Y', v.fecha_egreso) AS INTEGER) >= years.anio)
+        GROUP BY years.anio ORDER BY years.anio
+    """, con)
+    con.close()
+    merged = bajas.merge(hc, on="anio")
+    merged["tasa_pct"] = (merged["bajas"] / merged["headcount"] * 100).round(1)
+    return merged
+
+
 with st.spinner("Cargando historial..."):
     df, sup_map, cnt_map = cargar_historial()
+    rotacion_anual = cargar_rotacion_anual()
 
 if df.empty:
     st.warning("No hay datos históricos disponibles.")
@@ -146,6 +177,7 @@ total_bajas  = len(df_bajas)
 perm_bajas   = df_bajas["permanencia_meses"].median()
 pct_menos6   = (df_bajas["permanencia_meses"] < 6).mean()  * 100
 pct_menos12  = (df_bajas["permanencia_meses"] < 12).mean() * 100
+n_en_critica = (df_activo["permanencia_meses"] < 6).sum()
 
 st.markdown(f"""<div class="kpi-row">
   <div class="kpi-card kb">
@@ -169,9 +201,9 @@ st.markdown(f"""<div class="kpi-row">
     <div class="kpi-sub">No completó ni un año — incluye los &lt;6m anteriores</div>
   </div>
   <div class="kpi-card kg">
-    <div class="kpi-value">{len(df_activo)}</div>
-    <div class="kpi-label">Vendedores activos hoy</div>
-    <div class="kpi-sub">Antigüedad promedio: {df_activo['permanencia_meses'].mean():.0f} m (solo los que siguen — no incluye bajas)</div>
+    <div class="kpi-value">{n_en_critica}</div>
+    <div class="kpi-label">Activos en ventana crítica hoy</div>
+    <div class="kpi-sub">Llevan menos de 6 meses — en riesgo activo ahora mismo</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -257,6 +289,80 @@ else:
         hovermode="x unified",
     )
     st.plotly_chart(fig1, use_container_width=True)
+
+
+# ── Gráfico 1b: Bajas por año de egreso + tasa de rotación ────────────────────
+st.markdown('<div class="sec-header">📉 Bajas reales por año — ¿el problema mejora o empeora?</div>',
+            unsafe_allow_html=True)
+st.caption(
+    "Este gráfico muestra cuántos vendedores SE FUERON cada año calendario, "
+    "independientemente de cuándo entraron. "
+    "Las barras = número absoluto de bajas. "
+    "La línea naranja = tasa de rotación (bajas / dotación promedio del año × 100). "
+    "Una tasa estable alta significa que el problema es estructural, no puntual."
+)
+
+rot = rotacion_anual[rotacion_anual["anio"] >= hoy - 10].copy()
+
+if not rot.empty:
+    # Excluir el año actual si está incompleto (menos de 9 meses)
+    import datetime
+    mes_actual = datetime.date.today().month
+    if mes_actual < 10:
+        rot_vis = rot[rot["anio"] < hoy].copy()
+    else:
+        rot_vis = rot.copy()
+
+    colores_barras = [
+        "#E24B4A" if t >= 55 else ("#EF9F27" if t >= 40 else "#4A90D9")
+        for t in rot_vis["tasa_pct"]
+    ]
+
+    fig_rot = go.Figure()
+
+    fig_rot.add_trace(go.Bar(
+        x=rot_vis["anio"],
+        y=rot_vis["bajas"],
+        name="Bajas (cantidad)",
+        marker_color=colores_barras,
+        text=rot_vis["bajas"],
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Bajas: %{y}<extra></extra>",
+        yaxis="y1",
+    ))
+
+    fig_rot.add_trace(go.Scatter(
+        x=rot_vis["anio"],
+        y=rot_vis["tasa_pct"],
+        name="Tasa de rotación (%)",
+        mode="lines+markers+text",
+        line=dict(color="#EF9F27", width=2.5),
+        marker=dict(size=8, color="#EF9F27"),
+        text=[f"{t:.0f}%" for t in rot_vis["tasa_pct"]],
+        textposition="top center",
+        textfont=dict(size=10),
+        hovertemplate="<b>%{x}</b><br>Tasa rotación: %{y:.1f}%<extra></extra>",
+        yaxis="y2",
+    ))
+
+    fig_rot.update_layout(
+        height=360,
+        margin=dict(l=0, r=50, t=40, b=0),
+        xaxis=dict(tickmode="linear", dtick=1, tickformat=".0f", title="Año de egreso"),
+        yaxis=dict(title="Bajas (cantidad)", rangemode="tozero", showgrid=True, gridcolor="#f0f0f0"),
+        yaxis2=dict(
+            title="Tasa de rotación (%)",
+            overlaying="y", side="right",
+            rangemode="tozero", showgrid=False,
+            range=[0, max(rot_vis["tasa_pct"].max() * 1.4, 80)],
+        ),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+        barmode="group",
+    )
+    st.plotly_chart(fig_rot, use_container_width=True)
 
 
 # ── Gráfico 2: Zonas críticas ─────────────────────────────────────────────────

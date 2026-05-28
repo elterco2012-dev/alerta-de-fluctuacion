@@ -24,6 +24,14 @@ import pandas as pd
 
 ESTADO_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'estado_alertas.json')
 
+def _fmt_ant(m):
+    if m < 12:
+        return f"{m} mes{'es' if m != 1 else ''}"
+    a = m // 12; r = m % 12
+    s = f"{a} año{'s' if a != 1 else ''}"
+    return s + (f" y {r} mes{'es' if r != 1 else ''}" if r else "")
+
+
 SEÑAL_CORTA = {
     "% Plan cayendo 3 meses seguidos":    "caída 3m",
     "% Plan < 80% promedio últimos meses":"plan<80%",
@@ -86,9 +94,10 @@ def _teams_payload(nuevos: pd.DataFrame) -> dict:
         señales = " · ".join(
             SEÑAL_CORTA.get(s, s) for s in r["señales_activas"][:4]
         ) or "sin señales registradas"
+        nombre = r.get("nombre") or f"ID {int(r['id_vendedor'])}"
         facts.append({
-            "title": f"ID {int(r['id_vendedor'])} — {r['nombre_grupo']}",
-            "value": f"{r['tipo']} · {r['meses_activo']}m · Score {r['score']}/10 | {señales}",
+            "title": f"{nombre} ({int(r['id_vendedor'])}) — {r['nombre_grupo']}",
+            "value": f"{r['tipo']} · {_fmt_ant(r['meses_activo'])} · Score {r['score']}/10 | {señales}",
         })
 
     return {
@@ -152,15 +161,16 @@ def _email_html(nuevos: pd.DataFrame) -> str:
     filas = ""
     for _, r in nuevos.iterrows():
         señales = ", ".join(SEÑAL_CORTA.get(s, s) for s in r["señales_activas"][:4]) or "—"
-        color_bg = "#FDECEA"
+        nombre = r.get("nombre") or f"ID {int(r['id_vendedor'])}"
         filas += f"""
         <tr>
-          <td style="padding:10px 14px;font-weight:bold;">ID {int(r['id_vendedor'])}</td>
+          <td style="padding:10px 14px;font-weight:bold;">{nombre}<br>
+              <span style="font-weight:normal;font-size:11px;color:#999;">({int(r['id_vendedor'])})</span></td>
           <td style="padding:10px 14px;">{r['tipo']}</td>
           <td style="padding:10px 14px;">{r['nombre_grupo']}</td>
           <td style="padding:10px 14px;">{r['supervisor']}</td>
-          <td style="padding:10px 14px;">{r['meses_activo']}m</td>
-          <td style="padding:10px 14px;background:{color_bg};font-weight:bold;text-align:center;">
+          <td style="padding:10px 14px;">{_fmt_ant(r['meses_activo'])}</td>
+          <td style="padding:10px 14px;background:#FDECEA;font-weight:bold;text-align:center;">
             {r['score']}/10
           </td>
           <td style="padding:10px 14px;font-size:12px;color:#666;">{señales}</td>

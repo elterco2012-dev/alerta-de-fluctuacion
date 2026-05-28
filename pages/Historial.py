@@ -134,10 +134,11 @@ df_bajas  = df[df["completado"]]
 df_activo = df[~df["completado"]]
 
 # ── KPIs ───────────────────────────────────────────────────────────────────────
-total_hist  = len(df)
-total_bajas = len(df_bajas)
-perm_bajas  = df_bajas["permanencia_meses"].median()
-pct_menos6  = (df_bajas["permanencia_meses"] < 6).mean() * 100
+total_hist   = len(df)
+total_bajas  = len(df_bajas)
+perm_bajas   = df_bajas["permanencia_meses"].median()
+pct_menos6   = (df_bajas["permanencia_meses"] < 6).mean()  * 100
+pct_menos12  = (df_bajas["permanencia_meses"] < 12).mean() * 100
 
 st.markdown(f"""<div class="kpi-row">
   <div class="kpi-card kb">
@@ -148,12 +149,17 @@ st.markdown(f"""<div class="kpi-row">
   <div class="kpi-card ko">
     <div class="kpi-value">{perm_bajas:.0f} m</div>
     <div class="kpi-label">Permanencia mediana (dados de baja)</div>
-    <div class="kpi-sub">La mitad se fue antes de este número</div>
+    <div class="kpi-sub">La mitad se fue antes de este número. Era 18m hace 10 años.</div>
   </div>
   <div class="kpi-card kr">
     <div class="kpi-value">{pct_menos6:.0f}%</div>
     <div class="kpi-label">Se fueron en menos de 6 meses</div>
-    <div class="kpi-sub">De todos los vendedores con baja</div>
+    <div class="kpi-sub">No sobrevivió la ventana crítica de onboarding</div>
+  </div>
+  <div class="kpi-card kr" style="border-left-color:#C0392B;">
+    <div class="kpi-value" style="color:#C0392B;">{pct_menos12:.0f}%</div>
+    <div class="kpi-label">Se fueron en menos de 12 meses</div>
+    <div class="kpi-sub">No completó ni un año — incluye los &lt;6m anteriores</div>
   </div>
   <div class="kpi-card kg">
     <div class="kpi-value">{len(df_activo)}</div>
@@ -274,6 +280,9 @@ zona_stats = zona_stats[zona_stats["total"] >= 2].sort_values("pct_rotacion_rapi
 # Añadir supervisor y cantidad activa
 zona_stats["supervisor_grupo"] = zona_stats["nombre_grupo"].map(sup_map).fillna("")
 zona_stats["activos_hoy"]      = zona_stats["nombre_grupo"].map(cnt_map).fillna(0).astype(int)
+
+# Solo mostrar grupos con al menos un vendedor activo hoy
+zona_stats = zona_stats[zona_stats["activos_hoy"] > 0]
 
 if top_n != "Todos":
     zona_stats_vis = zona_stats.head(int(top_n))

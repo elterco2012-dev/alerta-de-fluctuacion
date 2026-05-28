@@ -8,6 +8,7 @@ Usa TODOS los vendedores (activos + bajas) de la tabla vendedores.
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 import sys, os
 from datetime import date
 
@@ -59,6 +60,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def _remap_grupo(nombre):
+    """Traduce IDs de grupos Televentas de Informix a nombres legibles."""
+    n = str(nombre)
+    if "971" in n: return "Televentas Auto"
+    if "972" in n: return "Televentas Metal"
+    if "973" in n: return "Televentas Cargo"
+    return nombre
+
+
 # ── Datos ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def cargar_historial():
@@ -68,6 +79,18 @@ def cargar_historial():
                fecha_ingreso, fecha_egreso, activo
         FROM vendedores
         WHERE fecha_ingreso IS NOT NULL
+    """, con)
+
+    # Supervisor y cantidad de vendedores activos por grupo (excluye supervisores)
+    sup_df = pd.read_sql("""
+        SELECT nombre_grupo, supervisor, COUNT(*) as n_activos
+        FROM vendedores
+        WHERE activo = 1
+          AND nombre NOT IN (
+              SELECT DISTINCT supervisor FROM vendedores
+              WHERE supervisor IS NOT NULL AND supervisor != ''
+          )
+        GROUP BY nombre_grupo, supervisor
     """, con)
     con.close()
 
@@ -81,13 +104,26 @@ def cargar_historial():
     ).round(1)
 
     df["año_ingreso"] = df["fecha_ingreso"].dt.year
-    df["completado"]  = df["activo"] == 0   # True = ya se fue, False = aún activo
+    df["completado"]  = df["activo"] == 0
 
-    return df[df["permanencia_meses"] > 0].copy()
+    # Remap televentas
+    df["nombre_grupo"]     = df["nombre_grupo"].apply(_remap_grupo)
+    sup_df["nombre_grupo"] = sup_df["nombre_grupo"].apply(_remap_grupo)
+
+    # Mapa grupo → supervisor principal y cantidad activa
+    sup_map = {}
+    cnt_map = {}
+    for grp, g in sup_df.groupby("nombre_grupo"):
+        idx = g["n_activos"].idxmax()
+        s = g.loc[idx, "supervisor"]
+        sup_map[grp] = s if pd.notna(s) and s else ""
+        cnt_map[grp] = int(g["n_activos"].sum())
+
+    return df[df["permanencia_meses"] > 0].copy(), sup_map, cnt_map
 
 
 with st.spinner("Cargando historial..."):
-    df = cargar_historial()
+    df, sup_map, cnt_map = cargar_historial()
 
 if df.empty:
     st.warning("No hay datos históricos disponibles.")
@@ -127,85 +163,85 @@ st.markdown(f"""<div class="kpi-row">
 </div>""", unsafe_allow_html=True)
 
 
-# ── Gráfico 1: Permanencia por año de ingreso ─────────────────────────────────
-st.markdown('<div class="sec-header">📊 Permanencia promedio por año de ingreso (cohorte)</div>',
+# ── Gráfico 1: Tendencia de permanencia (últimos 10 años, solo dados de baja) ──
+st.markdown('<div class="sec-header">📊 Tendencia de permanencia — últimos 10 años (solo vendedores dados de baja)</div>',
             unsafe_allow_html=True)
-st.caption("Cada barra = promedio de meses que duraron los vendedores que entraron ese año. "
-           "Los activos cuentan su antigüedad actual (mínimo, aún no cerraron su ciclo).")
-
-año_min = max(hoy - 12, int(df["año_ingreso"].min()))
-df_rango = df[df["año_ingreso"] >= año_min]
-
-cohorte = (
-    df_rango.groupby(["año_ingreso", "completado"])["permanencia_meses"]
-    .agg(["mean", "count"])
-    .reset_index()
-    .rename(columns={"mean": "prom", "count": "n"})
+st.caption(
+    "Cada punto = mediana de meses que duraron los vendedores que entraron ese año y luego se fueron. "
+    "Los activos no se incluyen porque su ciclo todavía no cerró. "
+    "La línea roja punteada muestra la tendencia: si baja, el problema se está profundizando."
 )
 
-años = sorted(df_rango["año_ingreso"].unique())
+año_min = hoy - 10
+df_rango = df_bajas[df_bajas["año_ingreso"] >= año_min].copy()
 
-bars_bajas  = []
-bars_activo = []
-labels_b    = []
-labels_a    = []
+if df_rango.empty:
+    st.info("No hay suficientes datos de bajas en los últimos 10 años.")
+else:
+    cohorte = (
+        df_rango.groupby("año_ingreso")["permanencia_meses"]
+        .agg(mediana="median", n="count")
+        .reset_index()
+        .sort_values("año_ingreso")
+    )
 
-for a in años:
-    sub = cohorte[cohorte["año_ingreso"] == a]
-    baja   = sub[sub["completado"] == True]
-    activo = sub[sub["completado"] == False]
+    años     = cohorte["año_ingreso"].values.astype(float)
+    medianas = cohorte["mediana"].values
 
-    b_val = baja["prom"].values[0]   if not baja.empty   else None
-    b_n   = int(baja["n"].values[0]) if not baja.empty   else 0
-    a_val = activo["prom"].values[0] if not activo.empty else None
-    a_n   = int(activo["n"].values[0]) if not activo.empty else 0
+    fig1 = go.Figure()
 
-    bars_bajas.append(b_val)
-    bars_activo.append(a_val)
-    labels_b.append(f"{b_val:.0f} m ({b_n} bajas)" if b_val else "")
-    labels_a.append(f"{a_val:.0f} m ({a_n} activos)" if a_val else "")
+    # Datos reales
+    fig1.add_trace(go.Scatter(
+        x=años,
+        y=medianas,
+        mode="lines+markers+text",
+        name="Permanencia mediana (bajas)",
+        line=dict(color="#4A90D9", width=2.5),
+        marker=dict(size=10, color="#4A90D9", line=dict(color="white", width=2)),
+        text=[f"{v:.0f}m<br>({int(n)} bajas)"
+              for v, n in zip(medianas, cohorte["n"].values)],
+        textposition="top center",
+        textfont=dict(size=11, color="#333"),
+        hovertemplate="<b>%{x:.0f}</b><br>Permanencia mediana: %{y:.0f} meses<extra></extra>",
+    ))
 
-fig1 = go.Figure()
+    # Línea de tendencia (regresión lineal)
+    if len(años) >= 3:
+        z = np.polyfit(años, medianas, 1)
+        p = np.poly1d(z)
+        x_line = np.linspace(años[0], años[-1], 100)
+        fig1.add_trace(go.Scatter(
+            x=x_line,
+            y=p(x_line),
+            mode="lines",
+            name=f"Tendencia ({z[0]:+.1f} m/año)",
+            line=dict(color="#E24B4A", width=2, dash="dash"),
+            hoverinfo="skip",
+        ))
 
-fig1.add_trace(go.Bar(
-    name="Dados de baja (permanencia final)",
-    x=años,
-    y=bars_bajas,
-    marker_color="#E24B4A",
-    text=[f"{v:.0f}m" if v else "" for v in bars_bajas],
-    textposition="outside",
-    hovertemplate="<b>%{x}</b><br>Permanencia promedio bajas: %{y:.0f} meses<extra></extra>",
-))
+    # Referencia histórica 18 meses
+    fig1.add_hline(
+        y=18, line_dash="dot", line_color="#27AE60", line_width=1.5,
+        annotation_text="18 m (benchmark histórico)",
+        annotation_position="top left",
+        annotation_font_size=11,
+        annotation_font_color="#27AE60",
+    )
 
-fig1.add_trace(go.Bar(
-    name="Aún activos (antigüedad mínima)",
-    x=años,
-    y=bars_activo,
-    marker_color="#4A90D9",
-    opacity=0.6,
-    text=[f"{v:.0f}m" if v else "" for v in bars_activo],
-    textposition="outside",
-    hovertemplate="<b>%{x}</b><br>Antigüedad promedio activos: %{y:.0f} meses<extra></extra>",
-))
-
-# Línea de referencia: 18 meses (benchmark histórico)
-fig1.add_hline(
-    y=18, line_dash="dash", line_color="#27AE60", line_width=1.5,
-    annotation_text="18 m (benchmark 2015)", annotation_position="top left",
-    annotation_font_size=11,
-)
-
-fig1.update_layout(
-    barmode="group",
-    height=380,
-    margin=dict(l=0, r=0, t=30, b=0),
-    xaxis=dict(tickmode="linear", dtick=1, title="Año de ingreso"),
-    yaxis=dict(title="Meses promedio", rangemode="tozero"),
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-)
-st.plotly_chart(fig1, use_container_width=True)
+    fig1.update_layout(
+        height=380,
+        margin=dict(l=0, r=0, t=40, b=0),
+        xaxis=dict(
+            tickmode="linear", dtick=1, title="Año de ingreso",
+            tickformat=".0f",
+        ),
+        yaxis=dict(title="Permanencia mediana (meses)", rangemode="tozero"),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
 
 # ── Gráfico 2: Zonas críticas ─────────────────────────────────────────────────
@@ -235,10 +271,27 @@ zona_stats["pct_rotacion_rapida"] = (
 ).round(1)
 zona_stats = zona_stats[zona_stats["total"] >= 2].sort_values("pct_rotacion_rapida", ascending=False)
 
+# Añadir supervisor y cantidad activa
+zona_stats["supervisor_grupo"] = zona_stats["nombre_grupo"].map(sup_map).fillna("")
+zona_stats["activos_hoy"]      = zona_stats["nombre_grupo"].map(cnt_map).fillna(0).astype(int)
+
 if top_n != "Todos":
     zona_stats_vis = zona_stats.head(int(top_n))
 else:
     zona_stats_vis = zona_stats
+
+# Construir etiquetas Y con supervisor y cantidad
+def _y_label(row):
+    grp = row["nombre_grupo"]
+    sup = row["supervisor_grupo"]
+    cnt = row["activos_hoy"]
+    if sup and cnt:
+        return f"{grp}<br><span style='font-size:11px'>{sup} ({cnt})</span>"
+    if cnt:
+        return f"{grp}<br>({cnt} activos)"
+    return grp
+
+y_labels = [_y_label(row) for _, row in zona_stats_vis.iterrows()]
 
 fig2 = go.Figure()
 
@@ -247,23 +300,29 @@ colores = [
     for p in zona_stats_vis["pct_rotacion_rapida"]
 ]
 
+hover_texts = [
+    (f"<b>{row['nombre_grupo']}</b><br>"
+     f"Supervisor: {row['supervisor_grupo'] or '—'}<br>"
+     f"Activos hoy: {row['activos_hoy']}<br>"
+     f"Rotación rápida (&lt;6m): {row['pct_rotacion_rapida']:.1f}%<br>"
+     f"Bajas rápidas: {int(row['bajas_rapidas'])}/{int(row['total'])}")
+    for _, row in zona_stats_vis.iterrows()
+]
+
 fig2.add_trace(go.Bar(
     x=zona_stats_vis["pct_rotacion_rapida"],
-    y=zona_stats_vis["nombre_grupo"],
+    y=y_labels,
     orientation="h",
     marker_color=colores,
-    text=[f"{p:.0f}% ({int(b)}/{int(t)} bajas rápidas)"
+    text=[f"{p:.0f}% ({int(b)}/{int(t)})"
           for p, b, t in zip(
               zona_stats_vis["pct_rotacion_rapida"],
               zona_stats_vis["bajas_rapidas"],
               zona_stats_vis["total"],
           )],
     textposition="outside",
-    hovertemplate=(
-        "<b>%{y}</b><br>"
-        "Rotación rápida (<6m): %{x:.1f}%<br>"
-        "<extra></extra>"
-    ),
+    hovertext=hover_texts,
+    hoverinfo="text",
 ))
 
 fig2.add_vline(x=50, line_dash="dash", line_color="#E24B4A", line_width=1,
@@ -271,10 +330,10 @@ fig2.add_vline(x=50, line_dash="dash", line_color="#E24B4A", line_width=1,
                annotation_font_size=10)
 
 fig2.update_layout(
-    height=max(350, len(zona_stats_vis) * 32),
+    height=max(380, len(zona_stats_vis) * 38),
     margin=dict(l=0, r=150, t=20, b=0),
-    xaxis=dict(title="% vendedores que se fueron en < 6 meses", range=[0, 115]),
-    yaxis=dict(autorange="reversed"),
+    xaxis=dict(title="% vendedores que se fueron en < 6 meses", range=[0, 120]),
+    yaxis=dict(autorange="reversed", tickfont=dict(size=12)),
     plot_bgcolor="white",
     paper_bgcolor="white",
 )
@@ -288,14 +347,17 @@ with st.expander("Ver tabla completa de zonas"):
         lambda x: f"{x:.0f} m" if pd.notna(x) else "—"
     )
     tabla["pct_rotacion_rapida"] = tabla["pct_rotacion_rapida"].apply(lambda x: f"{x:.1f}%")
+    tabla["supervisor_grupo"] = tabla["supervisor_grupo"].replace("", "—")
     st.dataframe(
         tabla[[
-            "nombre_grupo", "total", "activos", "bajas",
-            "bajas_rapidas", "pct_rotacion_rapida", "perm_mediana"
+            "nombre_grupo", "supervisor_grupo", "activos_hoy",
+            "total", "bajas", "bajas_rapidas",
+            "pct_rotacion_rapida", "perm_mediana"
         ]].rename(columns={
             "nombre_grupo":         "Zona",
+            "supervisor_grupo":     "Supervisor",
+            "activos_hoy":          "Activos hoy",
             "total":                "Total hist.",
-            "activos":              "Activos",
             "bajas":                "Bajas",
             "bajas_rapidas":        "Bajas < 6m",
             "pct_rotacion_rapida":  "% rot. rápida",

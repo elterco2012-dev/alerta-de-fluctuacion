@@ -182,11 +182,13 @@ if not tablas_sun:
     sys.exit(1)
 
 # Query única con UNION ALL
+# CHRBA = cheque rechazado (D_C='D', JRNAL_TYPE='CHRBA') — excluido de venta_sun
 union_sql = " UNION ALL ".join([f"""
-    SELECT LTRIM(RTRIM(ANAL_T2)) AS id_vendedor_sun,
+    SELECT LTRIM(RTRIM(ANAL_T2))      AS id_vendedor_sun,
            PERIOD,
            AMOUNT,
-           LTRIM(RTRIM(D_C)) AS dc
+           LTRIM(RTRIM(D_C))          AS dc,
+           LTRIM(RTRIM(JRNAL_TYPE))   AS jrnal_type
     FROM {t}
     WHERE ACCNT_CODE LIKE '{PREFIJO_CLIENTE}%'
       AND LTRIM(RTRIM(ANAL_T2)) <> ''
@@ -196,8 +198,9 @@ union_sql = " UNION ALL ".join([f"""
 query = f"""
     SELECT id_vendedor_sun,
            PERIOD,
-           SUM(CASE WHEN dc = 'D' THEN AMOUNT ELSE 0 END) AS venta_sun,
-           SUM(CASE WHEN dc = 'C' THEN AMOUNT ELSE 0 END) AS cobranza_sun
+           SUM(CASE WHEN dc = 'D' AND jrnal_type <> 'CHRBA' THEN AMOUNT ELSE 0 END) AS venta_sun,
+           SUM(CASE WHEN dc = 'C' THEN AMOUNT ELSE 0 END) AS cobranza_sun,
+           SUM(CASE WHEN jrnal_type = 'CHRBA' AND dc = 'D' THEN 1 ELSE 0 END) AS cheques_rechazados
     FROM ({union_sql}) AS t
     GROUP BY id_vendedor_sun, PERIOD
     ORDER BY id_vendedor_sun, PERIOD
@@ -220,11 +223,11 @@ def period_to_anio_mes(period):
     p = int(period)
     return p // 1000, p % 1000
 
-# Construir dict: (id_vendedor_int, anio, mes) → {venta_sun, cobranza_sun}
+# Construir dict: (id_vendedor_int, anio, mes) → {venta_sun, cobranza_sun, cheques_rechazados}
 sun_data = {}
 vendedores_sun_set = set()
 for row in rows:
-    vid_str, period, venta_sun, cobranza_sun = row
+    vid_str, period, venta_sun, cobranza_sun, cheques_rech = row
     try:
         vid = int(vid_str.strip())
     except (ValueError, AttributeError):
@@ -234,8 +237,9 @@ for row in rows:
         continue
     vendedores_sun_set.add(vid)
     sun_data[(vid, anio, mes)] = {
-        "venta_sun":    float(venta_sun or 0),
-        "cobranza_sun": float(cobranza_sun or 0),
+        "venta_sun":          float(venta_sun or 0),
+        "cobranza_sun":       float(cobranza_sun or 0),
+        "cheques_rechazados": int(cheques_rech or 0),
     }
 
 print(f"  Vendedores con datos en SUN: {len(vendedores_sun_set)}")
@@ -275,12 +279,13 @@ for (vid, anio, mes), datos in sun_data.items():
         pct_cobr = round(cobranza_real / cobr_teo * 100, 1) if cobr_teo > 0 else 0.0
 
         updates.append({
-            "id_vendedor":    vid,
-            "anio":           anio,
-            "mes":            mes,
-            "cobranza_real":  round(cobranza_real, 2),
-            "cobranza_teorica": round(cobr_teo, 2),
-            "pct_cobranza":   pct_cobr,
+            "id_vendedor":       vid,
+            "anio":              anio,
+            "mes":               mes,
+            "cobranza_real":     round(cobranza_real, 2),
+            "cobranza_teorica":  round(cobr_teo, 2),
+            "pct_cobranza":      pct_cobr,
+            "cheques_rechazados": datos["cheques_rechazados"],
         })
         actualizados += 1
     else:
@@ -303,9 +308,10 @@ else:
     if updates:
         scur_sq.executemany("""
             UPDATE ventas_mensual
-            SET cobranza_real    = :cobranza_real,
-                cobranza_teorica = :cobranza_teorica,
-                pct_cobranza     = :pct_cobranza
+            SET cobranza_real      = :cobranza_real,
+                cobranza_teorica   = :cobranza_teorica,
+                pct_cobranza       = :pct_cobranza,
+                cheques_rechazados = :cheques_rechazados
             WHERE id_vendedor = :id_vendedor
               AND anio        = :anio
               AND mes         = :mes

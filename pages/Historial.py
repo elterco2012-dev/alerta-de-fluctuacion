@@ -26,8 +26,11 @@ st.set_page_config(
 )
 
 st.markdown("""<style>
-[data-testid="stSidebar"] { display: none; }
-.block-container { padding: 2rem 2.5rem 3rem !important; max-width: 100% !important; }
+[data-testid="stSidebar"]   { display: none; }
+[data-testid="stHeader"]    { display: none; }
+[data-testid="stToolbar"]   { display: none; }
+.stDeployButton             { display: none; }
+.block-container { padding: 2.5rem 2.5rem 4rem !important; max-width: 100% !important; }
 header { display: none; }
 
 .kpi-row { display: flex; gap: 14px; margin-bottom: 28px; }
@@ -50,14 +53,15 @@ header { display: none; }
 # ── Nav ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center;
+            flex-wrap:wrap; gap:10px;
             margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">
+  <div style="font-size:20px; font-weight:800; color:#1a1a2e; white-space:nowrap;">
     📈 Historial de Rotación — Wurth Argentina
   </div>
-  <div style="font-size:13px; display:flex; gap:20px;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;">🏠 Inicio</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
+  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
+    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
+    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
+    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
   </div>
 </div>
 """, unsafe_allow_html=True)

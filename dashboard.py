@@ -33,7 +33,7 @@ st.set_page_config(
 # ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""<style>
 [data-testid="stSidebar"] { display: none; }
-.block-container { padding: 2rem 2.5rem 3rem !important; max-width: 100% !important; }
+.block-container { padding: 2.5rem 2.5rem 3rem !important; max-width: 100% !important; }
 header { display: none; }
 
 .kpi-row { display: flex; gap: 14px; margin-bottom: 28px; }
@@ -184,6 +184,20 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, ventanas_df = cargar_datos()
 
+# ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
+_sup_stats = (
+    scores_df[scores_df["supervisor"].notna() & (scores_df["supervisor"] != "")]
+    .groupby("supervisor")
+    .agg(
+        n_vendedores=("id_vendedor", "count"),
+        n_onboarding=("meses_activo", lambda x: (x <= 6).sum()),
+    )
+    .reset_index()
+)
+_n_supervisores       = len(_sup_stats)
+_avg_por_sup          = _sup_stats["n_vendedores"].mean() if _n_supervisores > 0 else 0
+_sup_con_muchos_nuevos = int((_sup_stats["n_onboarding"] >= 3).sum())
+
 # ── Encabezado + Navegación ────────────────────────────────────────────────────
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center;
@@ -203,10 +217,11 @@ st.markdown("""
 # ── KPIs ───────────────────────────────────────────────────────────────────────
 total          = len(scores_df)
 en_critica     = len(scores_df[scores_df.nivel_riesgo.isin(["critico", "alto"])])
-perm_prom      = grupos_df["permanencia_promedio_meses"].mean()
+perm_prom      = scores_df["meses_activo"].mean()   # solo vendedores activos, sin supervisores
 ob_critico     = len(scores_df[
     (scores_df.meses_activo <= 3) & (scores_df.nivel_riesgo.isin(["critico", "alto"]))
 ])
+_sup_color = "kc" if _sup_con_muchos_nuevos > 0 else "ki"
 
 st.markdown(f"""
 <div class="kpi-row">
@@ -222,13 +237,18 @@ st.markdown(f"""
   </div>
   <div class="kpi-card ka">
     <div class="kpi-value">{perm_prom:.1f} m</div>
-    <div class="kpi-label">Permanencia promedio</div>
+    <div class="kpi-label">Antigüedad promedio activos</div>
     <div class="kpi-sub">Era 18m hace 10 años</div>
   </div>
   <div class="kpi-card ki">
     <div class="kpi-value" style="color:#4A90D9">{ob_critico}</div>
     <div class="kpi-label">En onboarding crítico</div>
-    <div class="kpi-sub">Primeros 3 meses</div>
+    <div class="kpi-sub">Primeros 3 meses, riesgo alto/crítico</div>
+  </div>
+  <div class="kpi-card {_sup_color}">
+    <div class="kpi-value">{_n_supervisores}</div>
+    <div class="kpi-label">Supervisores activos</div>
+    <div class="kpi-sub">{_avg_por_sup:.1f} vendedores/supervisor · {_sup_con_muchos_nuevos} con 3+ onboardings activos</div>
   </div>
 </div>
 """, unsafe_allow_html=True)

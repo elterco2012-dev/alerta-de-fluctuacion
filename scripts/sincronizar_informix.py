@@ -216,11 +216,12 @@ for row in vendedores_raw:
     else:
         supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
 
+    TVTAS_GRUPOS = {971: "Televentas Auto", 972: "Televentas Metal", 973: "Televentas Cargo"}
     zona_val = (zona_map.get(vertr, "") or "").strip().upper()
     # Televentas se detecta SOLO por zone='TVTAS', vart no es confiable
     if zona_val == "TVTAS":
         tipo = "Televentas"
-        nombre_grupo = "Televentas"
+        nombre_grupo = TVTAS_GRUPOS.get(vgrp, "Televentas")
     else:
         tipo = "Viajante"
         nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"

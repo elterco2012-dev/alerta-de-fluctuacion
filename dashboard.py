@@ -13,6 +13,16 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
 
+def _fmt_antiguedad(meses):
+    if meses < 12:
+        return f"{meses} mes{'es' if meses != 1 else ''}"
+    anios = meses // 12
+    resto = meses % 12
+    s = f"{anios} año{'s' if anios != 1 else ''}"
+    if resto:
+        s += f" y {resto} mes{'es' if resto != 1 else ''}"
+    return s
+
 st.set_page_config(
     page_title="Wurth | Alertas de Rotación",
     page_icon="🔔",
@@ -246,7 +256,7 @@ for _, r in df.iterrows():
     <tr>
       <td>
         <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-        <div class="vsb">{r['tipo']} · {r['meses_activo']}m antigüedad</div>
+        <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{r['pct_plan_3m']}%</b></td>
@@ -352,7 +362,7 @@ if not onb.empty:
         <tr>
           <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
           <td>{r['tipo']}</td>
-          <td>Mes {r['meses_activo']}</td>
+          <td>{_fmt_antiguedad(r['meses_activo'])}</td>
           <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>
           <td><b>{r['pct_plan_3m']}%</b></td>
           <td>{_bdg(nivel)}</td>

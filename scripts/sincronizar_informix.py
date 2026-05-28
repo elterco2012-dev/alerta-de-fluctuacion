@@ -210,9 +210,11 @@ for row in vendedores_raw:
     if not nombre:
         nombre = f"Vendedor {vertr}"
 
-    # Nombre real del supervisor desde el JOIN
-    if sup_name1 or sup_name2:
-        supervisor = f"{(sup_name1 or '').strip()} {(sup_name2 or '').strip()}".strip()
+    # Nombre real del supervisor — solo name1, name2 es el CUIT
+    if sup_name1:
+        supervisor = sup_name1.strip()
+    elif sup_name2:
+        supervisor = sup_name2.strip()
     else:
         supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
 

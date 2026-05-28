@@ -216,14 +216,14 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         if not act_vid.empty:
             if tipo_v == "Televentas" and "llamadas" in act_vid.columns:
                 prom_llamadas = act_vid["llamadas"].mean()
-                # Señal activa si promedio últimos 3m < 25 llamadas/mes
-                if prom_llamadas < 25:
+                # Target: 25 llamadas/día × 20 días hábiles = 500/mes
+                if prom_llamadas < 500:
                     señales[9].activa = True
                     riesgo_total += señales[9].peso
             elif tipo_v == "Viajante" and "visitas" in act_vid.columns:
                 prom_visitas = act_vid["visitas"].mean()
-                # Señal activa si promedio últimos 3m < 15 visitas/mes
-                if prom_visitas < 15:
+                # Target: 15 visitas/día × 20 días hábiles = 300/mes
+                if prom_visitas < 300:
                     señales[10].activa = True
                     riesgo_total += señales[10].peso
 

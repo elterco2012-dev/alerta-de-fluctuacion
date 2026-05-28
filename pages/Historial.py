@@ -82,6 +82,7 @@ def cargar_historial():
                fecha_ingreso, fecha_egreso, activo
         FROM vendedores
         WHERE fecha_ingreso IS NOT NULL
+          AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
     """, con)
 
     # Supervisor y cantidad de vendedores activos por grupo (excluye supervisores)
@@ -89,6 +90,7 @@ def cargar_historial():
         SELECT nombre_grupo, supervisor, COUNT(*) as n_activos
         FROM vendedores
         WHERE activo = 1
+          AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
           AND nombre NOT IN (
               SELECT DISTINCT supervisor FROM vendedores
               WHERE supervisor IS NOT NULL AND supervisor != ''
@@ -137,7 +139,9 @@ def cargar_rotacion_anual():
         SELECT CAST(strftime('%Y', fecha_egreso) AS INTEGER) as anio,
                COUNT(*) as bajas
         FROM vendedores
-        WHERE fecha_egreso IS NOT NULL AND fecha_ingreso IS NOT NULL
+        WHERE fecha_egreso IS NOT NULL
+          AND fecha_ingreso IS NOT NULL
+          AND fecha_egreso != fecha_ingreso
         GROUP BY anio ORDER BY anio
     """, con)
     # Headcount: cuántos estuvieron activos en algún punto de ese año
@@ -145,12 +149,14 @@ def cargar_rotacion_anual():
         SELECT years.anio, COUNT(*) as headcount
         FROM (
             SELECT DISTINCT CAST(strftime('%Y', fecha_egreso) AS INTEGER) as anio
-            FROM vendedores WHERE fecha_egreso IS NOT NULL
+            FROM vendedores
+            WHERE fecha_egreso IS NOT NULL AND fecha_egreso != fecha_ingreso
         ) years
         JOIN vendedores v ON
             CAST(strftime('%Y', v.fecha_ingreso) AS INTEGER) <= years.anio
             AND (v.fecha_egreso IS NULL
                  OR CAST(strftime('%Y', v.fecha_egreso) AS INTEGER) >= years.anio)
+            AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
         GROUP BY years.anio ORDER BY years.anio
     """, con)
     con.close()

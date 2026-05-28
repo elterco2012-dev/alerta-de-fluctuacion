@@ -172,6 +172,7 @@ def cargar_datos():
         FROM vendedores
         WHERE fecha_egreso IS NOT NULL
           AND fecha_ingreso IS NOT NULL
+          AND fecha_egreso != fecha_ingreso
         GROUP BY mes_numero
         ORDER BY mes_numero
     """, con)

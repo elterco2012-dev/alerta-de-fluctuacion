@@ -230,8 +230,8 @@ st.markdown(f"""
   </div>
   <div class="kpi-card kc">
     <div class="kpi-value" style="color:#E24B4A">{en_critica}</div>
-    <div class="kpi-label">En zona crítica</div>
-    <div class="kpi-sub">Riesgo alto o crítico</div>
+    <div class="kpi-label">Vendedores en riesgo elevado</div>
+    <div class="kpi-sub">Score ≥ 6 (alto o crítico) — ver zonas históricas en 📈 Historial</div>
   </div>
   <div class="kpi-card ka">
     <div class="kpi-value">{perm_prom:.1f} m</div>

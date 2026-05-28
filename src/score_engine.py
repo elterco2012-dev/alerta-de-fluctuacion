@@ -187,10 +187,9 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             señales[7].activa = True
             riesgo_total += señales[7].peso
 
-        # Señal 9: sin clientes nuevos
-        if len(nuevos) >= 2 and nuevos[:2].sum() == 0:
-            señales[8].activa = True
-            riesgo_total += señales[8].peso
+        # Señal 9: sin clientes nuevos — DESACTIVADA: clientes_nuevos no disponible
+        # en Informix aún, siempre viene 0 y dispararía para el 100% de vendedores.
+        # Reactivar cuando el ETL traiga el dato real.
 
         # Normalizar a 1-10
         max_posible = sum(s.peso for s in señales)

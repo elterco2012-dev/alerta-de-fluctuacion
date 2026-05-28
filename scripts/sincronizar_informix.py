@@ -216,13 +216,13 @@ for row in vendedores_raw:
     else:
         supervisor = f"Supervisor G{vgrp}" if vgrp else "Sin supervisor"
 
-    zona_val = zona_map.get(vertr, "")
-    # Televentas se detecta por zone='TVTAS', no por vart
+    zona_val = (zona_map.get(vertr, "") or "").strip().upper()
+    # Televentas se detecta SOLO por zone='TVTAS', vart no es confiable
     if zona_val == "TVTAS":
         tipo = "Televentas"
         nombre_grupo = "Televentas"
     else:
-        tipo = VART_TIPO.get(vart, "Viajante")
+        tipo = "Viajante"
         nombre_grupo = f"Grupo {vgrp}" if vgrp else "Sin grupo"
 
     # Activo solo si pasó el filtro completo (eintrdat, zone, vgrp)

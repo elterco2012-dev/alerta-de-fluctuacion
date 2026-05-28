@@ -527,43 +527,4 @@ print("\n  Para ver el resultado: streamlit run dashboard.py")
 
 inf.close()
 sqlite.close()
-
-# ── Alertas por email ──────────────────────────────────────────────────────────
-if not DRY_RUN:
-    try:
-        import sys as _sys
-        _sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-        from score_engine import calcular_scores
-        from alertas import cargar_estado, detectar_nuevos_criticos, guardar_estado, enviar_email
-
-        smtp_user = os.getenv("SMTP_USER", "")
-        smtp_pwd  = os.getenv("SMTP_PWD", "")
-        alert_to  = [e.strip() for e in os.getenv("ALERT_TO", "").split(",") if e.strip()]
-
-        if smtp_user and smtp_pwd and alert_to:
-            print("\n─" * 33)
-            print("ALERTAS EMAIL")
-            scores = calcular_scores(meses_tendencia=3)
-            estado = cargar_estado()
-            nuevos = detectar_nuevos_criticos(scores, estado)
-
-            if nuevos.empty:
-                print("  Sin nuevos vendedores críticos — no se envía email.")
-            else:
-                print(f"  {len(nuevos)} nuevo(s) crítico(s). Enviando email a {alert_to}...")
-                enviar_email({
-                    "host":     "smtp.office365.com",
-                    "port":     587,
-                    "user":     smtp_user,
-                    "password": smtp_pwd,
-                    "to":       alert_to,
-                }, nuevos)
-                print("  Email enviado OK.")
-
-            guardar_estado(scores)
-        else:
-            print("\n  (Alertas email no configuradas — agregar SMTP_USER/SMTP_PWD/ALERT_TO al .env)")
-    except Exception as e:
-        print(f"\n  AVISO: Error en alertas email: {e}")
-
 print("\nListo.")

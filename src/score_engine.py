@@ -100,6 +100,19 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         WHERE v.activo = 1
         ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
     """, con)
+
+    # ── 3. Actividad Reactor (llamadas / visitas) — tabla puede no existir ─
+    try:
+        actividad = pd.read_sql("""
+            SELECT am.*
+            FROM actividad_mensual am
+            JOIN vendedores v ON am.id_vendedor = v.id_vendedor
+            WHERE v.activo = 1
+            ORDER BY am.id_vendedor, am.anio DESC, am.mes DESC
+        """, con)
+    except Exception:
+        actividad = pd.DataFrame()
+
     con.close()
 
     # Fecha de referencia: usar la fecha actual
@@ -119,6 +132,9 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         if hist.empty:
             continue
 
+        # Actividad Reactor de este vendedor (últimos N meses)
+        act_vid = actividad[actividad["id_vendedor"] == vid].head(meses_tendencia) if not actividad.empty else pd.DataFrame()
+
         señales = [
             Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
@@ -129,6 +145,8 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
             Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),
             Señal("clientes_nuevos_cero",  peso=0.5, descripcion="Sin clientes nuevos últimos 2 meses"),
+            Señal("llamadas_bajas",        peso=1.5, descripcion="Pocas llamadas a clientes (Televentas)"),
+            Señal("visitas_bajas",         peso=1.5, descripcion="Pocas visitas a clientes (Viajante)"),
         ]
 
         riesgo_total = 0.0
@@ -193,8 +211,34 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             señales[8].activa = True
             riesgo_total += señales[8].peso
 
+        # Señales 10 y 11: actividad Reactor (solo si hay datos)
+        tipo_v = v["tipo"]
+        if not act_vid.empty:
+            if tipo_v == "Televentas" and "llamadas" in act_vid.columns:
+                prom_llamadas = act_vid["llamadas"].mean()
+                # < 20 llamadas/mes es actividad muy baja para Televentas
+                if prom_llamadas < 20:
+                    señales[9].activa = True
+                    riesgo_total += señales[9].peso
+            elif tipo_v == "Viajante" and "visitas" in act_vid.columns:
+                prom_visitas = act_vid["visitas"].mean()
+                # < 30 visitas/mes es actividad muy baja para Viajante
+                if prom_visitas < 30:
+                    señales[10].activa = True
+                    riesgo_total += señales[10].peso
+
         # Normalizar a 1-10
-        max_posible = sum(s.peso for s in señales)
+        # Las señales de llamadas y visitas son mutuamente excluyentes por tipo.
+        # Si no hay datos de Reactor, ninguna de las dos aplica → excluir ambas del máximo.
+        señales_aplicables = señales[:]
+        if act_vid.empty:
+            señales_aplicables = [s for s in señales if s.nombre not in ("llamadas_bajas", "visitas_bajas")]
+        elif tipo_v == "Televentas":
+            señales_aplicables = [s for s in señales if s.nombre != "visitas_bajas"]
+        else:
+            señales_aplicables = [s for s in señales if s.nombre != "llamadas_bajas"]
+
+        max_posible = sum(s.peso for s in señales_aplicables)
         score_norm = 1 + (riesgo_total / max_posible) * 9
         score_norm = round(min(10, max(1, score_norm)), 1)
 

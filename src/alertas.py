@@ -209,27 +209,43 @@ def _email_html(nuevos: pd.DataFrame) -> str:
     </body></html>"""
 
 
+def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
+    """
+    Envía alerta usando Outlook instalado via COM (win32com).
+    No requiere contraseña ni SMTP AUTH — usa la sesión de Outlook activa.
+    """
+    import win32com.client
+    n = len(nuevos)
+    outlook = win32com.client.Dispatch("Outlook.Application")
+    mail = outlook.CreateItem(0)
+    mail.To = "; ".join(to)
+    mail.Subject = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"
+    mail.HTMLBody = _email_html(nuevos)
+    mail.Send()
+    return True
+
+
 def enviar_email(smtp_config: dict, nuevos: pd.DataFrame) -> bool:
     """
-    Envía alerta por email via SMTP.
-
-    smtp_config = {
-        "host":     "smtp.office365.com",
-        "port":     587,
-        "user":     "alertas@wurth.com.ar",
-        "password": "...",
-        "to":       ["rrhh@wurth.com.ar", "gerencia@wurth.com.ar"],
-    }
+    Envía alerta por email. Intenta primero via Outlook COM (sin SMTP AUTH),
+    con fallback a SMTP si Outlook no está disponible.
     """
+    to = smtp_config.get("to", [])
+    try:
+        return enviar_email_outlook(to, nuevos)
+    except Exception:
+        pass
+
+    # Fallback SMTP
     n = len(nuevos)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"
     msg["From"]    = smtp_config["user"]
-    msg["To"]      = ", ".join(smtp_config["to"])
+    msg["To"]      = ", ".join(to)
     msg.attach(MIMEText(_email_html(nuevos), "html", "utf-8"))
 
     with smtplib.SMTP(smtp_config["host"], smtp_config["port"]) as server:
         server.starttls()
         server.login(smtp_config["user"], smtp_config["password"])
-        server.sendmail(smtp_config["user"], smtp_config["to"], msg.as_string())
+        server.sendmail(smtp_config["user"], to, msg.as_string())
     return True

@@ -190,11 +190,13 @@ if not supervisor_sel:
         criticos =("nivel_riesgo", lambda x: (x=="critico").sum()),
         altos    =("nivel_riesgo", lambda x: (x=="alto").sum()),
         score_max=("score", "max"),
+        nombre_grupo=("nombre_grupo", "first"),
     ).reset_index()
-    resumen = resumen.merge(
-        grupos_df[["supervisor","nombre_grupo","permanencia_promedio_meses","riesgo_base"]],
-        on="supervisor", how="left"
-    ).sort_values("score_max", ascending=False)
+    # Agregar permanencia y riesgo_base — tomar el primer grupo del supervisor
+    grupos_sup = (grupos_df[["supervisor","permanencia_promedio_meses","riesgo_base"]]
+                  .drop_duplicates("supervisor"))
+    resumen = resumen.merge(grupos_sup, on="supervisor", how="left"
+                  ).sort_values("score_max", ascending=False)
 
     cols = st.columns(3)
     for i, (_, row) in enumerate(resumen.iterrows()):
@@ -227,7 +229,7 @@ if not supervisor_sel:
               <div style="font-size:12px;margin-top:10px;">{alerta}</div>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("Ver mis vendedores →", key=f"btn_{row['supervisor']}",
+            if st.button("Ver mis vendedores →", key=f"btn_{i}",
                          use_container_width=True):
                 st.query_params["supervisor"] = row["supervisor"]
                 st.rerun()

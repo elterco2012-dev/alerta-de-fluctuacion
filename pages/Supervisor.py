@@ -12,6 +12,16 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
 
+def _fmt_antiguedad(meses):
+    if meses < 12:
+        return f"{meses} mes{'es' if meses != 1 else ''}"
+    anios = meses // 12
+    resto = meses % 12
+    s = f"{anios} año{'s' if anios != 1 else ''}"
+    if resto:
+        s += f" y {resto} mes{'es' if resto != 1 else ''}"
+    return s
+
 st.set_page_config(
     page_title="Wurth | Vista Supervisor",
     page_icon="👤",
@@ -223,7 +233,7 @@ if not supervisor_sel:
                 st.rerun()
 
     st.markdown("---")
-    st.caption("Wurth Argentina · Sistema de alertas de rotación · Datos simulados")
+    st.caption("Wurth Argentina · Sistema de alertas de rotación")
     st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -314,8 +324,8 @@ rows = ""
 for _, r in df_sup.iterrows():
     vid = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
     rows += f"""<tr>
-      <td><div class="vn">ID {vid}</div>
-          <div class="vsb">{r['tipo']} · {r['meses_activo']}m antigüedad</div></td>
+      <td><div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+          <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{r['pct_plan_3m']}%</b></td>
       <td>{_spark(sparks.get(vid,[]))}</td>
@@ -343,8 +353,9 @@ if not onb.empty:
     for _, r in onb.iterrows():
         nivel = r["nivel_riesgo"]
         ob_rows += f"""<tr>
-          <td><b>ID {int(r['id_vendedor'])}</b></td><td>{r['tipo']}</td>
-          <td>Mes {r['meses_activo']}</td><td><b>{r['pct_plan_3m']}%</b></td>
+          <td><b>{r['nombre']}</b> <span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
+          <td>{r['tipo']}</td>
+          <td>{_fmt_antiguedad(r['meses_activo'])}</td><td><b>{r['pct_plan_3m']}%</b></td>
           <td>{_bdg(nivel)}</td></tr>"""
     st.markdown(f"""
     <div class="card"><table class="ot">
@@ -352,4 +363,4 @@ if not onb.empty:
     <tbody>{ob_rows}</tbody></table></div>""", unsafe_allow_html=True)
 
 st.markdown("<br>")
-st.caption("Wurth Argentina · Sistema de alertas de rotación · Datos simulados")
+st.caption("Wurth Argentina · Sistema de alertas de rotación")

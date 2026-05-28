@@ -9,14 +9,23 @@ Reactor usa Python 64 bits (MySQL ODBC no requiere 32 bits):
     python scripts\\sincronizar_reactor.py
 
 Tablas de origen:
-  customer_management  → llamadas de Televentas (JOIN user ON id_user_author)
-  customer_visit       → visitas de Viajantes   (JOIN user ON id_user_author)
-  telephony_call_history → llamadas respondidas (campo agent = vertr1 directo)
+  customer_management   → gestiones realizadas (llamada hecha, sin importar resultado)
+  cust_man_schedule     → planificación Televentas (is_done = ejecutada)
+  customer_visit        → visitas realizadas
+  schedule              → planificación Viajantes (is_visited = ejecutada)
+  telephony_call_history→ llamadas respondidas (is_answered)
 
-Tabla destino en SQLite:
-  actividad_mensual (id_vendedor, anio, mes, llamadas, llamadas_exitosas,
-                     visitas, clientes_llamados, clientes_visitados,
-                     llamadas_respondidas)
+Columnas en actividad_mensual:
+  llamadas              total gestiones en customer_management (inclye buzón, no contesta, etc.)
+  llamadas_exitosas     gestiones donde closure_no_action_reason IS NULL (habló con alguien)
+  planificadas_llamadas planificadas en cust_man_schedule (active=1)
+  gestionadas_llamadas  planificadas ejecutadas (cust_man_schedule active=1, is_done=1)
+  visitas               visitas en customer_visit
+  clientes_visitados    clientes distintos visitados
+  planificadas_visitas  planificadas en schedule (active=1, no deshabilitadas)
+  visitadas_schedule    planificadas ejecutadas (schedule is_visited=1)
+  clientes_llamados     clientes distintos gestionados
+  llamadas_respondidas  llamadas con is_answered=1 en telephony_call_history
 
 Opciones:
     --dry-run      Muestra totales sin escribir en SQLite
@@ -28,8 +37,7 @@ import sys
 import os
 import sqlite3
 import argparse
-from datetime import date, datetime
-from collections import defaultdict
+from datetime import date
 
 try:
     import pyodbc
@@ -72,7 +80,7 @@ print(f"\n  Período desde: {anio_inicio}/{mes_inicio:02d}  ({fecha_desde})")
 # ── Conectar a Reactor MySQL ───────────────────────────────────────────────────
 print("\nConectando a Reactor CRM (MySQL)...", end=" ", flush=True)
 try:
-    rcn = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
+    rcn  = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
     rcur = rcn.cursor()
     print("OK")
 except Exception as e:
@@ -87,7 +95,7 @@ except Exception as e:
 if args.diagnostico:
     print("\n--- DIAGNÓSTICO Reactor CRM ---\n")
 
-    print("customer_management (llamadas Televentas):")
+    print("customer_management (gestiones realizadas):")
     rcur.execute("""
         SELECT YEAR(cm.created) AS anio, MONTH(cm.created) AS mes,
                COUNT(*) AS total,
@@ -100,10 +108,28 @@ if args.diagnostico:
         GROUP BY YEAR(cm.created), MONTH(cm.created)
         ORDER BY anio, mes
     """, fecha_desde)
-    for row in rcur.fetchall():
-        print(f"  {row[0]}/{row[1]:02d}: {row[2]} llamadas, {row[3]} exitosas")
+    for r in rcur.fetchall():
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} gestionadas, {r[3]:>6} exitosas")
 
-    print("\ncustomer_visit (visitas Viajantes):")
+    print("\ncust_man_schedule (planificadas Televentas):")
+    rcur.execute("""
+        SELECT YEAR(cs.contact_day) AS anio, MONTH(cs.contact_day) AS mes,
+               COUNT(*) AS planificadas,
+               SUM(CASE WHEN cs.is_done = 1 THEN 1 ELSE 0 END) AS gestionadas
+        FROM cust_man_schedule cs
+        JOIN `user` u ON cs.id_user = u.id
+        WHERE cs.contact_day >= ?
+          AND cs.active = 1
+          AND u.username REGEXP '^[0-9]+$'
+          AND CAST(u.username AS UNSIGNED) > 0
+        GROUP BY YEAR(cs.contact_day), MONTH(cs.contact_day)
+        ORDER BY anio, mes
+    """, fecha_desde)
+    for r in rcur.fetchall():
+        pct = round(r[3] / r[2] * 100, 1) if r[2] else 0
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} planificadas, {r[3]:>6} gestionadas ({pct}%)")
+
+    print("\ncustomer_visit (visitas realizadas):")
     rcur.execute("""
         SELECT YEAR(cv.start_time) AS anio, MONTH(cv.start_time) AS mes,
                COUNT(*) AS total
@@ -115,8 +141,27 @@ if args.diagnostico:
         GROUP BY YEAR(cv.start_time), MONTH(cv.start_time)
         ORDER BY anio, mes
     """, fecha_desde)
-    for row in rcur.fetchall():
-        print(f"  {row[0]}/{row[1]:02d}: {row[2]} visitas")
+    for r in rcur.fetchall():
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} visitas")
+
+    print("\nschedule (planificadas Viajantes):")
+    rcur.execute("""
+        SELECT YEAR(s.meeting_day) AS anio, MONTH(s.meeting_day) AS mes,
+               COUNT(*) AS planificadas,
+               SUM(CASE WHEN s.is_visited = 1 THEN 1 ELSE 0 END) AS visitadas
+        FROM schedule s
+        JOIN `user` u ON s.id_user = u.id
+        WHERE s.meeting_day >= ?
+          AND s.active = 1
+          AND s.disabled IS NULL
+          AND u.username REGEXP '^[0-9]+$'
+          AND CAST(u.username AS UNSIGNED) > 0
+        GROUP BY YEAR(s.meeting_day), MONTH(s.meeting_day)
+        ORDER BY anio, mes
+    """, fecha_desde)
+    for r in rcur.fetchall():
+        pct = round(r[3] / r[2] * 100, 1) if r[2] else 0
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} planificadas, {r[3]:>6} visitadas ({pct}%)")
 
     print("\ntelephony_call_history (llamadas respondidas):")
     rcur.execute("""
@@ -131,14 +176,15 @@ if args.diagnostico:
         GROUP BY YEAR(created), MONTH(created)
         ORDER BY anio, mes
     """, fecha_desde)
-    for row in rcur.fetchall():
-        print(f"  {row[0]}/{row[1]:02d}: {row[2]} registros, {row[3]} respondidas")
+    for r in rcur.fetchall():
+        pct = round(r[3] / r[2] * 100, 1) if r[2] else 0
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} registros, {r[3]:>6} respondidas ({pct}%)")
 
     rcn.close()
     sys.exit(0)
 
-# ── 1. Llamadas Televentas (customer_management + user) ───────────────────────
-print("\n[1/3] Leyendo llamadas Televentas (customer_management)...", end=" ", flush=True)
+# ── 1. Gestiones realizadas (customer_management) ─────────────────────────────
+print("\n[1/5] Gestiones Televentas (customer_management)...", end=" ", flush=True)
 rcur.execute("""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cm.created)                                      AS anio,
@@ -156,20 +202,47 @@ rcur.execute("""
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)
 
-llamadas_data = {}
+gestion_data = {}
 for row in rcur.fetchall():
     vid, anio, mes, llamadas, exitosas, clientes = row
     k = (int(vid), int(anio), int(mes))
-    llamadas_data[k] = {
-        "llamadas":         int(llamadas or 0),
-        "llamadas_exitosas": int(exitosas or 0),
-        "clientes_llamados": int(clientes or 0),
+    gestion_data[k] = {
+        "llamadas":          int(llamadas or 0),
+        "llamadas_exitosas":  int(exitosas or 0),
+        "clientes_llamados":  int(clientes or 0),
     }
+print(f"OK — {len(gestion_data)} filas")
 
-print(f"OK — {len(llamadas_data)} filas (vendedor/año/mes)")
+# ── 2. Planificación Televentas (cust_man_schedule) ───────────────────────────
+print("[2/5] Planificación Televentas (cust_man_schedule)...", end=" ", flush=True)
+rcur.execute("""
+    SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
+           YEAR(cs.contact_day)                                  AS anio,
+           MONTH(cs.contact_day)                                 AS mes,
+           COUNT(*)                                              AS planificadas,
+           SUM(CASE WHEN cs.is_done = 1 THEN 1 ELSE 0 END)      AS gestionadas
+    FROM cust_man_schedule cs
+    JOIN `user` u ON cs.id_user = u.id
+    WHERE cs.contact_day >= ?
+      AND cs.active = 1
+      AND u.username REGEXP '^[0-9]+$'
+      AND CAST(u.username AS UNSIGNED) > 0
+    GROUP BY CAST(u.username AS UNSIGNED), YEAR(cs.contact_day), MONTH(cs.contact_day)
+    ORDER BY id_vendedor, anio, mes
+""", fecha_desde)
 
-# ── 2. Visitas Viajantes (customer_visit + user) ───────────────────────────────
-print("[2/3] Leyendo visitas Viajantes (customer_visit)...", end=" ", flush=True)
+plan_llamadas_data = {}
+for row in rcur.fetchall():
+    vid, anio, mes, planificadas, gestionadas = row
+    k = (int(vid), int(anio), int(mes))
+    plan_llamadas_data[k] = {
+        "planificadas_llamadas": int(planificadas or 0),
+        "gestionadas_llamadas":  int(gestionadas or 0),
+    }
+print(f"OK — {len(plan_llamadas_data)} filas")
+
+# ── 3. Visitas realizadas (customer_visit) ────────────────────────────────────
+print("[3/5] Visitas realizadas (customer_visit)...", end=" ", flush=True)
 rcur.execute("""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cv.start_time)                                   AS anio,
@@ -190,14 +263,42 @@ for row in rcur.fetchall():
     vid, anio, mes, visitas, clientes = row
     k = (int(vid), int(anio), int(mes))
     visitas_data[k] = {
-        "visitas":           int(visitas or 0),
+        "visitas":            int(visitas or 0),
         "clientes_visitados": int(clientes or 0),
     }
+print(f"OK — {len(visitas_data)} filas")
 
-print(f"OK — {len(visitas_data)} filas (vendedor/año/mes)")
+# ── 4. Planificación Viajantes (schedule) ─────────────────────────────────────
+print("[4/5] Planificación Viajantes (schedule)...", end=" ", flush=True)
+rcur.execute("""
+    SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
+           YEAR(s.meeting_day)                                   AS anio,
+           MONTH(s.meeting_day)                                  AS mes,
+           COUNT(*)                                              AS planificadas,
+           SUM(CASE WHEN s.is_visited = 1 THEN 1 ELSE 0 END)    AS visitadas
+    FROM schedule s
+    JOIN `user` u ON s.id_user = u.id
+    WHERE s.meeting_day >= ?
+      AND s.active = 1
+      AND s.disabled IS NULL
+      AND u.username REGEXP '^[0-9]+$'
+      AND CAST(u.username AS UNSIGNED) > 0
+    GROUP BY CAST(u.username AS UNSIGNED), YEAR(s.meeting_day), MONTH(s.meeting_day)
+    ORDER BY id_vendedor, anio, mes
+""", fecha_desde)
 
-# ── 3. Llamadas respondidas (telephony_call_history, agent = vertr1 directo) ──
-print("[3/3] Leyendo llamadas respondidas (telephony_call_history)...", end=" ", flush=True)
+plan_visitas_data = {}
+for row in rcur.fetchall():
+    vid, anio, mes, planificadas, visitadas = row
+    k = (int(vid), int(anio), int(mes))
+    plan_visitas_data[k] = {
+        "planificadas_visitas": int(planificadas or 0),
+        "visitadas_schedule":   int(visitadas or 0),
+    }
+print(f"OK — {len(plan_visitas_data)} filas")
+
+# ── 5. Llamadas respondidas (telephony_call_history) ──────────────────────────
+print("[5/5] Llamadas respondidas (telephony_call_history)...", end=" ", flush=True)
 rcur.execute("""
     SELECT CAST(agent AS UNSIGNED)                               AS id_vendedor,
            YEAR(created)                                         AS anio,
@@ -217,32 +318,47 @@ for row in rcur.fetchall():
     vid, anio, mes, respondidas = row
     k = (int(vid), int(anio), int(mes))
     respondidas_data[k] = int(respondidas or 0)
-
-print(f"OK — {len(respondidas_data)} filas (vendedor/año/mes)")
+print(f"OK — {len(respondidas_data)} filas")
 
 rcn.close()
 
-# ── Unir los tres datasets ────────────────────────────────────────────────────
-todas_keys = set(llamadas_data) | set(visitas_data) | set(respondidas_data)
+# ── Unir todos los datasets ───────────────────────────────────────────────────
+todas_keys = (
+    set(gestion_data)
+    | set(plan_llamadas_data)
+    | set(visitas_data)
+    | set(plan_visitas_data)
+    | set(respondidas_data)
+)
 print(f"\nTotal filas a sincronizar: {len(todas_keys)}")
 
 if DRY_RUN:
     print("\n--- DRY RUN: muestra de primeras 20 filas ---")
+    print(f"  {'Vendedor':>8}  {'Mes':>7}  {'Plan.Ll':>7}  {'Gest.Ll':>7}  {'%':>5}  {'Exitosas':>8}  {'Plan.Vi':>7}  {'Visit.':>7}  {'%':>5}")
     for k in sorted(todas_keys)[:20]:
         vid, anio, mes = k
-        ll  = llamadas_data.get(k, {})
+        gl  = gestion_data.get(k, {})
+        pl  = plan_llamadas_data.get(k, {})
         vv  = visitas_data.get(k, {})
-        rr  = respondidas_data.get(k, 0)
+        pv  = plan_visitas_data.get(k, {})
+
+        plan_ll = pl.get("planificadas_llamadas", 0)
+        gest_ll = pl.get("gestionadas_llamadas", 0)
+        plan_vi = pv.get("planificadas_visitas", 0)
+        visit   = pv.get("visitadas_schedule", 0)
+        pct_ll  = f"{gest_ll/plan_ll*100:.0f}%" if plan_ll else "—"
+        pct_vi  = f"{visit/plan_vi*100:.0f}%"   if plan_vi else "—"
+
         print(
-            f"  Vendedor {vid:>5}  {anio}/{mes:02d} → "
-            f"llamadas={ll.get('llamadas',0):>4}  exitosas={ll.get('llamadas_exitosas',0):>4}  "
-            f"visitas={vv.get('visitas',0):>4}  "
-            f"respondidas={rr:>4}"
+            f"  {vid:>8}  {anio}/{mes:02d}  "
+            f"{plan_ll:>7}  {gest_ll:>7}  {pct_ll:>5}  "
+            f"{gl.get('llamadas_exitosas',0):>8}  "
+            f"{plan_vi:>7}  {visit:>7}  {pct_vi:>5}"
         )
     print("\nDRY RUN completado. Sin cambios en SQLite.")
     sys.exit(0)
 
-# ── Conectar a SQLite y crear tabla si no existe ──────────────────────────────
+# ── Conectar a SQLite ─────────────────────────────────────────────────────────
 print("\nConectando a SQLite...", end=" ", flush=True)
 try:
     lcon = sqlite3.connect(DB_PATH)
@@ -252,51 +368,77 @@ except Exception as e:
     print(f"FALLÓ\nError: {e}")
     sys.exit(1)
 
+# Crear tabla con todas las columnas
 lcur.execute("""
     CREATE TABLE IF NOT EXISTS actividad_mensual (
-        id_vendedor          INTEGER NOT NULL,
-        anio                 INTEGER NOT NULL,
-        mes                  INTEGER NOT NULL,
-        llamadas             INTEGER DEFAULT 0,
-        llamadas_exitosas    INTEGER DEFAULT 0,
-        visitas              INTEGER DEFAULT 0,
-        clientes_llamados    INTEGER DEFAULT 0,
-        clientes_visitados   INTEGER DEFAULT 0,
-        llamadas_respondidas INTEGER DEFAULT 0,
+        id_vendedor           INTEGER NOT NULL,
+        anio                  INTEGER NOT NULL,
+        mes                   INTEGER NOT NULL,
+        llamadas              INTEGER DEFAULT 0,
+        llamadas_exitosas     INTEGER DEFAULT 0,
+        planificadas_llamadas INTEGER DEFAULT 0,
+        gestionadas_llamadas  INTEGER DEFAULT 0,
+        visitas               INTEGER DEFAULT 0,
+        clientes_visitados    INTEGER DEFAULT 0,
+        planificadas_visitas  INTEGER DEFAULT 0,
+        visitadas_schedule    INTEGER DEFAULT 0,
+        clientes_llamados     INTEGER DEFAULT 0,
+        llamadas_respondidas  INTEGER DEFAULT 0,
         PRIMARY KEY (id_vendedor, anio, mes)
     )
 """)
+
+# Agregar columnas nuevas si la tabla ya existía sin ellas
+for col in ("planificadas_llamadas", "gestionadas_llamadas",
+            "planificadas_visitas", "visitadas_schedule"):
+    try:
+        lcur.execute(f"ALTER TABLE actividad_mensual ADD COLUMN {col} INTEGER DEFAULT 0")
+    except Exception:
+        pass  # columna ya existe
+
 lcon.commit()
 
 # ── Insertar / actualizar ─────────────────────────────────────────────────────
 upsert_sql = """
     INSERT INTO actividad_mensual
-        (id_vendedor, anio, mes, llamadas, llamadas_exitosas,
-         visitas, clientes_llamados, clientes_visitados, llamadas_respondidas)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id_vendedor, anio, mes,
+         llamadas, llamadas_exitosas, planificadas_llamadas, gestionadas_llamadas,
+         visitas, clientes_visitados, planificadas_visitas, visitadas_schedule,
+         clientes_llamados, llamadas_respondidas)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
-        llamadas             = excluded.llamadas,
-        llamadas_exitosas    = excluded.llamadas_exitosas,
-        visitas              = excluded.visitas,
-        clientes_llamados    = excluded.clientes_llamados,
-        clientes_visitados   = excluded.clientes_visitados,
-        llamadas_respondidas = excluded.llamadas_respondidas
+        llamadas              = excluded.llamadas,
+        llamadas_exitosas     = excluded.llamadas_exitosas,
+        planificadas_llamadas = excluded.planificadas_llamadas,
+        gestionadas_llamadas  = excluded.gestionadas_llamadas,
+        visitas               = excluded.visitas,
+        clientes_visitados    = excluded.clientes_visitados,
+        planificadas_visitas  = excluded.planificadas_visitas,
+        visitadas_schedule    = excluded.visitadas_schedule,
+        clientes_llamados     = excluded.clientes_llamados,
+        llamadas_respondidas  = excluded.llamadas_respondidas
 """
 
 insertados = 0
 for k in sorted(todas_keys):
     vid, anio, mes = k
-    ll = llamadas_data.get(k, {})
+    gl = gestion_data.get(k, {})
+    pl = plan_llamadas_data.get(k, {})
     vv = visitas_data.get(k, {})
+    pv = plan_visitas_data.get(k, {})
     rr = respondidas_data.get(k, 0)
 
     lcur.execute(upsert_sql, (
         vid, anio, mes,
-        ll.get("llamadas", 0),
-        ll.get("llamadas_exitosas", 0),
+        gl.get("llamadas", 0),
+        gl.get("llamadas_exitosas", 0),
+        pl.get("planificadas_llamadas", 0),
+        pl.get("gestionadas_llamadas", 0),
         vv.get("visitas", 0),
-        ll.get("clientes_llamados", 0),
         vv.get("clientes_visitados", 0),
+        pv.get("planificadas_visitas", 0),
+        pv.get("visitadas_schedule", 0),
+        gl.get("clientes_llamados", 0),
         rr,
     ))
     insertados += 1
@@ -305,8 +447,10 @@ lcon.commit()
 lcon.close()
 
 print(f"\n✓ {insertados} filas insertadas/actualizadas en actividad_mensual")
-print("\nResumen:")
-print(f"  Vendedores con llamadas : {len({k[0] for k in llamadas_data})}")
-print(f"  Vendedores con visitas  : {len({k[0] for k in visitas_data})}")
-print(f"  Vendedores con tel. hist: {len({k[0] for k in respondidas_data})}")
+print("\nResumen por fuente:")
+print(f"  Vendedores con gestiones (cm)     : {len({k[0] for k in gestion_data})}")
+print(f"  Vendedores con plan llamadas      : {len({k[0] for k in plan_llamadas_data})}")
+print(f"  Vendedores con visitas (cv)       : {len({k[0] for k in visitas_data})}")
+print(f"  Vendedores con plan visitas       : {len({k[0] for k in plan_visitas_data})}")
+print(f"  Vendedores en tel. history        : {len({k[0] for k in respondidas_data})}")
 print("\nListo. Ejecutá el dashboard para ver las señales actualizadas.")

@@ -145,8 +145,8 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
             Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),
             Señal("clientes_nuevos_cero",  peso=0.5, descripcion="Sin clientes nuevos últimos 2 meses"),
-            Señal("llamadas_bajas",        peso=1.5, descripcion="Pocas llamadas a clientes (Televentas)"),
-            Señal("visitas_bajas",         peso=1.5, descripcion="Pocas visitas a clientes (Viajante)"),
+            Señal("llamadas_bajas",        peso=1.5, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
+            Señal("visitas_bajas",         peso=1.5, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
         ]
 
         riesgo_total = 0.0
@@ -214,18 +214,36 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         # Señales 10 y 11: actividad Reactor (solo si hay datos)
         tipo_v = v["tipo"]
         if not act_vid.empty:
-            if tipo_v == "Televentas" and "llamadas" in act_vid.columns:
-                prom_llamadas = act_vid["llamadas"].mean()
-                # Target: 25 llamadas/día × 20 días hábiles = 500/mes
-                if prom_llamadas < 500:
-                    señales[9].activa = True
-                    riesgo_total += señales[9].peso
-            elif tipo_v == "Viajante" and "visitas" in act_vid.columns:
-                prom_visitas = act_vid["visitas"].mean()
-                # Target: 15 visitas/día × 20 días hábiles = 300/mes
-                if prom_visitas < 300:
-                    señales[10].activa = True
-                    riesgo_total += señales[10].peso
+            tiene_plan_ll = "planificadas_llamadas" in act_vid.columns
+            tiene_plan_vi = "planificadas_visitas"  in act_vid.columns
+
+            if tipo_v == "Televentas":
+                if tiene_plan_ll and act_vid["planificadas_llamadas"].sum() > 0:
+                    # Ratio gestionadas/planificadas: < 70% promedio en últimos 3m
+                    ratio = (act_vid["gestionadas_llamadas"] /
+                             act_vid["planificadas_llamadas"].replace(0, float("nan"))).mean()
+                    if ratio < 0.70:
+                        señales[9].activa = True
+                        riesgo_total += señales[9].peso
+                elif "llamadas" in act_vid.columns:
+                    # Fallback sin datos de planificación: conteo bruto
+                    if act_vid["llamadas"].mean() < 500:
+                        señales[9].activa = True
+                        riesgo_total += señales[9].peso
+
+            elif tipo_v == "Viajante":
+                if tiene_plan_vi and act_vid["planificadas_visitas"].sum() > 0:
+                    # Ratio visitadas/planificadas: < 70% promedio en últimos 3m
+                    ratio = (act_vid["visitadas_schedule"] /
+                             act_vid["planificadas_visitas"].replace(0, float("nan"))).mean()
+                    if ratio < 0.70:
+                        señales[10].activa = True
+                        riesgo_total += señales[10].peso
+                elif "visitas" in act_vid.columns:
+                    # Fallback sin datos de planificación: conteo bruto
+                    if act_vid["visitas"].mean() < 300:
+                        señales[10].activa = True
+                        riesgo_total += señales[10].peso
 
         # Normalizar a 1-10
         # Las señales de llamadas y visitas son mutuamente excluyentes por tipo.

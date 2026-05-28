@@ -166,14 +166,12 @@ def cargar_datos():
     con = get_connection()
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
     ventanas = pd.read_sql("""
-        SELECT mes_numero, COUNT(*) as renuncias
-        FROM vendedores v
-        JOIN ventas_mensual vm ON v.id_vendedor = vm.id_vendedor
-        WHERE v.fecha_egreso IS NOT NULL
-          AND vm.mes_numero = (
-              SELECT MAX(mes_numero) FROM ventas_mensual
-              WHERE id_vendedor = v.id_vendedor
-          )
+        SELECT
+            MAX(1, CAST((julianday(fecha_egreso) - julianday(fecha_ingreso)) / 30.44 + 1 AS INTEGER)) as mes_numero,
+            COUNT(*) as renuncias
+        FROM vendedores
+        WHERE fecha_egreso IS NOT NULL
+          AND fecha_ingreso IS NOT NULL
         GROUP BY mes_numero
         ORDER BY mes_numero
     """, con)
@@ -309,6 +307,38 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 st.caption(f"Mostrando {len(df)} vendedores")
 
+with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.markdown("""
+**% Plan 3m**
+Promedio de `venta_real / objetivo * 100` de los últimos 3 meses del vendedor.
+Por ejemplo: si vendió 80%, 75% y 70% en los últimos 3 meses → % Plan 3m = 75%.
+
+**Tendencia (barras mini)**
+Cada barra = % Plan de ese mes (izquierda = más antiguo, derecha = más reciente).
+🟢 Verde ≥ 90% · 🟠 Naranja ≥ 70% · 🔴 Rojo < 70%
+
+**Score (1–10)**
+Suma de señales activas ponderadas, normalizada a escala 1–10.
+Solo se usa la tendencia de los últimos 3 meses, no un dato puntual.
+""")
+    with col_e2:
+        st.markdown("""
+**Señales y sus umbrales**
+
+| Señal | Se activa cuando |
+|---|---|
+| `caída 3m` | El % Plan cae de forma sostenida (pendiente < −3 pts/mes) |
+| `plan<80%` | Promedio % Plan últimos 3 meses está por debajo del 80% |
+| `días cero+` | Más de 3 días sin registrar ninguna venta en promedio |
+| `cobranza baja` | Cobranza real < 90% de la cobranza teórica esperada |
+| `onboarding` | Vendedor en sus primeros 3 meses (riesgo muy alto) |
+| `mes 4-6` | Vendedor entre el mes 4 y 6 (riesgo alto) |
+| `zona quemada` | El grupo tiene rotación histórica elevada (> 60%) |
+| `clientes L:0` | Cero clientes nuevos en los últimos 2 meses |
+""")
+
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Zonas + Ventanas ───────────────────────────────────────────────────────────
@@ -346,6 +376,9 @@ with col2:
 
     vdf = ventanas_df.copy()
     vdf["label"] = vdf["mes_numero"].apply(lambda m: f"M{m}" if m < 19 else "M19+")
+    vdf = vdf.groupby("label", sort=False).agg(
+        mes_numero=("mes_numero", "min"), renuncias=("renuncias", "sum")
+    ).reset_index().sort_values("mes_numero")
 
     def _color_mes(m):
         if m <= 3:  return "#E24B4A"

@@ -1,113 +1,61 @@
 """
 enviar_alertas.py
 -----------------
-Runner de alertas de rotación. Detecta nuevos críticos y notifica via Teams y/o email.
-
-Configuración via variables de entorno (ver .env.example):
-    WURTH_TEAMS_WEBHOOK_URL   → Teams Incoming Webhook o Power Automate
-    WURTH_SMTP_HOST           → servidor SMTP
-    WURTH_SMTP_PORT           → puerto (default 587)
-    WURTH_SMTP_USER           → usuario/remitente
-    WURTH_SMTP_PASSWORD       → contraseña
-    WURTH_EMAIL_TO            → destinatarios separados por coma
-
-Uso:
-    python scripts/enviar_alertas.py              # detecta y envía
-    python scripts/enviar_alertas.py --dry-run    # muestra qué enviaría sin enviar
-    python scripts/enviar_alertas.py --reset      # borra estado (alerta todos los críticos)
-
-Cron/Tarea programada recomendada: ejecutar una vez por día (ej: lunes a las 8am).
+Detecta vendedores que subieron a nivel crítico y envía email.
+Requiere Python 64-bit (tiene pandas). Ejecutar DESPUÉS de sincronizar_informix.py.
 """
 
-import sys
 import os
-import argparse
+import sys
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+except ImportError:
+    pass
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from score_engine import calcular_scores
-from alertas import (
-    cargar_estado, guardar_estado, detectar_nuevos_criticos,
-    enviar_teams, enviar_email, ESTADO_PATH,
-)
+from alertas import (cargar_estado, detectar_nuevos_criticos,
+                     guardar_estado, enviar_email)
 
+smtp_user = os.getenv("SMTP_USER", "")
+smtp_pwd  = os.getenv("SMTP_PWD", "")
+alert_to  = [e.strip() for e in os.getenv("ALERT_TO", "").split(",") if e.strip()]
 
-def main():
-    parser = argparse.ArgumentParser(description="Envía alertas de rotación Wurth")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Muestra qué enviaría sin enviar nada")
-    parser.add_argument("--reset", action="store_true",
-                        help="Borra el estado guardado (próxima ejecución alerta todos los críticos)")
-    args = parser.parse_args()
+if not (smtp_user and smtp_pwd and alert_to):
+    print("Alertas email no configuradas. Agregá SMTP_USER, SMTP_PWD y ALERT_TO al .env")
+    sys.exit(0)
 
-    if args.reset:
-        if os.path.exists(ESTADO_PATH):
-            os.remove(ESTADO_PATH)
-            print("✓ Estado borrado. El próximo run alertará sobre todos los críticos actuales.")
-        else:
-            print("No había estado guardado.")
-        return
+print("=" * 55)
+print("ALERTAS EMAIL — Wurth Argentina")
+print("=" * 55)
 
-    # ── Calcular scores ────────────────────────────────────────────────────────
-    print("Calculando scores...")
-    scores = calcular_scores()
-    estado = cargar_estado()
+scores = calcular_scores(meses_tendencia=3)
+estado = cargar_estado()
+nuevos = detectar_nuevos_criticos(scores, estado)
 
-    ultima = estado.get("ultima_ejecucion", "nunca")
-    print(f"Última ejecución: {ultima}")
-    print(f"Críticos actuales: {len(scores[scores.nivel_riesgo == 'critico'])}")
-
-    nuevos = detectar_nuevos_criticos(scores, estado)
-
-    if nuevos.empty:
-        print("✓ Sin nuevos críticos desde la última ejecución.")
-        guardar_estado(scores)
-        return
-
-    print(f"\n⚠️  {len(nuevos)} nuevo(s) en nivel crítico:")
+if nuevos.empty:
+    print("Sin nuevos vendedores críticos — no se envía email.")
+else:
+    print(f"{len(nuevos)} nuevo(s) en nivel crítico:")
     for _, r in nuevos.iterrows():
-        señales = " · ".join(r["señales_activas"][:3]) or "—"
-        print(f"   ID {int(r['id_vendedor'])} | {r['nombre_grupo']} | "
-              f"Score {r['score']} | {señales}")
+        nombre = r.get("nombre") or f"ID {int(r['id_vendedor'])}"
+        print(f"  · {nombre} ({int(r['id_vendedor'])}) — Score {r['score']} — {r['supervisor']}")
+    print(f"\nEnviando email a {alert_to}...")
+    try:
+        enviar_email({
+            "host":     "smtp.office365.com",
+            "port":     587,
+            "user":     smtp_user,
+            "password": smtp_pwd,
+            "to":       alert_to,
+        }, nuevos)
+        print("Email enviado OK.")
+    except Exception as e:
+        print(f"ERROR enviando email: {e}")
+        sys.exit(1)
 
-    if args.dry_run:
-        print("\n[dry-run] No se envió nada.")
-        return
-
-    # ── Teams ──────────────────────────────────────────────────────────────────
-    teams_url = os.getenv("WURTH_TEAMS_WEBHOOK_URL", "").strip()
-    if teams_url:
-        try:
-            enviar_teams(teams_url, nuevos)
-            print("✓ Alerta enviada a Teams.")
-        except Exception as e:
-            print(f"✗ Error enviando a Teams: {e}", file=sys.stderr)
-    else:
-        print("  Teams: WURTH_TEAMS_WEBHOOK_URL no configurado, saltando.")
-
-    # ── Email ──────────────────────────────────────────────────────────────────
-    smtp_host = os.getenv("WURTH_SMTP_HOST", "").strip()
-    email_to  = os.getenv("WURTH_EMAIL_TO", "").strip()
-    if smtp_host and email_to:
-        smtp_config = {
-            "host":     smtp_host,
-            "port":     int(os.getenv("WURTH_SMTP_PORT", "587")),
-            "user":     os.getenv("WURTH_SMTP_USER", ""),
-            "password": os.getenv("WURTH_SMTP_PASSWORD", ""),
-            "to":       [e.strip() for e in email_to.split(",")],
-        }
-        try:
-            enviar_email(smtp_config, nuevos)
-            print(f"✓ Alerta enviada por email a: {email_to}")
-        except Exception as e:
-            print(f"✗ Error enviando email: {e}", file=sys.stderr)
-    else:
-        print("  Email: WURTH_SMTP_HOST / WURTH_EMAIL_TO no configurados, saltando.")
-
-    # ── Guardar estado ─────────────────────────────────────────────────────────
-    guardar_estado(scores)
-    print("\nEstado actualizado.")
-
-
-if __name__ == "__main__":
-    main()
+guardar_estado(scores)
+print("\nListo.")

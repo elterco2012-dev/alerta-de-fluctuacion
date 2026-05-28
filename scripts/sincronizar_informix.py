@@ -479,8 +479,8 @@ try:
     fecha_inicio_str = f"{anio_inicio}-{mes_inicio:02d}-01"
     icur.execute(f"""
         SELECT k.vertr1,
-               YEAR(a.erfdat)  AS bujahr,
-               MONTH(a.erfdat) AS bumonat,
+               EXTRACT(YEAR  FROM a.erfdat) AS bujahr,
+               EXTRACT(MONTH FROM a.erfdat) AS bumonat,
                COUNT(DISTINCT a.kdnr) AS clientes_nuevos
         FROM adrchr a
         JOIN kund k ON a.kdnr = k.kdnr AND k.firma = {FIRMA}
@@ -488,8 +488,8 @@ try:
           AND a.adrart = 2
           AND a.erfdat >= '{fecha_inicio_str}'
           AND k.vertr1 > 0
-        GROUP BY k.vertr1, YEAR(a.erfdat), MONTH(a.erfdat)
-        ORDER BY k.vertr1, YEAR(a.erfdat), MONTH(a.erfdat)
+        GROUP BY k.vertr1, EXTRACT(YEAR FROM a.erfdat), EXTRACT(MONTH FROM a.erfdat)
+        ORDER BY k.vertr1, EXTRACT(YEAR FROM a.erfdat), EXTRACT(MONTH FROM a.erfdat)
     """)
     adrchr_rows = icur.fetchall()
     print(f"{len(adrchr_rows)} combinaciones vendedor/mes")

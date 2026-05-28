@@ -401,6 +401,37 @@ except Exception as e:
     print(f"\n  AVISO: error leyendo sbas: {e}")
     print("  Continuando solo con datos de plan de vplan.")
 
+# Leer clientes nuevos de adrchr + kund
+# adrchr.erfdat = fecha de alta del cliente, adrart=2 = cliente
+# kund.vertr1 = vendedor asignado al cliente
+print("\n  Leyendo clientes nuevos de adrchr + kund...", end=" ")
+nuevos_dict = {}  # (vertr, año, mes) → count
+try:
+    fecha_inicio_str = f"{anio_inicio}-{mes_inicio:02d}-01"
+    icur.execute(f"""
+        SELECT k.vertr1,
+               YEAR(a.erfdat)  AS bujahr,
+               MONTH(a.erfdat) AS bumonat,
+               COUNT(DISTINCT a.kdnr) AS clientes_nuevos
+        FROM adrchr a
+        JOIN kund k ON a.kdnr = k.kdnr AND k.firma = {FIRMA}
+        WHERE a.firma = {FIRMA}
+          AND a.adrart = 2
+          AND a.erfdat >= '{fecha_inicio_str}'
+          AND k.vertr1 > 0
+        GROUP BY k.vertr1, YEAR(a.erfdat), MONTH(a.erfdat)
+        ORDER BY k.vertr1, YEAR(a.erfdat), MONTH(a.erfdat)
+    """)
+    adrchr_rows = icur.fetchall()
+    print(f"{len(adrchr_rows)} combinaciones vendedor/mes")
+    for row in adrchr_rows:
+        vertr, bujahr, bumonat, cnt = row
+        nuevos_dict[(int(vertr), int(bujahr), int(bumonat))] = int(cnt or 0)
+except Exception as e:
+    print(f"\n  AVISO: error leyendo adrchr/kund: {e}")
+    print(f"  La señal 'clientes nuevos' no estará disponible este ciclo.")
+    print(f"  Detalle: {e}")
+
 # Construir ventas_mensual
 print("\n  Construyendo ventas_mensual...")
 
@@ -445,6 +476,8 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
     dias_habiles = 22
     dias_trabajados = max(0, dias_habiles - dias_off)
 
+    clientes_nuevos = nuevos_dict.get((int(vertr), int(bujahr), int(bumonat)), 0)
+
     ventas_mensual.append({
         "id_vendedor":       vertr,
         "anio":              bujahr,
@@ -458,7 +491,7 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
         "clientes_activos":  clientes_activos,
         "total_clientes":    max(clientes_activos, aktivkd),
         "clientes_inactivos": max(0, aktivkd - clientes_activos),
-        "clientes_nuevos":   0,  # sin datos granulares por ahora
+        "clientes_nuevos":   clientes_nuevos,
         "cobranza_teorica":  round(venta_total * 0.95, 2),  # estimado
         "cobranza_real":     round(venta_total * 0.95, 2),  # sin datos reales aún
         "pct_cobranza":      95.0,

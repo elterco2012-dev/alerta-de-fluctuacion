@@ -171,7 +171,7 @@ zona_map = {}   # vertr → zona
 excluir_zone = set()  # vertrs con zone='xxx0000' a excluir
 try:
     icur.execute(f"""
-        SELECT vertr, "zone"
+        SELECT vertr, TRIM(zone)
         FROM f040
         WHERE firma = {FIRMA}
           AND vgrp <> 777
@@ -182,6 +182,9 @@ try:
     for row in icur.fetchall():
         zona_map[row[0]] = row[1]
     print(f"{len(zona_map)} vendedores activos")
+    # Debug: mostrar zona de vendedores específicos para verificar
+    for vid_debug in [9997, 5107, 5109, 1204]:
+        print(f"  DEBUG vertr={vid_debug} zone={zona_map.get(vid_debug, 'NO ENCONTRADO')}")
 except Exception as e:
     print(f"error ({e}), continuando sin zona")
 

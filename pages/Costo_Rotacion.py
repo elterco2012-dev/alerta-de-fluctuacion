@@ -4,12 +4,13 @@ pages/Costo_Rotacion.py
 Estimación de costo de rotación por vendedor y total.
 
 Metodología:
-- Costo directo: salario de los meses perdidos + reemplazo (reclutamiento + inducción)
-- Costo indirecto: pérdida estimada de cartera (clientes sin atención)
-- Salarios según estructura Wurth Argentina 2025:
-    Viajante/Ejecutivo < 6m  → mínimo garantizado inducción $1,400,000/mes
-    Viajante/Ejecutivo ≥ 6m  → mínimo garantizado productividad $1,800,000/mes
-    Televentas               → básico CCT ~$800,000/mes
+- Costo directo: último mes improductivo + reclutamiento + inducción del nuevo
+- Costo indirecto: pérdida parcial de cartera durante cobertura y rampa del nuevo
+  * Cuando un vendedor de zona se va, televentas actúa de cobertura mientras se
+    contrata el reemplazo (1-2 meses). El reemplazo tarda ~2 meses en ser productivo.
+  * La pérdida de cartera es menor que en modelos sin cobertura, porque los clientes
+    siguen siendo contactados por televentas.
+- Salarios según estructura Wurth Argentina 2025.
 """
 
 import streamlit as st
@@ -20,13 +21,16 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
 
-# ── Parámetros de costo (ajustables mensualmente) ─────────────────────────────
+# ── Parámetros de costo (ajustables) ──────────────────────────────────────────
 SALARIO_INDUCCION   = 1_400_000   # Viajante/Ejecutivo mes 1-6
 SALARIO_PRODUCTIVO  = 1_800_000   # Viajante/Ejecutivo mes 7+
 SALARIO_TELEVENTAS  = 1_215_298   # CCT Comercio (actualizar mensualmente)
 
-MESES_REEMPLAZO     = 3           # meses hasta nuevo vendedor operativo
-PCT_CARTERA_PERDIDA = 0.15        # % de cartera que no regresa con el nuevo vendedor
+# Modelo de cobertura Wurth: televentas cubre la zona hasta que entra el nuevo
+MESES_HASTA_NUEVO      = 1.5    # meses promedio hasta que ingresa el nuevo vendedor
+MESES_RAMPA_NUEVO      = 2      # meses hasta que el nuevo vendedor alcanza productividad plena
+PCT_PERDIDA_COBERTURA  = 0.08   # % cartera que se pierde durante cobertura por televentas
+PCT_PERDIDA_RAMPA      = 0.12   # % cartera que se pierde en rampa del nuevo vendedor
 
 # Fallbacks si no hay datos reales de plan
 _PLAN_FALLBACK_VIAJANTE   = 17_000_000
@@ -66,7 +70,7 @@ def calcular_costo_rotacion(row, planes: dict | None = None) -> dict:
     """Calcula costo estimado de baja para un vendedor."""
     sal = salario_mensual(row["tipo"], row["meses_activo"])
 
-    # Plan: usa dato real del período actual si está disponible
+    # Plan real del período o fallback
     if planes:
         plan = planes.get(row["tipo"]) or (
             _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
@@ -74,15 +78,15 @@ def calcular_costo_rotacion(row, planes: dict | None = None) -> dict:
     else:
         plan = _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
 
-    # Costo directo: salario ya pagado en período improductivo + reclutamiento (1 mes)
-    # + salario del nuevo en inducción (3 meses sin venta efectiva)
-    costo_salario_perdido = sal * 1               # último mes improductivo
-    costo_reclutamiento   = sal * 1               # publicación + entrevistas + trámites
-    costo_induccion_nuevo = SALARIO_INDUCCION * MESES_REEMPLAZO  # siempre inducción
+    # Costo directo
+    costo_salario_perdido = sal * 1                        # último mes improductivo
+    costo_reclutamiento   = sal * 1                        # publicación + entrevistas
+    costo_induccion_nuevo = SALARIO_INDUCCION * int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
 
-    # Costo indirecto: pérdida de cartera durante vacante + primeros meses del nuevo
-    meses_sin_atencion = MESES_REEMPLAZO + 2      # vacante + rampa del nuevo
-    perdida_venta = plan * meses_sin_atencion * PCT_CARTERA_PERDIDA
+    # Costo indirecto: cobertura televentas + rampa nuevo (con modelo de cobertura Wurth)
+    perdida_cobertura = plan * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
+    perdida_rampa     = plan * MESES_RAMPA_NUEVO  * PCT_PERDIDA_RAMPA
+    perdida_venta     = perdida_cobertura + perdida_rampa
 
     total_directo   = costo_salario_perdido + costo_reclutamiento + costo_induccion_nuevo
     total_indirecto = perdida_venta
@@ -336,13 +340,17 @@ else:
 # ── Nota metodológica ──────────────────────────────────────────────────────────
 _plan_v  = planes.get("Viajante",   _PLAN_FALLBACK_VIAJANTE)
 _plan_tv = planes.get("Televentas", _PLAN_FALLBACK_TELEVENTAS)
-_meses_sin_atencion = MESES_REEMPLAZO + 2
+_meses_ind = int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
+_tot_dir_tv = SALARIO_TELEVENTAS * 2 + SALARIO_INDUCCION * _meses_ind
+_perd_cob   = _plan_tv * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
+_perd_rampa = _plan_tv * MESES_RAMPA_NUEVO  * PCT_PERDIDA_RAMPA
 
 st.markdown("---")
 with st.expander("Metodología de cálculo — ¿de dónde salen los números?"):
     st.caption(
         "Los salarios se actualizan mensualmente en pages/Costo_Rotacion.py. "
-        "El plan mensual se calcula automáticamente del promedio real de los últimos 3 meses en Informix."
+        "El plan mensual se calcula automáticamente del promedio real de los últimos 3 meses en Informix. "
+        "El modelo de cobertura refleja que televentas actúa de cobertura mientras se contrata el reemplazo."
     )
     col1, col2 = st.columns(2)
     with col1:
@@ -353,8 +361,8 @@ with st.expander("Metodología de cálculo — ¿de dónde salen los números?")
 |---|---|---|
 | Último mes improductivo | {_fmt_pesos(SALARIO_TELEVENTAS)} × 1 mes | {_fmt_pesos(SALARIO_TELEVENTAS)} |
 | Reclutamiento | {_fmt_pesos(SALARIO_TELEVENTAS)} × 1 mes | {_fmt_pesos(SALARIO_TELEVENTAS)} |
-| Inducción nuevo | {_fmt_pesos(SALARIO_INDUCCION)} × {MESES_REEMPLAZO} meses | {_fmt_pesos(SALARIO_INDUCCION * MESES_REEMPLAZO)} |
-| **Total directo** | | **{_fmt_pesos(SALARIO_TELEVENTAS*2 + SALARIO_INDUCCION*MESES_REEMPLAZO)}** |
+| Inducción nuevo | {_fmt_pesos(SALARIO_INDUCCION)} × {_meses_ind} meses | {_fmt_pesos(SALARIO_INDUCCION * _meses_ind)} |
+| **Total directo** | | **{_fmt_pesos(_tot_dir_tv)}** |
 
 **Salarios base:**
 - Viajante en inducción (0-6m): {_fmt_pesos(SALARIO_INDUCCION)}/mes
@@ -363,18 +371,20 @@ with st.expander("Metodología de cálculo — ¿de dónde salen los números?")
 """)
     with col2:
         st.markdown(f"""
-**Costo indirecto — pérdida de cartera — ejemplo Televentas:**
+**Costo indirecto — pérdida parcial de cartera (modelo con cobertura Wurth):**
 
-| Concepto | Cálculo | Total |
-|---|---|---|
-| Plan mensual Televentas (real) | promedio últimos 3m | {_fmt_pesos(_plan_tv)} |
-| Meses sin atención | vacante ({MESES_REEMPLAZO}m) + rampa nuevo (2m) | {_meses_sin_atencion} meses |
-| % cartera que no regresa | estimación conservadora | {int(PCT_CARTERA_PERDIDA*100)}% |
-| **Pérdida estimada** | {_fmt_pesos(_plan_tv)} × {_meses_sin_atencion} × {int(PCT_CARTERA_PERDIDA*100)}% | **{_fmt_pesos(_plan_tv * _meses_sin_atencion * PCT_CARTERA_PERDIDA)}** |
+Cuando un vendedor se va, **televentas cubre la zona** hasta que ingresa el reemplazo.
+La pérdida es menor que en modelos sin cobertura, pero no es cero:
 
-**Plan promedio actual usado (últimos 3 meses):**
+| Período | Duración | Pérdida estimada | Total |
+|---|---|---|---|
+| Cobertura televentas | {MESES_HASTA_NUEVO:.1f} m | {int(PCT_PERDIDA_COBERTURA*100)}% del plan/mes | {_fmt_pesos(_perd_cob)} |
+| Rampa nuevo vendedor | {MESES_RAMPA_NUEVO:.0f} m | {int(PCT_PERDIDA_RAMPA*100)}% del plan/mes | {_fmt_pesos(_perd_rampa)} |
+| **Pérdida total** | | | **{_fmt_pesos(_perd_cob + _perd_rampa)}** |
+
+**Plan promedio actual (últimos 3 meses):**
 - Viajante: {_fmt_pesos(_plan_v)}/mes
 - Televentas: {_fmt_pesos(_plan_tv)}/mes
 
-*El % de cartera perdida puede variar según la zona y el perfil de clientes.*
+*Ajustar PCT\\_PERDIDA\\_COBERTURA y PCT\\_PERDIDA\\_RAMPA según experiencia histórica.*
 """)

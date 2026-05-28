@@ -127,8 +127,11 @@ st.set_page_config(
 )
 
 st.markdown("""<style>
-[data-testid="stSidebar"] { display: none; }
-.block-container { padding: 2rem 2.5rem 3rem !important; max-width: 100% !important; }
+[data-testid="stSidebar"]   { display: none; }
+[data-testid="stHeader"]    { display: none; }
+[data-testid="stToolbar"]   { display: none; }
+.stDeployButton             { display: none; }
+.block-container { padding: 2.5rem 2.5rem 4rem !important; max-width: 100% !important; }
 header { display: none; }
 
 .kpi-row { display: flex; gap: 14px; margin-bottom: 28px; }

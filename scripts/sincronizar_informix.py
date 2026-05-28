@@ -501,6 +501,25 @@ except Exception as e:
     print(f"  La señal 'clientes nuevos' no estará disponible este ciclo.")
     print(f"  Detalle: {e}")
 
+# Cartera asignada real por vendedor desde kund
+# kund tiene todos los clientes asignados a cada vendedor (no solo los que compraron ese mes)
+print("\n  Leyendo cartera asignada de kund...", end=" ")
+kund_cartera = {}  # vertr1 → total de clientes asignados
+try:
+    icur.execute(f"""
+        SELECT vertr1, COUNT(DISTINCT kdnr) AS total_cartera
+        FROM kund
+        WHERE firma = {FIRMA}
+          AND vertr1 > 0
+        GROUP BY vertr1
+    """)
+    for row in icur.fetchall():
+        kund_cartera[int(row[0])] = int(row[1] or 0)
+    print(f"{len(kund_cartera)} vendedores, {sum(kund_cartera.values()):,} clientes asignados total")
+except Exception as e:
+    print(f"\n  AVISO: error leyendo kund cartera: {e}")
+    print("  Usando aktivkd de vplan como fallback para total_clientes.")
+
 # Construir ventas_mensual
 print("\n  Construyendo ventas_mensual...")
 
@@ -523,9 +542,11 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
     venta_total      = venta_data.get("venta_total", 0)
     clientes_unicos  = venta_data.get("clientes_unicos", 0)
 
-    # Clientes activos: usar COUNT(DISTINCT kdnr) de sbas si hay datos,
-    # si no, usar aktivkd de vplan como fallback
-    clientes_activos = clientes_unicos if clientes_unicos > 0 else aktivkd
+    # clientes_activos = los que compraron ese mes (de sbas)
+    # total_clientes = cartera asignada en kund (real), fallback a aktivkd de vplan
+    clientes_activos = clientes_unicos if clientes_unicos > 0 else 0
+    cartera_kund = kund_cartera.get(int(vertr), 0)
+    total_clientes_real = cartera_kund if cartera_kund > 0 else max(clientes_unicos, aktivkd)
 
     pct_plan = round((venta_total / plan_val * 100), 1) if plan_val > 0 else 0
 
@@ -563,9 +584,9 @@ for (vertr, bujahr, bumonat) in sorted(periodos):
         "venta_total":       round(venta_total, 2),
         "plan":              round(plan_val, 2),
         "pct_plan":          pct_plan,
-        "clientes_activos":  clientes_activos,
-        "total_clientes":    max(clientes_activos, aktivkd),
-        "clientes_inactivos": max(0, aktivkd - clientes_activos),
+        "clientes_activos":   clientes_activos,
+        "total_clientes":     total_clientes_real,
+        "clientes_inactivos": max(0, total_clientes_real - clientes_activos),
         "clientes_nuevos":   clientes_nuevos,
         "cobranza_teorica":  round(venta_total * 0.95, 2),  # estimado
         "cobranza_real":     round(venta_total * 0.95, 2),  # sin datos reales aún

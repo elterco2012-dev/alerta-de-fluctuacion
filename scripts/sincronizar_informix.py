@@ -427,32 +427,32 @@ except Exception as e:
     print("  Continuando solo con datos de plan de vplan.")
 
 # Días con al menos una factura por vendedor (para calcular dias_venta_cero)
-# budat = fecha del comprobante en sbas (verificar nombre real del campo si da error)
+# redat = fecha del comprobante en sbas
 print("\n  Leyendo días con facturación por vendedor...", end=" ")
 dias_con_venta = {}  # (vertr, año, mes) → set de date objects con al menos 1 factura
 if dias_habiles_set:
     try:
         icur.execute(f"""
-            SELECT vertr1, budat
+            SELECT vertr1, redat
             FROM sbas
             WHERE firma = {FIRMA}
               AND belegart = 11
               AND vertr1 > 0
               AND (bujahr > {anio_inicio}
                    OR (bujahr = {anio_inicio} AND bumonat >= {mes_inicio}))
-            GROUP BY vertr1, budat
+            GROUP BY vertr1, redat
         """)
         budat_rows = icur.fetchall()
         print(f"{len(budat_rows)} pares vendedor/fecha")
         for row in budat_rows:
-            vertr, budat = row
-            if budat is None:
+            vertr, redat = row
+            if redat is None:
                 continue
-            if isinstance(budat, (date, datetime)):
-                d = budat.date() if isinstance(budat, datetime) else budat
+            if isinstance(redat, (date, datetime)):
+                d = redat.date() if isinstance(redat, datetime) else redat
             else:
                 try:
-                    d = datetime.strptime(str(budat)[:10], "%Y-%m-%d").date()
+                    d = datetime.strptime(str(redat)[:10], "%Y-%m-%d").date()
                 except ValueError:
                     continue
             key = (int(vertr), d.year, d.month)
@@ -460,8 +460,8 @@ if dias_habiles_set:
                 dias_con_venta[key] = set()
             dias_con_venta[key].add(d)
     except Exception as e:
-        print(f"\n  AVISO: error leyendo fechas de sbas (budat): {e}")
-        print("  dias_venta_cero = 0 este ciclo. Verificar nombre del campo de fecha en sbas.")
+        print(f"\n  AVISO: error leyendo fechas de sbas (redat): {e}")
+        print("  dias_venta_cero = 0 este ciclo.")
 else:
     print("omitido (sin calendario)")
 

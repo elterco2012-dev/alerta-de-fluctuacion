@@ -372,13 +372,11 @@ with col1:
 with col2:
     st.markdown('<div class="sec-header">⏱️ Ventanas críticas de permanencia</div>',
                 unsafe_allow_html=True)
-    st.caption("Meses con mayor probabilidad de renuncia (histórico simulado)")
 
     vdf = ventanas_df.copy()
-    vdf["label"] = vdf["mes_numero"].apply(lambda m: f"M{m}" if m < 19 else "M19+")
-    vdf = vdf.groupby("label", sort=False).agg(
-        mes_numero=("mes_numero", "min"), renuncias=("renuncias", "sum")
-    ).reset_index().sort_values("mes_numero")
+    # Separar M19+ para no aplastarlo escala del gráfico
+    m19_total = int(vdf[vdf["mes_numero"] >= 19]["renuncias"].sum())
+    vdf = vdf[vdf["mes_numero"] < 19].copy()  # solo M1-M18 en el gráfico
 
     def _color_mes(m):
         if m <= 3:  return "#E24B4A"
@@ -387,7 +385,7 @@ with col2:
         return "#8DB56B"
 
     fig = go.Figure(go.Bar(
-        x=vdf["label"],
+        x=[f"M{m}" for m in vdf["mes_numero"]],
         y=vdf["renuncias"],
         marker_color=[_color_mes(m) for m in vdf["mes_numero"]],
         text=vdf["renuncias"],
@@ -401,8 +399,12 @@ with col2:
         paper_bgcolor="white",
         showlegend=False,
         yaxis=dict(showgrid=True, gridcolor="#f0f0f0", zeroline=False, title=""),
-        xaxis=dict(showgrid=False, title=""),
+        xaxis=dict(showgrid=False, title="Mes de carrera del vendedor"),
         font=dict(size=11),
+    )
+    st.caption(
+        "🔴 Mes 1-3 (onboarding) · 🟠 Mes 4-6 (adaptación) · ⬜ Mes 7-12 · "
+        f"Vendedores que renunciaron con más de 18 meses: {m19_total} (no se muestran para preservar escala)"
     )
     st.plotly_chart(fig, use_container_width=True)
 

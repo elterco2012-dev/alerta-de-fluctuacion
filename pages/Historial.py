@@ -305,13 +305,10 @@ st.caption(
 rot = rotacion_anual[rotacion_anual["anio"] >= hoy - 10].copy()
 
 if not rot.empty:
-    # Excluir el año actual si está incompleto (menos de 9 meses)
     import datetime
     mes_actual = datetime.date.today().month
-    if mes_actual < 10:
-        rot_vis = rot[rot["anio"] < hoy].copy()
-    else:
-        rot_vis = rot.copy()
+    rot_vis = rot.copy()
+    año_parcial = hoy  # siempre mostrar el año actual, con nota
 
     colores_barras = [
         "#E24B4A" if t >= 55 else ("#EF9F27" if t >= 40 else "#4A90D9")
@@ -363,6 +360,11 @@ if not rot.empty:
         barmode="group",
     )
     st.plotly_chart(fig_rot, use_container_width=True)
+    if mes_actual < 12:
+        st.caption(
+            f"* {hoy} es año incompleto (datos hasta {mes_actual} meses). "
+            "La tasa de rotación del año actual no es comparable directamente con años completos."
+        )
 
 
 # ── Gráfico 2: Zonas críticas ─────────────────────────────────────────────────

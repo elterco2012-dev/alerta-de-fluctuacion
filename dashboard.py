@@ -184,13 +184,20 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, ventanas_df = cargar_datos()
 
-# ── Navegación ─────────────────────────────────────────────────────────────────
-st.markdown(
-    '👤 <a href="/Supervisor" target="_self">Vista por supervisor</a> &nbsp;|&nbsp; '
-    '📝 <a href="/Intervenciones" target="_self">Intervenciones</a> &nbsp;|&nbsp; '
-    '💰 <a href="/Costo_Rotacion" target="_self">Costo de rotación</a>',
-    unsafe_allow_html=True,
-)
+# ── Encabezado + Navegación ────────────────────────────────────────────────────
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
+  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">
+    Wurth Argentina &mdash; Alertas de Rotación
+  </div>
+  <div style="font-size:13px; display:flex; gap:20px;">
+    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
+    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;">📝 Intervenciones</a>
+    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── KPIs ───────────────────────────────────────────────────────────────────────
 total          = len(scores_df)

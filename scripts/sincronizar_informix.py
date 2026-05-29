@@ -99,18 +99,17 @@ except Exception as e:
 # ── Diagnóstico ────────────────────────────────────────────────────────────────
 if args.diagnostico:
     print("\n--- DIAGNÓSTICO Informix ---\n")
-    print("adrchr (altas de clientes, últimos 6 meses):")
+    print("adrchr (altas totales de clientes, sin filtro por vendedor):")
     icur.execute(f"""
-        SELECT YEAR(erfdat), MONTH(erfdat), COUNT(DISTINCT kdnr)
+        SELECT YEAR(erfdat), MONTH(erfdat), COUNT(kdnr)
         FROM adrchr
         WHERE firma = {FIRMA}
           AND erfdat >= ?
-          AND erfuser IN {IN_ACTIVOS}
         GROUP BY 1, 2
         ORDER BY 1 DESC, 2 DESC
     """, fecha_desde_dt)
     for r in icur.fetchall():
-        print(f"  {r[0]}/{r[1]:02d}: {r[2]:,} clientes nuevos")
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:,} altas")
 
     print("\nsbas (movimientos, últimos 6 meses):")
     icur.execute(f"""
@@ -127,23 +126,14 @@ if args.diagnostico:
     icon.close()
     sys.exit(0)
 
-# ── 1. Clientes nuevos (adrchr) ───────────────────────────────────────────────
-print("\n[1/3] Clientes nuevos (adrchr)...", end=" ", flush=True)
-icur.execute(f"""
-    SELECT erfuser, YEAR(erfdat), MONTH(erfdat), COUNT(DISTINCT kdnr)
-    FROM adrchr
-    WHERE firma = {FIRMA}
-      AND erfdat >= ?
-      AND erfuser IN {IN_ACTIVOS}
-    GROUP BY 1, 2, 3
-    ORDER BY 1, 2, 3
-""", fecha_desde_dt)
-
-nuevos_data = {}
-for row in icur.fetchall():
-    vid, anio, mes, nuevos = row
-    nuevos_data[(int(vid), int(anio), int(mes))] = int(nuevos or 0)
-print(f"OK — {len(nuevos_data)} filas")
+# ── 1. Clientes nuevos desde sbas (primera venta del vendedor a ese cliente) ──
+# Más confiable que adrchr.erfuser que almacena username de texto, no vertr1.
+# "Nuevo" = primer mes en que vertr1 vendió a kdnr (dentro del período analizado).
+print("\n[1/3] Clientes nuevos (primera venta en sbas)...", end=" ", flush=True)
+# Buscamos la primera aparición histórica de cada (vertr1, kdnr)
+# ya cargada en el paso 2; se calcula en Python al procesar historial.
+nuevos_data = {}  # se completará al procesar historial en el paso 2
+print("OK — se calculará al procesar sbas")
 
 # ── 2. Historial de ventas (sbas) — para balanza, ticket, productos ────────────
 # Necesitamos 12 meses extra de historia para detectar reactivados y perdidos.
@@ -179,8 +169,13 @@ for row in icur.fetchall():
 for vid in historial:
     for cli in historial[vid]:
         historial[vid][cli].sort()
+        # Primera venta de este vendedor a este cliente
+        a_first, m_first = historial[vid][cli][0]
+        if (a_first * 12 + m_first) >= (anio_inicio * 12 + mes_inicio):
+            k = (vid, a_first, m_first)
+            nuevos_data[k] = nuevos_data.get(k, 0) + 1
 
-print(f"OK — {total_rows:,} filas")
+print(f"OK — {total_rows:,} filas, {sum(nuevos_data.values())} clientes nuevos detectados")
 
 # ── 3. Calcular balanza ────────────────────────────────────────────────────────
 print("[3/3] Calculando reactivados / perdidos...", end=" ", flush=True)

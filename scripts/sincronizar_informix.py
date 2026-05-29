@@ -114,10 +114,7 @@ if args.diagnostico:
 
     print("\nsbas (movimientos, últimos 6 meses):")
     icur.execute(f"""
-        SELECT bujahr, bumonat,
-               COUNT(DISTINCT kdnr)  AS clientes,
-               COUNT(DISTINCT artnr) AS productos,
-               COUNT(*)              AS lineas
+        SELECT bujahr, bumonat, COUNT(*) AS lineas
         FROM sbas
         WHERE firma = {FIRMA}
           AND bujahr >= {anio_inicio}
@@ -126,7 +123,7 @@ if args.diagnostico:
         ORDER BY 1 DESC, 2 DESC
     """)
     for r in icur.fetchall():
-        print(f"  {r[0]}/{r[1]:02d}: {r[2]:,} clientes, {r[3]:,} productos, {r[4]:,} líneas")
+        print(f"  {r[0]}/{r[1]:02d}: {r[2]:,} líneas")
     icon.close()
     sys.exit(0)
 
@@ -155,30 +152,28 @@ anio_hist       = fecha_historico.year
 
 print(f"[2/3] Historial sbas (desde {anio_hist})...", end=" ", flush=True)
 icur.execute(f"""
-    SELECT vertr1, kdnr, bujahr, bumonat,
-           SUM(netwert), COUNT(DISTINCT artnr)
+    SELECT vertr1, kdnr, bujahr, bumonat, SUM(netwert), COUNT(artnr)
     FROM sbas
     WHERE firma = {FIRMA}
       AND bujahr >= {anio_hist}
-      AND bumonat >= 1
       AND vertr1 IN {IN_ACTIVOS}
     GROUP BY 1, 2, 3, 4
     ORDER BY 1, 2, 3, 4
 """)
 
 historial   = defaultdict(lambda: defaultdict(list))  # [vid][cli] = [(anio,mes),...]
-ticket_data = defaultdict(lambda: {"importe": 0.0, "clientes": set(), "prods_set": set()})
+ticket_data = defaultdict(lambda: {"importe": 0.0, "clientes": set(), "lineas": 0})
 
 total_rows = 0
 for row in icur.fetchall():
-    vid, cli, anio, mes, neto, prods = row
+    vid, cli, anio, mes, neto, lineas = row
     vid, cli, anio, mes = int(vid), int(cli), int(anio), int(mes)
     historial[vid][cli].append((anio, mes))
     if (anio * 12 + mes) >= (anio_inicio * 12 + mes_inicio):
         k = (vid, anio, mes)
-        ticket_data[k]["importe"] += float(neto or 0)
+        ticket_data[k]["importe"]  += float(neto or 0)
         ticket_data[k]["clientes"].add(cli)
-        ticket_data[k]["prods_set"].add(int(prods or 0))
+        ticket_data[k]["lineas"]   += int(lineas or 0)
     total_rows += 1
 
 for vid in historial:
@@ -238,8 +233,8 @@ if DRY_RUN:
         imp = td.get("importe", 0)
         nc  = len(td.get("clientes", set()))
         ticket = round(imp / nc) if nc else 0
-        prods  = sum(td.get("prods_set", {0})) // max(1, len(td.get("prods_set", {1})))
-        print(f"  {vid:>6}  {anio}/{mes:02d}  {n:>4}  {re:>4}  {pe:>4}  {n+re-pe:>4}  {ticket:>8}  {prods:>5}")
+        lineas = td.get("lineas", 0)
+        print(f"  {vid:>6}  {anio}/{mes:02d}  {n:>4}  {re:>4}  {pe:>4}  {n+re-pe:>4}  {ticket:>8}  {lineas:>6}")
     print("\nDRY RUN completado. Sin cambios en SQLite.")
     sys.exit(0)
 
@@ -291,12 +286,12 @@ for k in sorted(todas_keys):
     imp = td.get("importe", 0)
     nc  = len(td.get("clientes", set()))
     ticket = round(imp / nc, 0) if nc else 0
-    prods  = len(td.get("prods_set", set()))
+    lineas = td.get("lineas", 0)
 
     lcur.execute(upsert_sql, (
         vid, anio, mes,
         n, re, pe, n + re - pe,
-        ticket, prods,
+        ticket, lineas,
     ))
     insertados += 1
 

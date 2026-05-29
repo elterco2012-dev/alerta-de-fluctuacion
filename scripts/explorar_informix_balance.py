@@ -30,8 +30,7 @@ cur = con.cursor()
 lines = []
 
 HOY = datetime.date.today()
-HACE_3M_STR = (HOY.replace(month=HOY.month - 3 if HOY.month > 3 else HOY.month + 9,
-                             year=HOY.year if HOY.month > 3 else HOY.year - 1)).strftime("%Y-%m-%d")
+HACE_3M_STR = (HOY - datetime.timedelta(days=90)).strftime("%Y-%m-%d")
 
 # ── adrchr ────────────────────────────────────────────────────────────────────
 lines.append("=" * 60)

@@ -40,8 +40,7 @@ except Exception as e:
 cur = con.cursor()
 lines = []
 HOY = datetime.date.today()
-HACE_3M = HOY.replace(month=HOY.month - 3 if HOY.month > 3 else HOY.month + 9,
-                       year=HOY.year if HOY.month > 3 else HOY.year - 1)
+HACE_3M = HOY - datetime.timedelta(days=90)
 
 for tabla in TABLAS_OBJETIVO:
     lines.append(f"\n{'='*60}")

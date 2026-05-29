@@ -55,7 +55,7 @@ lines.append("=" * 60)
 lines.append("TABLA: adrchr  (altas de clientes / direcciones)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT FIRST 1 * FROM adrchr")
+    cur.execute("SELECT * FROM adrchr WHERE 1=0")
     cols_adrchr = [d[0] for d in cur.description]
     lines.append(f"Columnas ({len(cols_adrchr)}):")
     for c in cols_adrchr:
@@ -85,7 +85,7 @@ try:
                 SELECT YEAR({fc}), MONTH({fc}), COUNT(*)
                 FROM adrchr
                 WHERE {fc} >= '{HACE_3M_STR}'
-                GROUP BY YEAR({fc}), MONTH({fc})
+                GROUP BY 1, 2
                 ORDER BY 1 DESC, 2 DESC
             """)
             lines.append(f"\nAltas por mes (campo {fc}, últimos 3 meses):")
@@ -102,7 +102,7 @@ lines.append("\n" + "=" * 60)
 lines.append("TABLA: sbas  (historial de ventas/posiciones por cliente)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT FIRST 1 * FROM sbas")
+    cur.execute("SELECT * FROM sbas WHERE 1=0")
     cols_sbas = [d[0] for d in cur.description]
     lines.append(f"Columnas ({len(cols_sbas)}):")
     for c in cols_sbas:
@@ -135,7 +135,7 @@ try:
                 SELECT YEAR({fc}), MONTH({fc}), COUNT(*), COUNT(DISTINCT {posibles_client[0] if posibles_client else '1'})
                 FROM sbas
                 WHERE {fc} >= '{HACE_3M_STR}'
-                GROUP BY YEAR({fc}), MONTH({fc})
+                GROUP BY 1, 2
                 ORDER BY 1 DESC, 2 DESC
             """)
             lines.append(f"\nActividad por mes (campo {fc}, últimos 3 meses):")

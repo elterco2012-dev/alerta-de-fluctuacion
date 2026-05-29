@@ -32,12 +32,30 @@ lines = []
 HOY = datetime.date.today()
 HACE_3M_STR = (HOY - datetime.timedelta(days=90)).strftime("%Y-%m-%d")
 
+# ── Buscar tablas con nombres parecidos a adrchr/sbas en systables ────────────
+lines.append("=== TABLAS CON NOMBRES SIMILARES A adrchr / sbas ===\n")
+try:
+    cur.execute("""
+        SELECT tabname FROM systables
+        WHERE tabtype = 'T'
+          AND (tabname LIKE '%adr%' OR tabname LIKE '%sbas%'
+               OR tabname LIKE '%kund%' OR tabname LIKE '%clie%'
+               OR tabname LIKE '%client%' OR tabname LIKE '%alta%'
+               OR tabname LIKE '%venta%' OR tabname LIKE '%sale%')
+        ORDER BY tabname
+    """)
+    for r in cur.fetchall():
+        lines.append(f"  {r[0].strip()}")
+    lines.append("")
+except Exception as e:
+    lines.append(f"  (error buscando tablas: {e})\n")
+
 # ── adrchr ────────────────────────────────────────────────────────────────────
 lines.append("=" * 60)
 lines.append("TABLA: adrchr  (altas de clientes / direcciones)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT FIRST 0 * FROM adrchr")
+    cur.execute("SELECT FIRST 1 * FROM adrchr")
     cols_adrchr = [d[0] for d in cur.description]
     lines.append(f"Columnas ({len(cols_adrchr)}):")
     for c in cols_adrchr:
@@ -84,7 +102,7 @@ lines.append("\n" + "=" * 60)
 lines.append("TABLA: sbas  (historial de ventas/posiciones por cliente)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT FIRST 0 * FROM sbas")
+    cur.execute("SELECT FIRST 1 * FROM sbas")
     cols_sbas = [d[0] for d in cur.description]
     lines.append(f"Columnas ({len(cols_sbas)}):")
     for c in cols_sbas:

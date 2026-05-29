@@ -52,6 +52,10 @@ def cargar_actividad():
             FROM actividad_mensual am
             JOIN vendedores v ON am.id_vendedor = v.id_vendedor
             WHERE v.activo = 1
+              AND v.nombre NOT IN (
+                  SELECT DISTINCT supervisor FROM vendedores
+                  WHERE supervisor IS NOT NULL AND supervisor != ''
+              )
             ORDER BY am.anio DESC, am.mes DESC
         """, con)
     except Exception:
@@ -85,7 +89,7 @@ def _safe_mean(series):
     return series.mean() if len(series) else 0.0
 
 def _pct(num, den):
-    return round(num / den * 100, 1) if den > 0 else 0.0
+    return round(num / den * 100) if den > 0 else 0
 
 
 # ── KPIs globales del período ─────────────────────────────────────────────────
@@ -97,7 +101,7 @@ tel_plan_dia      = _safe_mean(df_tel["planificadas_llamadas"]) / DIAS_HABILES_M
 tel_ejec_plan_dia = _safe_mean(df_tel["gestionadas_llamadas"])  / DIAS_HABILES_MES
 tel_ejec_tot_dia  = _safe_mean(df_tel["llamadas"])              / DIAS_HABILES_MES
 tel_cumpl_plan    = _pct(
-    df_tel["gestionadas_llamadas"].sum(),
+    df_tel["llamadas"].sum(),          # total real (plan + espontáneas)
     df_tel["planificadas_llamadas"].sum()
 )
 
@@ -107,18 +111,19 @@ via_plan_dia      = _safe_mean(df_via["planificadas_visitas"])  / DIAS_HABILES_M
 via_ejec_plan_dia = _safe_mean(df_via["visitadas_schedule"])    / DIAS_HABILES_MES
 via_ejec_tot_dia  = _safe_mean(df_via["visitas"])               / DIAS_HABILES_MES
 via_cumpl_plan    = _pct(
-    df_via["visitadas_schedule"].sum(),
+    df_via["visitas"].sum(),           # total real (plan + espontáneas)
     df_via["planificadas_visitas"].sum()
 )
 
 resumen_data = {
     "Tipo": ["📞 Televentas", "🚗 Viajantes"],
     "Vendedores con datos": [tel_vendedores, via_vendedores],
-    f"Target empresa / día": [TARGET_TELEVENTAS, TARGET_VIAJANTES],
-    "Plan real / día (prom)": [round(tel_plan_dia, 1), round(via_plan_dia, 1)],
-    "Ejecutado del plan / día": [round(tel_ejec_plan_dia, 1), round(via_ejec_plan_dia, 1)],
-    "Total ejecutado / día (incl. extra)": [round(tel_ejec_tot_dia, 1), round(via_ejec_tot_dia, 1)],
-    "Cumplimiento del plan (%)": [tel_cumpl_plan, via_cumpl_plan],
+    "Target empresa / día": [TARGET_TELEVENTAS, TARGET_VIAJANTES],
+    "Plan real / día (prom)": [round(tel_plan_dia), round(via_plan_dia)],
+    "Ejecutadas del plan / día": [round(tel_ejec_plan_dia), round(via_ejec_plan_dia)],
+    "Espontáneas / día": [round(tel_ejec_tot_dia - tel_ejec_plan_dia), round(via_ejec_tot_dia - via_ejec_plan_dia)],
+    "Total / día": [round(tel_ejec_tot_dia), round(via_ejec_tot_dia)],
+    "Cumplimiento (%)": [tel_cumpl_plan, via_cumpl_plan],
 }
 
 df_resumen = pd.DataFrame(resumen_data).set_index("Tipo")
@@ -131,15 +136,16 @@ def colorear_cumplimiento(val):
     return ""
 
 st.dataframe(
-    df_resumen.style.map(colorear_cumplimiento, subset=["Cumplimiento del plan (%)"]),
+    df_resumen.style.map(colorear_cumplimiento, subset=["Cumplimiento (%)"]),
     use_container_width=True,
 )
 
 st.caption(
     f"Target empresa: {TARGET_TELEVENTAS} llamadas/día (Televentas) · "
     f"{TARGET_VIAJANTES} visitas/día (Viajantes). "
-    f"Base de cálculo: {DIAS_HABILES_MES} días hábiles/mes. "
-    "El ejecutado 'extra' son gestiones/visitas sin planificación previa en Reactor."
+    f"Base: {DIAS_HABILES_MES} días hábiles/mes. "
+    "Espontáneas = gestiones/visitas realizadas sin una planificación previa en Reactor. "
+    "Cumplimiento incluye espontáneas porque el objetivo es hablar con el cliente, no solo ejecutar el plan."
 )
 
 # ── Tendencia mes a mes ───────────────────────────────────────────────────────
@@ -159,9 +165,9 @@ def tendencia_tipo(df_tipo, col_plan, col_ejec, col_total, label):
         .sort_values("periodo")
     )
     grp["cumpl_%"] = grp.apply(
-        lambda r: round(r["ejec"] / r["plan"] * 100, 1) if r["plan"] > 0 else 0.0, axis=1
+        lambda r: round(r["total"] / r["plan"] * 100) if r["plan"] > 0 else 0, axis=1
     )
-    grp["ejec_extra"] = grp["total"] - grp["ejec"]
+    grp["espontaneas"] = grp["total"] - grp["ejec"]
     return grp
 
 t_tel = tendencia_tipo(df_tel, "planificadas_llamadas", "gestionadas_llamadas", "llamadas", "Televentas")
@@ -172,11 +178,11 @@ with c1:
     st.markdown("**📞 Televentas — Llamadas**")
     if not t_tel.empty:
         st.dataframe(
-            t_tel[["periodo","n","plan","ejec","ejec_extra","cumpl_%"]]
+            t_tel[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]]
             .rename(columns={
                 "periodo":"Período","n":"Vendedores",
-                "plan":"Planificadas","ejec":"Gestionadas del plan",
-                "ejec_extra":"Extra (sin plan)","cumpl_%":"Cumpl. %"
+                "plan":"Planificadas","ejec":"Del plan",
+                "espontaneas":"Espontáneas","total":"Total","cumpl_%":"Cumpl. %"
             }),
             use_container_width=True, hide_index=True,
         )
@@ -187,11 +193,11 @@ with c2:
     st.markdown("**🚗 Viajantes — Visitas**")
     if not t_via.empty:
         st.dataframe(
-            t_via[["periodo","n","plan","ejec","ejec_extra","cumpl_%"]]
+            t_via[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]]
             .rename(columns={
                 "periodo":"Período","n":"Vendedores",
-                "plan":"Planificadas","ejec":"Visitadas del plan",
-                "ejec_extra":"Extra (sin plan)","cumpl_%":"Cumpl. %"
+                "plan":"Planificadas","ejec":"Del plan",
+                "espontaneas":"Espontáneas","total":"Total","cumpl_%":"Cumpl. %"
             }),
             use_container_width=True, hide_index=True,
         )
@@ -209,20 +215,21 @@ def ranking_df(df_tipo, col_plan, col_ejec, col_total):
         return pd.DataFrame()
     df_r = df_tipo.copy()
     df_r["cumpl_%"] = df_r.apply(
-        lambda r: round(r[col_ejec] / r[col_plan] * 100, 1) if r[col_plan] > 0 else None,
+        lambda r: round(r[col_total] / r[col_plan] * 100) if r[col_plan] > 0 else None,
         axis=1,
     )
-    df_r["extra"] = df_r[col_total] - df_r[col_ejec]
+    df_r["espontaneas"] = df_r[col_total] - df_r[col_ejec]
     return (
-        df_r[["nombre", "supervisor", "nombre_grupo", col_plan, col_ejec, "extra", "cumpl_%"]]
+        df_r[["nombre", "supervisor", "nombre_grupo", col_plan, col_ejec, "espontaneas", col_total, "cumpl_%"]]
         .sort_values("cumpl_%", ascending=True)
         .rename(columns={
             "nombre": "Vendedor",
             "supervisor": "Supervisor",
             "nombre_grupo": "Grupo",
             col_plan: "Planificadas",
-            col_ejec: "Ejecutadas del plan",
-            "extra": "Extra",
+            col_ejec: "Del plan",
+            "espontaneas": "Espontáneas",
+            col_total: "Total",
             "cumpl_%": "Cumpl. %",
         })
     )

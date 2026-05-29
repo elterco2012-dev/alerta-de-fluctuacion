@@ -229,7 +229,7 @@ if args.diagnostico:
     sys.exit(0)
 
 # ── 1. Gestiones realizadas (customer_management) — solo Televentas activos ────
-print("\n[1/5] Gestiones Televentas (customer_management)...", end=" ", flush=True)
+print("\n[1/8] Gestiones Televentas (customer_management)...", end=" ", flush=True)
 rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cm.created)                                      AS anio,
@@ -258,7 +258,7 @@ for row in rcur.fetchall():
 print(f"OK — {len(gestion_data)} filas")
 
 # ── 2. Planificación Televentas (cust_man_schedule) — solo Televentas activos ──
-print("[2/5] Planificación Televentas (cust_man_schedule)...", end=" ", flush=True)
+print("[2/8] Planificación Televentas (cust_man_schedule)...", end=" ", flush=True)
 rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cs.contact_day)                                  AS anio,
@@ -285,7 +285,7 @@ for row in rcur.fetchall():
 print(f"OK — {len(plan_llamadas_data)} filas")
 
 # ── 3. Visitas realizadas (customer_visit) — solo Viajantes activos ───────────
-print("[3/5] Visitas realizadas (customer_visit)...", end=" ", flush=True)
+print("[3/8] Visitas realizadas (customer_visit)...", end=" ", flush=True)
 rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cv.start_time)                                   AS anio,
@@ -311,7 +311,7 @@ for row in rcur.fetchall():
 print(f"OK — {len(visitas_data)} filas")
 
 # ── 4. Planificación Viajantes (schedule) — solo Viajantes activos ────────────
-print("[4/5] Planificación Viajantes (schedule)...", end=" ", flush=True)
+print("[4/8] Planificación Viajantes (schedule)...", end=" ", flush=True)
 rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(s.meeting_day)                                   AS anio,
@@ -339,7 +339,7 @@ for row in rcur.fetchall():
 print(f"OK — {len(plan_visitas_data)} filas")
 
 # ── 5. Llamadas respondidas (telephony_call_history) — solo Televentas activos ─
-print("[5/5] Llamadas respondidas (telephony_call_history)...", end=" ", flush=True)
+print("[5/8] Llamadas respondidas (telephony_call_history)...", end=" ", flush=True)
 rcur.execute(f"""
     SELECT CAST(agent AS UNSIGNED)                               AS id_vendedor,
            YEAR(created)                                         AS anio,
@@ -359,6 +359,126 @@ for row in rcur.fetchall():
     k = (int(vid), int(anio), int(mes))
     respondidas_data[k] = int(respondidas or 0)
 print(f"OK — {len(respondidas_data)} filas")
+
+# ── 6. Acompañamiento planificado (supervisor_schedule) ───────────────────────
+print("[6/8] Acompañamiento planificado (supervisor_schedule)...", end=" ", flush=True)
+rcur.execute(f"""
+    SELECT CAST(u.username AS UNSIGNED) AS id_vendedor,
+           YEAR(ss.event_date)          AS anio,
+           MONTH(ss.event_date)         AS mes,
+           COUNT(*)                     AS planificadas
+    FROM supervisor_schedule ss
+    JOIN `user` u ON ss.id_user_seller = u.id
+    WHERE ss.event_date >= ?
+      AND ss.active = 1
+      AND ss.date_disabled IS NULL
+      AND CAST(u.username AS UNSIGNED) {IN_AMBOS}
+    GROUP BY CAST(u.username AS UNSIGNED), YEAR(ss.event_date), MONTH(ss.event_date)
+    ORDER BY id_vendedor, anio, mes
+""", fecha_desde)
+
+acomp_plan_data = {}
+for row in rcur.fetchall():
+    vid, anio, mes, plan = row
+    acomp_plan_data[(int(vid), int(anio), int(mes))] = int(plan or 0)
+print(f"OK — {len(acomp_plan_data)} filas")
+
+# ── 7. Acompañamiento realizado (supervisor_visit) ────────────────────────────
+print("[7/8] Acompañamiento realizado (supervisor_visit)...", end=" ", flush=True)
+rcur.execute(f"""
+    SELECT CAST(u.username AS UNSIGNED) AS id_vendedor,
+           YEAR(sv.created)             AS anio,
+           MONTH(sv.created)            AS mes,
+           COUNT(*)                     AS realizadas
+    FROM supervisor_visit sv
+    JOIN `user` u ON sv.id_user_supervised_seller = u.id
+    WHERE sv.created >= ?
+      AND CAST(u.username AS UNSIGNED) {IN_AMBOS}
+    GROUP BY CAST(u.username AS UNSIGNED), YEAR(sv.created), MONTH(sv.created)
+    ORDER BY id_vendedor, anio, mes
+""", fecha_desde)
+
+acomp_real_data = {}
+for row in rcur.fetchall():
+    vid, anio, mes, real = row
+    acomp_real_data[(int(vid), int(anio), int(mes))] = int(real or 0)
+print(f"OK — {len(acomp_real_data)} filas")
+
+# ── 8. Distancia recorrida (visits_route_calculation) — Viajantes ─────────────
+print("[8/8] Distancia recorrida (visits_route_calculation)...", end=" ", flush=True)
+rcur.execute(f"""
+    SELECT CAST(u.username AS UNSIGNED)          AS id_vendedor,
+           YEAR(vrc.visit_day)                   AS anio,
+           MONTH(vrc.visit_day)                  AS mes,
+           ROUND(SUM(vrc.distance) / 1000.0, 1) AS km_total,
+           ROUND(AVG(vrc.distance) / 1000.0, 1) AS km_prom_dia,
+           COUNT(*)                              AS dias_con_ruta
+    FROM visits_route_calculation vrc
+    JOIN `user` u ON vrc.id_user = u.id
+    WHERE vrc.visit_day >= ?
+      AND CAST(u.username AS UNSIGNED) {IN_VIAJANTES}
+    GROUP BY CAST(u.username AS UNSIGNED), YEAR(vrc.visit_day), MONTH(vrc.visit_day)
+    ORDER BY id_vendedor, anio, mes
+""", fecha_desde)
+
+distancia_data = {}
+for row in rcur.fetchall():
+    vid, anio, mes, km_total, km_prom, dias = row
+    distancia_data[(int(vid), int(anio), int(mes))] = {
+        "km_total":     round(float(km_total or 0), 1),
+        "km_prom_dia":  round(float(km_prom  or 0), 1),
+        "dias_con_ruta": int(dias or 0),
+    }
+print(f"OK — {len(distancia_data)} filas")
+
+# ── Ausencias (absence → employee → user) ─────────────────────────────────────
+print("[aus] Motivos de ausencia...", end=" ", flush=True)
+motivos_ausencia = {}
+motivos_justificados_ids = set()
+try:
+    rcur.execute("SELECT * FROM absence_reason ORDER BY id")
+    cols_ar = [d[0] for d in rcur.description]
+    for r in rcur.fetchall():
+        d_r   = dict(zip(cols_ar, r))
+        mid   = int(d_r.get("id", 0) or 0)
+        nombre = str(d_r.get("name", d_r.get("nombre", "")) or "")
+        motivos_ausencia[mid] = nombre
+        if any(kw in nombre.lower() for kw in ["vacac", "free", "feriado", "franco", "career", "cumplea"]):
+            motivos_justificados_ids.add(mid)
+    print(f"OK — {len(motivos_ausencia)} motivos, {len(motivos_justificados_ids)} justificados")
+except Exception as e:
+    print(f"(tabla absence_reason no encontrada — {e})")
+
+print("[aus] Ausencias por vendedor...", end=" ", flush=True)
+ausencias_data = {}
+try:
+    rcur.execute(f"""
+        SELECT CAST(u.username AS UNSIGNED) AS id_vendedor,
+               YEAR(a.start_date)           AS anio,
+               MONTH(a.start_date)          AS mes,
+               a.id_absence_reason,
+               SUM(DATEDIFF(a.end_date, a.start_date) + 1) AS dias
+        FROM absence a
+        JOIN employee e ON a.id_employee = e.id
+        JOIN `user`   u ON e.id_user     = u.id
+        WHERE a.start_date >= ?
+          AND CAST(u.username AS UNSIGNED) {IN_AMBOS}
+        GROUP BY CAST(u.username AS UNSIGNED), YEAR(a.start_date), MONTH(a.start_date), a.id_absence_reason
+        ORDER BY id_vendedor, anio, mes
+    """, fecha_desde)
+    for row in rcur.fetchall():
+        vid, anio, mes, motivo_id, dias = row
+        k = (int(vid), int(anio), int(mes))
+        if k not in ausencias_data:
+            ausencias_data[k] = {"dias_total": 0, "dias_no_vac": 0}
+        d = int(dias or 0)
+        ausencias_data[k]["dias_total"] += d
+        if motivo_id not in motivos_justificados_ids:
+            ausencias_data[k]["dias_no_vac"] += d
+    print(f"OK — {len(ausencias_data)} filas")
+except Exception as e:
+    print(f"ERROR: {e}")
+    ausencias_data = {}
 
 rcn.close()
 
@@ -436,6 +556,45 @@ for col in ("planificadas_llamadas", "gestionadas_llamadas",
     except Exception:
         pass  # columna ya existe
 
+for col in ("km_total REAL", "km_prom_dia REAL", "dias_con_ruta INTEGER"):
+    try:
+        lcur.execute(f"ALTER TABLE actividad_mensual ADD COLUMN {col} DEFAULT 0")
+    except Exception:
+        pass
+
+# Tabla: acompañamiento del supervisor por vendedor/mes
+lcur.execute("""
+    CREATE TABLE IF NOT EXISTS acompanamiento_mensual (
+        id_vendedor              INTEGER NOT NULL,
+        anio                     INTEGER NOT NULL,
+        mes                      INTEGER NOT NULL,
+        visitas_sup_planificadas INTEGER DEFAULT 0,
+        visitas_sup_realizadas   INTEGER DEFAULT 0,
+        PRIMARY KEY (id_vendedor, anio, mes)
+    )
+""")
+
+# Tabla: ausencias por vendedor/mes
+lcur.execute("""
+    CREATE TABLE IF NOT EXISTS ausencias_mensual (
+        id_vendedor  INTEGER NOT NULL,
+        anio         INTEGER NOT NULL,
+        mes          INTEGER NOT NULL,
+        dias_ausente INTEGER DEFAULT 0,
+        dias_no_vac  INTEGER DEFAULT 0,
+        PRIMARY KEY (id_vendedor, anio, mes)
+    )
+""")
+
+# Tabla: referencia de motivos de ausencia
+lcur.execute("""
+    CREATE TABLE IF NOT EXISTS motivos_ausencia (
+        id             INTEGER PRIMARY KEY,
+        nombre         TEXT,
+        es_justificada INTEGER DEFAULT 0
+    )
+""")
+
 lcon.commit()
 
 # ── Insertar / actualizar ─────────────────────────────────────────────────────
@@ -484,6 +643,51 @@ for k in sorted(todas_keys):
     insertados += 1
 
 lcon.commit()
+
+# ── Acompañamiento del supervisor ─────────────────────────────────────────────
+acomp_keys = set(acomp_plan_data) | set(acomp_real_data)
+for k in acomp_keys:
+    vid, anio, mes = k
+    lcur.execute("""
+        INSERT INTO acompanamiento_mensual
+            (id_vendedor, anio, mes, visitas_sup_planificadas, visitas_sup_realizadas)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
+            visitas_sup_planificadas = excluded.visitas_sup_planificadas,
+            visitas_sup_realizadas   = excluded.visitas_sup_realizadas
+    """, (vid, anio, mes,
+          acomp_plan_data.get(k, 0),
+          acomp_real_data.get(k, 0)))
+
+# ── Ausencias ─────────────────────────────────────────────────────────────────
+for k, d in ausencias_data.items():
+    vid, anio, mes = k
+    lcur.execute("""
+        INSERT INTO ausencias_mensual
+            (id_vendedor, anio, mes, dias_ausente, dias_no_vac)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
+            dias_ausente = excluded.dias_ausente,
+            dias_no_vac  = excluded.dias_no_vac
+    """, (vid, anio, mes, d["dias_total"], d["dias_no_vac"]))
+
+# ── Motivos de ausencia (tabla de referencia) ─────────────────────────────────
+for mid, nombre in motivos_ausencia.items():
+    lcur.execute("""
+        INSERT OR REPLACE INTO motivos_ausencia (id, nombre, es_justificada)
+        VALUES (?, ?, ?)
+    """, (mid, nombre, 1 if mid in motivos_justificados_ids else 0))
+
+# ── Distancia en actividad_mensual ────────────────────────────────────────────
+for k, d in distancia_data.items():
+    vid, anio, mes = k
+    lcur.execute("""
+        UPDATE actividad_mensual
+        SET km_total=?, km_prom_dia=?, dias_con_ruta=?
+        WHERE id_vendedor=? AND anio=? AND mes=?
+    """, (d["km_total"], d["km_prom_dia"], d["dias_con_ruta"], vid, anio, mes))
+
+lcon.commit()
 lcon.close()
 
 print(f"\n✓ {insertados} filas insertadas/actualizadas en actividad_mensual")
@@ -493,4 +697,7 @@ print(f"  Vendedores con plan llamadas      : {len({k[0] for k in plan_llamadas_
 print(f"  Vendedores con visitas (cv)       : {len({k[0] for k in visitas_data})}")
 print(f"  Vendedores con plan visitas       : {len({k[0] for k in plan_visitas_data})}")
 print(f"  Vendedores en tel. history        : {len({k[0] for k in respondidas_data})}")
+print(f"  Vendedores con acompañamiento sup.: {len({k[0] for k in acomp_keys})}")
+print(f"  Vendedores con ausencias          : {len({k[0] for k in ausencias_data})}")
+print(f"  Vendedores con distancia (km)     : {len({k[0] for k in distancia_data})}")
 print("\nListo. Ejecutá el dashboard para ver las señales actualizadas.")

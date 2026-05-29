@@ -176,6 +176,22 @@ El dashboard actual cubre los 3 casos. Las vistas por supervisor son el próximo
 - No agregar dependencias pesadas sin consultar (el entorno puede ser Windows con pyodbc)
 - No reemplazar el sistema de reglas por ML todavía
 
+## REGLA ABSOLUTA — Bases de datos externas: SOLO LECTURA
+
+Las tres bases de producción son **intocables**. Está terminantemente prohibido
+ejecutar cualquier instrucción que modifique datos en ellas:
+
+| Base | DSN | Prohibido |
+|---|---|---|
+| Informix (ERP) | MSPA | INSERT, UPDATE, DELETE, DDL |
+| SQL Server (SUN) | SUNDB | INSERT, UPDATE, DELETE, DDL |
+| MySQL (Reactor CRM) | Wurth Reactor Produccion | INSERT, UPDATE, DELETE, DDL |
+
+**Solo se permite:** SELECT y consultas de lectura.
+
+La única base donde se escribe es `data/wurth.db` (SQLite local, propiedad del proyecto).
+Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuentes.
+
 ---
 
 ## Próximos features planeados (en orden de prioridad)

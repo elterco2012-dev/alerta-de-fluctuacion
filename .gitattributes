@@ -1,0 +1,6 @@
+# Normalizar finales de línea: LF en el repo, CRLF en Windows al hacer checkout
+* text=auto eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.db binary

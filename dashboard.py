@@ -209,6 +209,7 @@ st.markdown("""
     <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;">📝 Intervenciones</a>
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
+    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;">📞 Actividad</a>
   </div>
 </div>
 """, unsafe_allow_html=True)

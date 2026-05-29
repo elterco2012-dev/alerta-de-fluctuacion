@@ -219,28 +219,28 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
 
             if tipo_v == "Televentas":
                 if tiene_plan_ll and act_vid["planificadas_llamadas"].sum() > 0:
-                    # Ratio gestionadas/planificadas: < 70% promedio en últimos 3m
+                    # Promedio real del sistema: ~40% de completitud.
+                    # Señal activa si el vendedor está sostenidamente por debajo del 25%
+                    # (la mitad del promedio — indica desenganche claro).
                     ratio = (act_vid["gestionadas_llamadas"] /
                              act_vid["planificadas_llamadas"].replace(0, float("nan"))).mean()
-                    if ratio < 0.70:
+                    if ratio < 0.25:
                         señales[9].activa = True
                         riesgo_total += señales[9].peso
                 elif "llamadas" in act_vid.columns:
-                    # Fallback sin datos de planificación: conteo bruto
                     if act_vid["llamadas"].mean() < 500:
                         señales[9].activa = True
                         riesgo_total += señales[9].peso
 
             elif tipo_v == "Viajante":
                 if tiene_plan_vi and act_vid["planificadas_visitas"].sum() > 0:
-                    # Ratio visitadas/planificadas: < 70% promedio en últimos 3m
+                    # Mismo criterio: promedio real ~40%, señal si < 25%
                     ratio = (act_vid["visitadas_schedule"] /
                              act_vid["planificadas_visitas"].replace(0, float("nan"))).mean()
-                    if ratio < 0.70:
+                    if ratio < 0.25:
                         señales[10].activa = True
                         riesgo_total += señales[10].peso
                 elif "visitas" in act_vid.columns:
-                    # Fallback sin datos de planificación: conteo bruto
                     if act_vid["visitas"].mean() < 300:
                         señales[10].activa = True
                         riesgo_total += señales[10].peso

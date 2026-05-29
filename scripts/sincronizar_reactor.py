@@ -77,6 +77,54 @@ while mes_inicio <= 0:
 fecha_desde = f"{anio_inicio:04d}-{mes_inicio:02d}-01"
 print(f"\n  Período desde: {anio_inicio}/{mes_inicio:02d}  ({fecha_desde})")
 
+# ── Leer IDs activos por tipo desde SQLite (excluye supervisores) ─────────────
+# Requiere haber ejecutado sincronizar_informix.py primero.
+EXCLUIR_SUPERVISORES = """
+    AND nombre NOT IN (
+        SELECT DISTINCT supervisor FROM vendedores
+        WHERE supervisor IS NOT NULL AND supervisor != ''
+    )
+"""
+
+try:
+    import sqlite3 as _sqlite3
+    _lcon = _sqlite3.connect(DB_PATH)
+    _lcur = _lcon.cursor()
+
+    _lcur.execute(f"""
+        SELECT id_vendedor FROM vendedores
+        WHERE activo = 1 AND tipo = 'Televentas'
+        {EXCLUIR_SUPERVISORES}
+    """)
+    IDS_TELEVENTAS = [str(r[0]) for r in _lcur.fetchall()]
+
+    _lcur.execute(f"""
+        SELECT id_vendedor FROM vendedores
+        WHERE activo = 1 AND tipo = 'Viajante'
+        {EXCLUIR_SUPERVISORES}
+    """)
+    IDS_VIAJANTES = [str(r[0]) for r in _lcur.fetchall()]
+
+    _lcon.close()
+    print(f"  Televentas activos (sin supervisores): {len(IDS_TELEVENTAS)}")
+    print(f"  Viajantes activos  (sin supervisores): {len(IDS_VIAJANTES)}")
+
+except Exception as e:
+    print(f"\nAVISO: no se pudo leer vendedores de SQLite ({e})")
+    print("  Ejecutá sincronizar_informix.py primero.")
+    print("  Continuando con filtro genérico (puede incluir supervisores).")
+    IDS_TELEVENTAS = []
+    IDS_VIAJANTES  = []
+
+# Helpers para armar cláusula IN en MySQL
+def _in_clause(ids):
+    """Devuelve 'IN (1,2,3)' o 'IN (0)' si la lista está vacía (sin resultados)."""
+    return f"IN ({','.join(ids)})" if ids else "IN (0)"
+
+IN_TELEVENTAS = _in_clause(IDS_TELEVENTAS)
+IN_VIAJANTES  = _in_clause(IDS_VIAJANTES)
+IN_AMBOS      = _in_clause(list(set(IDS_TELEVENTAS + IDS_VIAJANTES)))
+
 # ── Conectar a Reactor MySQL ───────────────────────────────────────────────────
 print("\nConectando a Reactor CRM (MySQL)...", end=" ", flush=True)
 try:
@@ -95,16 +143,17 @@ except Exception as e:
 if args.diagnostico:
     print("\n--- DIAGNÓSTICO Reactor CRM ---\n")
 
-    print("customer_management (gestiones realizadas):")
-    rcur.execute("""
+    print(f"  Televentas activos: {len(IDS_TELEVENTAS)}  |  Viajantes activos: {len(IDS_VIAJANTES)}\n")
+
+    print("customer_management (gestiones Televentas):")
+    rcur.execute(f"""
         SELECT YEAR(cm.created) AS anio, MONTH(cm.created) AS mes,
                COUNT(*) AS total,
                SUM(CASE WHEN cm.closure_no_action_reason IS NULL THEN 1 ELSE 0 END) AS exitosas
         FROM customer_management cm
         JOIN `user` u ON cm.id_user_author = u.id
         WHERE cm.created >= ?
-          AND u.username REGEXP '^[0-9]+$'
-          AND CAST(u.username AS UNSIGNED) > 0
+          AND CAST(u.username AS UNSIGNED) {IN_TELEVENTAS}
         GROUP BY YEAR(cm.created), MONTH(cm.created)
         ORDER BY anio, mes
     """, fecha_desde)
@@ -112,7 +161,7 @@ if args.diagnostico:
         print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} gestionadas, {r[3]:>6} exitosas")
 
     print("\ncust_man_schedule (planificadas Televentas):")
-    rcur.execute("""
+    rcur.execute(f"""
         SELECT YEAR(cs.contact_day) AS anio, MONTH(cs.contact_day) AS mes,
                COUNT(*) AS planificadas,
                SUM(CASE WHEN cs.is_done = 1 THEN 1 ELSE 0 END) AS gestionadas
@@ -120,8 +169,7 @@ if args.diagnostico:
         JOIN `user` u ON cs.id_user = u.id
         WHERE cs.contact_day >= ?
           AND cs.active = 1
-          AND u.username REGEXP '^[0-9]+$'
-          AND CAST(u.username AS UNSIGNED) > 0
+          AND CAST(u.username AS UNSIGNED) {IN_TELEVENTAS}
         GROUP BY YEAR(cs.contact_day), MONTH(cs.contact_day)
         ORDER BY anio, mes
     """, fecha_desde)
@@ -129,15 +177,14 @@ if args.diagnostico:
         pct = round(r[3] / r[2] * 100, 1) if r[2] else 0
         print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} planificadas, {r[3]:>6} gestionadas ({pct}%)")
 
-    print("\ncustomer_visit (visitas realizadas):")
-    rcur.execute("""
+    print("\ncustomer_visit (visitas Viajantes):")
+    rcur.execute(f"""
         SELECT YEAR(cv.start_time) AS anio, MONTH(cv.start_time) AS mes,
                COUNT(*) AS total
         FROM customer_visit cv
         JOIN `user` u ON cv.id_user_author = u.id
         WHERE cv.start_time >= ?
-          AND u.username REGEXP '^[0-9]+$'
-          AND CAST(u.username AS UNSIGNED) > 0
+          AND CAST(u.username AS UNSIGNED) {IN_VIAJANTES}
         GROUP BY YEAR(cv.start_time), MONTH(cv.start_time)
         ORDER BY anio, mes
     """, fecha_desde)
@@ -145,7 +192,7 @@ if args.diagnostico:
         print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} visitas")
 
     print("\nschedule (planificadas Viajantes):")
-    rcur.execute("""
+    rcur.execute(f"""
         SELECT YEAR(s.meeting_day) AS anio, MONTH(s.meeting_day) AS mes,
                COUNT(*) AS planificadas,
                SUM(CASE WHEN s.is_visited = 1 THEN 1 ELSE 0 END) AS visitadas
@@ -154,8 +201,7 @@ if args.diagnostico:
         WHERE s.meeting_day >= ?
           AND s.active = 1
           AND s.disabled IS NULL
-          AND u.username REGEXP '^[0-9]+$'
-          AND CAST(u.username AS UNSIGNED) > 0
+          AND CAST(u.username AS UNSIGNED) {IN_VIAJANTES}
         GROUP BY YEAR(s.meeting_day), MONTH(s.meeting_day)
         ORDER BY anio, mes
     """, fecha_desde)
@@ -163,16 +209,15 @@ if args.diagnostico:
         pct = round(r[3] / r[2] * 100, 1) if r[2] else 0
         print(f"  {r[0]}/{r[1]:02d}: {r[2]:>6} planificadas, {r[3]:>6} visitadas ({pct}%)")
 
-    print("\ntelephony_call_history (llamadas respondidas):")
-    rcur.execute("""
+    print("\ntelephony_call_history (Televentas):")
+    rcur.execute(f"""
         SELECT YEAR(created) AS anio, MONTH(created) AS mes,
                COUNT(*) AS total,
                SUM(CASE WHEN is_answered = 1 THEN 1 ELSE 0 END) AS respondidas
         FROM telephony_call_history
         WHERE type = 'report'
           AND created >= ?
-          AND agent REGEXP '^[0-9]+$'
-          AND CAST(agent AS UNSIGNED) > 0
+          AND CAST(agent AS UNSIGNED) {IN_TELEVENTAS}
         GROUP BY YEAR(created), MONTH(created)
         ORDER BY anio, mes
     """, fecha_desde)
@@ -183,9 +228,9 @@ if args.diagnostico:
     rcn.close()
     sys.exit(0)
 
-# ── 1. Gestiones realizadas (customer_management) ─────────────────────────────
+# ── 1. Gestiones realizadas (customer_management) — solo Televentas activos ────
 print("\n[1/5] Gestiones Televentas (customer_management)...", end=" ", flush=True)
-rcur.execute("""
+rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cm.created)                                      AS anio,
            MONTH(cm.created)                                     AS mes,
@@ -196,8 +241,7 @@ rcur.execute("""
     FROM customer_management cm
     JOIN `user` u ON cm.id_user_author = u.id
     WHERE cm.created >= ?
-      AND u.username REGEXP '^[0-9]+$'
-      AND CAST(u.username AS UNSIGNED) > 0
+      AND CAST(u.username AS UNSIGNED) {IN_TELEVENTAS}
     GROUP BY CAST(u.username AS UNSIGNED), YEAR(cm.created), MONTH(cm.created)
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)
@@ -213,9 +257,9 @@ for row in rcur.fetchall():
     }
 print(f"OK — {len(gestion_data)} filas")
 
-# ── 2. Planificación Televentas (cust_man_schedule) ───────────────────────────
+# ── 2. Planificación Televentas (cust_man_schedule) — solo Televentas activos ──
 print("[2/5] Planificación Televentas (cust_man_schedule)...", end=" ", flush=True)
-rcur.execute("""
+rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cs.contact_day)                                  AS anio,
            MONTH(cs.contact_day)                                 AS mes,
@@ -225,8 +269,7 @@ rcur.execute("""
     JOIN `user` u ON cs.id_user = u.id
     WHERE cs.contact_day >= ?
       AND cs.active = 1
-      AND u.username REGEXP '^[0-9]+$'
-      AND CAST(u.username AS UNSIGNED) > 0
+      AND CAST(u.username AS UNSIGNED) {IN_TELEVENTAS}
     GROUP BY CAST(u.username AS UNSIGNED), YEAR(cs.contact_day), MONTH(cs.contact_day)
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)
@@ -241,9 +284,9 @@ for row in rcur.fetchall():
     }
 print(f"OK — {len(plan_llamadas_data)} filas")
 
-# ── 3. Visitas realizadas (customer_visit) ────────────────────────────────────
+# ── 3. Visitas realizadas (customer_visit) — solo Viajantes activos ───────────
 print("[3/5] Visitas realizadas (customer_visit)...", end=" ", flush=True)
-rcur.execute("""
+rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(cv.start_time)                                   AS anio,
            MONTH(cv.start_time)                                  AS mes,
@@ -252,8 +295,7 @@ rcur.execute("""
     FROM customer_visit cv
     JOIN `user` u ON cv.id_user_author = u.id
     WHERE cv.start_time >= ?
-      AND u.username REGEXP '^[0-9]+$'
-      AND CAST(u.username AS UNSIGNED) > 0
+      AND CAST(u.username AS UNSIGNED) {IN_VIAJANTES}
     GROUP BY CAST(u.username AS UNSIGNED), YEAR(cv.start_time), MONTH(cv.start_time)
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)
@@ -268,9 +310,9 @@ for row in rcur.fetchall():
     }
 print(f"OK — {len(visitas_data)} filas")
 
-# ── 4. Planificación Viajantes (schedule) ─────────────────────────────────────
+# ── 4. Planificación Viajantes (schedule) — solo Viajantes activos ────────────
 print("[4/5] Planificación Viajantes (schedule)...", end=" ", flush=True)
-rcur.execute("""
+rcur.execute(f"""
     SELECT CAST(u.username AS UNSIGNED)                          AS id_vendedor,
            YEAR(s.meeting_day)                                   AS anio,
            MONTH(s.meeting_day)                                  AS mes,
@@ -281,8 +323,7 @@ rcur.execute("""
     WHERE s.meeting_day >= ?
       AND s.active = 1
       AND s.disabled IS NULL
-      AND u.username REGEXP '^[0-9]+$'
-      AND CAST(u.username AS UNSIGNED) > 0
+      AND CAST(u.username AS UNSIGNED) {IN_VIAJANTES}
     GROUP BY CAST(u.username AS UNSIGNED), YEAR(s.meeting_day), MONTH(s.meeting_day)
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)
@@ -297,9 +338,9 @@ for row in rcur.fetchall():
     }
 print(f"OK — {len(plan_visitas_data)} filas")
 
-# ── 5. Llamadas respondidas (telephony_call_history) ──────────────────────────
+# ── 5. Llamadas respondidas (telephony_call_history) — solo Televentas activos ─
 print("[5/5] Llamadas respondidas (telephony_call_history)...", end=" ", flush=True)
-rcur.execute("""
+rcur.execute(f"""
     SELECT CAST(agent AS UNSIGNED)                               AS id_vendedor,
            YEAR(created)                                         AS anio,
            MONTH(created)                                        AS mes,
@@ -307,8 +348,7 @@ rcur.execute("""
     FROM telephony_call_history
     WHERE type = 'report'
       AND created >= ?
-      AND agent REGEXP '^[0-9]+$'
-      AND CAST(agent AS UNSIGNED) > 0
+      AND CAST(agent AS UNSIGNED) {IN_TELEVENTAS}
     GROUP BY CAST(agent AS UNSIGNED), YEAR(created), MONTH(created)
     ORDER BY id_vendedor, anio, mes
 """, fecha_desde)

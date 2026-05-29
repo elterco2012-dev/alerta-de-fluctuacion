@@ -131,7 +131,7 @@ def colorear_cumplimiento(val):
     return ""
 
 st.dataframe(
-    df_resumen.style.applymap(colorear_cumplimiento, subset=["Cumplimiento del plan (%)"]),
+    df_resumen.style.map(colorear_cumplimiento, subset=["Cumplimiento del plan (%)"]),
     use_container_width=True,
 )
 
@@ -244,7 +244,7 @@ with tab1:
         st.info("Sin datos Televentas para el período.")
     else:
         st.dataframe(
-            df_rank_tel.style.applymap(_color_cumpl, subset=["Cumpl. %"]),
+            df_rank_tel.style.map(_color_cumpl, subset=["Cumpl. %"]),
             use_container_width=True, hide_index=True,
         )
         st.caption("Rojo = < 25% del plan (señal de alerta en score). Verde = ≥ 70%.")
@@ -255,7 +255,7 @@ with tab2:
         st.info("Sin datos Viajantes para el período.")
     else:
         st.dataframe(
-            df_rank_via.style.applymap(_color_cumpl, subset=["Cumpl. %"]),
+            df_rank_via.style.map(_color_cumpl, subset=["Cumpl. %"]),
             use_container_width=True, hide_index=True,
         )
         st.caption("Rojo = < 25% del plan (señal de alerta en score). Verde = ≥ 70%.")

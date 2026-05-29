@@ -63,6 +63,7 @@ fecha_limite    = hoy - timedelta(days=MESES_ATRAS * 30)
 anio_inicio     = fecha_limite.year
 mes_inicio      = fecha_limite.month
 fecha_desde_str = f"{anio_inicio:04d}-{mes_inicio:02d}-01"
+fecha_desde_dt  = date(anio_inicio, mes_inicio, 1)
 print(f"\n  Período desde: {anio_inicio}/{mes_inicio:02d}  ({fecha_desde_str})")
 
 # ── Leer IDs activos de SQLite ────────────────────────────────────────────────
@@ -103,11 +104,11 @@ if args.diagnostico:
         SELECT YEAR(erfdat), MONTH(erfdat), COUNT(DISTINCT kdnr)
         FROM adrchr
         WHERE firma = {FIRMA}
-          AND erfdat >= '{fecha_desde_str}'
+          AND erfdat >= ?
           AND erfuser IN {IN_ACTIVOS}
         GROUP BY 1, 2
         ORDER BY 1 DESC, 2 DESC
-    """)
+    """, fecha_desde_dt)
     for r in icur.fetchall():
         print(f"  {r[0]}/{r[1]:02d}: {r[2]:,} clientes nuevos")
 
@@ -135,11 +136,11 @@ icur.execute(f"""
     SELECT erfuser, YEAR(erfdat), MONTH(erfdat), COUNT(DISTINCT kdnr)
     FROM adrchr
     WHERE firma = {FIRMA}
-      AND erfdat >= '{fecha_desde_str}'
+      AND erfdat >= ?
       AND erfuser IN {IN_ACTIVOS}
     GROUP BY 1, 2, 3
     ORDER BY 1, 2, 3
-""")
+""", fecha_desde_dt)
 
 nuevos_data = {}
 for row in icur.fetchall():
@@ -159,6 +160,7 @@ icur.execute(f"""
     FROM sbas
     WHERE firma = {FIRMA}
       AND bujahr >= {anio_hist}
+      AND bumonat >= 1
       AND vertr1 IN {IN_ACTIVOS}
     GROUP BY 1, 2, 3, 4
     ORDER BY 1, 2, 3, 4

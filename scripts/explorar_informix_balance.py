@@ -55,8 +55,9 @@ lines.append("=" * 60)
 lines.append("TABLA: adrchr  (altas de clientes / direcciones)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT * FROM adrchr WHERE 1=0")
-    cols_adrchr = [d[0] for d in cur.description]
+    # Usar API ODBC de metadatos (no requiere SQL — evita problemas de sintaxis Informix)
+    cur.columns(table="adrchr")
+    cols_adrchr = [r.column_name for r in cur.fetchall()]
     lines.append(f"Columnas ({len(cols_adrchr)}):")
     for c in cols_adrchr:
         lines.append(f"  {c}")
@@ -102,8 +103,8 @@ lines.append("\n" + "=" * 60)
 lines.append("TABLA: sbas  (historial de ventas/posiciones por cliente)")
 lines.append("=" * 60)
 try:
-    cur.execute("SELECT * FROM sbas WHERE 1=0")
-    cols_sbas = [d[0] for d in cur.description]
+    cur.columns(table="sbas")
+    cols_sbas = [r.column_name for r in cur.fetchall()]
     lines.append(f"Columnas ({len(cols_sbas)}):")
     for c in cols_sbas:
         lines.append(f"  {c}")

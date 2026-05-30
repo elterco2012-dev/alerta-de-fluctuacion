@@ -169,7 +169,10 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             continue
 
         # Actividad Reactor de este vendedor (últimos N meses)
-        act_vid = actividad[actividad["id_vendedor"] == vid].head(meses_tendencia) if not actividad.empty else pd.DataFrame()
+        act_vid   = actividad[actividad["id_vendedor"] == vid].head(meses_tendencia)   if not actividad.empty   else pd.DataFrame()
+        aus_vid   = ausencias[ausencias["id_vendedor"] == vid].head(meses_tendencia)   if not ausencias.empty   else pd.DataFrame()
+        bal_vid   = balanza[balanza["id_vendedor"] == vid].head(meses_tendencia)       if not balanza.empty     else pd.DataFrame()
+        acomp_vid = acompanamiento[acompanamiento["id_vendedor"] == vid].head(meses_tendencia) if not acompanamiento.empty else pd.DataFrame()
 
         señales = [
             Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
@@ -183,6 +186,10 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             Señal("clientes_nuevos_cero",  peso=0.5, descripcion="Sin clientes nuevos últimos 2 meses"),
             Señal("llamadas_bajas",        peso=1.5, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
             Señal("visitas_bajas",         peso=1.5, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
+            Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
+            Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
+            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio con tendencia bajista"),
+            Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
         ]
 
         riesgo_total = 0.0
@@ -281,16 +288,59 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
                         señales[10].activa = True
                         riesgo_total += señales[10].peso
 
+        # Señal 12: ausencias no-vacacionales en ventana crítica mes 1-3
+        if not aus_vid.empty and en_critica_13 and "dias_no_vac" in aus_vid.columns:
+            prom_no_vac = aus_vid["dias_no_vac"].mean()
+            if prom_no_vac > 2:
+                señales[11].activa = True
+                riesgo_total += señales[11].peso
+
+        # Señal 13: balanza de clientes negativa 2+ meses consecutivos
+        if not bal_vid.empty and "balanza" in bal_vid.columns and len(bal_vid) >= 2:
+            balanzas = bal_vid["balanza"].values
+            negativos_consecutivos = sum(
+                1 for i in range(len(balanzas) - 1)
+                if balanzas[i] < 0 and balanzas[i + 1] < 0
+            )
+            if negativos_consecutivos >= 1:
+                señales[12].activa = True
+                riesgo_total += señales[12].peso
+
+        # Señal 14: ticket promedio con tendencia bajista
+        if not bal_vid.empty and "ticket_promedio" in bal_vid.columns and len(bal_vid) >= 2:
+            tickets = bal_vid["ticket_promedio"].replace(0, float("nan")).dropna().values
+            if len(tickets) >= 2:
+                x_t = np.arange(len(tickets))
+                pend_ticket = np.polyfit(x_t[::-1], tickets, 1)[0]
+                if pend_ticket < -50:  # cae más de $50 por mes
+                    señales[13].activa = True
+                    riesgo_total += señales[13].peso
+
+        # Señal 15: acompañamiento del supervisor bajo en ventana crítica 1-6
+        en_critica_16 = 1 <= ma <= 6
+        if not acomp_vid.empty and en_critica_16 and "visitas_sup_realizadas" in acomp_vid.columns:
+            prom_acomp = acomp_vid["visitas_sup_realizadas"].mean()
+            if prom_acomp < 1:
+                señales[14].activa = True
+                riesgo_total += señales[14].peso
+
         # Normalizar a 1-10
-        # Las señales de llamadas y visitas son mutuamente excluyentes por tipo.
-        # Si no hay datos de Reactor, ninguna de las dos aplica → excluir ambas del máximo.
-        señales_aplicables = señales[:]
+        # Señales excluyentes por tipo / disponibilidad de datos.
+        excluir = set()
         if act_vid.empty:
-            señales_aplicables = [s for s in señales if s.nombre not in ("llamadas_bajas", "visitas_bajas")]
+            excluir.update({"llamadas_bajas", "visitas_bajas"})
         elif tipo_v == "Televentas":
-            señales_aplicables = [s for s in señales if s.nombre != "visitas_bajas"]
+            excluir.add("visitas_bajas")
         else:
-            señales_aplicables = [s for s in señales if s.nombre != "llamadas_bajas"]
+            excluir.add("llamadas_bajas")
+        if aus_vid.empty or not en_critica_13:
+            excluir.add("ausencias_tempranas")
+        if bal_vid.empty:
+            excluir.update({"balanza_negativa", "ticket_cayendo"})
+        if acomp_vid.empty or not en_critica_16:
+            excluir.add("acomp_bajo")
+
+        señales_aplicables = [s for s in señales if s.nombre not in excluir]
 
         max_posible = sum(s.peso for s in señales_aplicables)
         score_norm = 1 + (riesgo_total / max_posible) * 9

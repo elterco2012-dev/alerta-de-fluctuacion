@@ -188,7 +188,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             Señal("visitas_bajas",         peso=1.5, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
             Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
             Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
-            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio con tendencia bajista"),
+            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
             Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
         ]
 
@@ -306,13 +306,14 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
                 señales[12].activa = True
                 riesgo_total += señales[12].peso
 
-        # Señal 14: ticket promedio con tendencia bajista
+        # Señal 14: ticket promedio con tendencia bajista (> 5% del promedio por mes)
         if not bal_vid.empty and "ticket_promedio" in bal_vid.columns and len(bal_vid) >= 2:
             tickets = bal_vid["ticket_promedio"].replace(0, float("nan")).dropna().values
             if len(tickets) >= 2:
                 x_t = np.arange(len(tickets))
                 pend_ticket = np.polyfit(x_t[::-1], tickets, 1)[0]
-                if pend_ticket < -50:  # cae más de $50 por mes
+                mean_ticket = tickets.mean()
+                if mean_ticket > 0 and (-pend_ticket / mean_ticket) > 0.05:
                     señales[13].activa = True
                     riesgo_total += señales[13].peso
 

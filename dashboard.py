@@ -176,12 +176,26 @@ def cargar_datos():
         GROUP BY mes_numero
         ORDER BY mes_numero
     """, con)
+    # Permanencia promedio al egreso (vendedores que ya salieron)
+    egresados = pd.read_sql("""
+        SELECT fecha_ingreso, fecha_egreso
+        FROM vendedores
+        WHERE activo = 0
+          AND fecha_egreso IS NOT NULL
+          AND fecha_ingreso IS NOT NULL
+          AND fecha_egreso != fecha_ingreso
+    """, con)
     con.close()
 
-    grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
-    return scores, grupos, sparks, ventanas
+    egresados["fecha_ingreso"] = pd.to_datetime(egresados["fecha_ingreso"], errors="coerce")
+    egresados["fecha_egreso"]  = pd.to_datetime(egresados["fecha_egreso"],  errors="coerce")
+    egresados["meses"] = (egresados["fecha_egreso"] - egresados["fecha_ingreso"]).dt.days / 30.44
+    perm_egreso = egresados["meses"].mean() if len(egresados) else 0
 
-scores_df, grupos_df, sparks, ventanas_df = cargar_datos()
+    grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
+    return scores, grupos, sparks, ventanas, perm_egreso
+
+scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom = cargar_datos()
 
 # ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
 _sup_stats = (
@@ -236,9 +250,9 @@ st.markdown(f"""
     <div class="kpi-sub">Score ≥ 6 (alto o crítico) — ver zonas históricas en 📈 Historial</div>
   </div>
   <div class="kpi-card ka">
-    <div class="kpi-value">{perm_prom:.1f} m</div>
-    <div class="kpi-label">Antigüedad promedio activos</div>
-    <div class="kpi-sub">Era 18m hace 10 años</div>
+    <div class="kpi-value">{perm_egreso_prom:.1f} m</div>
+    <div class="kpi-label">Permanencia promedio al egreso</div>
+    <div class="kpi-sub">Cuánto duran los que se van · era 18m hace 10 años</div>
   </div>
   <div class="kpi-card ki">
     <div class="kpi-value" style="color:#4A90D9">{ob_critico}</div>

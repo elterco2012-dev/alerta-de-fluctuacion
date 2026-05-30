@@ -113,6 +113,42 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
     except Exception:
         actividad = pd.DataFrame()
 
+    # ── 4. Ausencias (Reactor) ─────────────────────────────────────────────
+    try:
+        ausencias = pd.read_sql("""
+            SELECT au.*
+            FROM ausencias_mensual au
+            JOIN vendedores v ON au.id_vendedor = v.id_vendedor
+            WHERE v.activo = 1
+            ORDER BY au.id_vendedor, au.anio DESC, au.mes DESC
+        """, con)
+    except Exception:
+        ausencias = pd.DataFrame()
+
+    # ── 5. Balanza de clientes (Informix vía ETL) ─────────────────────────
+    try:
+        balanza = pd.read_sql("""
+            SELECT bc.*
+            FROM balanza_clientes bc
+            JOIN vendedores v ON bc.id_vendedor = v.id_vendedor
+            WHERE v.activo = 1
+            ORDER BY bc.id_vendedor, bc.anio DESC, bc.mes DESC
+        """, con)
+    except Exception:
+        balanza = pd.DataFrame()
+
+    # ── 6. Acompañamiento del supervisor (Reactor) ─────────────────────────
+    try:
+        acompanamiento = pd.read_sql("""
+            SELECT ac.*
+            FROM acompanamiento_mensual ac
+            JOIN vendedores v ON ac.id_vendedor = v.id_vendedor
+            WHERE v.activo = 1
+            ORDER BY ac.id_vendedor, ac.anio DESC, ac.mes DESC
+        """, con)
+    except Exception:
+        acompanamiento = pd.DataFrame()
+
     con.close()
 
     # Fecha de referencia: usar la fecha actual

@@ -289,13 +289,22 @@ elif filtro == "Viajantes":
 elif filtro == "Televentas":
     df = df[df.tipo == "Televentas"]
 
-busqueda_sc = st.text_input("", placeholder="🔍 Buscar por nombre o número de vendedor...", key="busq_score", label_visibility="collapsed")
+# Filtro por supervisor
+supervisores_disp = sorted([s for s in scores_df["supervisor"].dropna().unique() if s])
+col_busq, col_sup = st.columns([3, 2])
+with col_busq:
+    busqueda_sc = st.text_input("", placeholder="🔍 Buscar por nombre o número de vendedor...", key="busq_score", label_visibility="collapsed")
+with col_sup:
+    sup_sel = st.selectbox("", ["Todos los supervisores"] + supervisores_disp, key="sup_score", label_visibility="collapsed")
+
+if sup_sel != "Todos los supervisores":
+    df = df[df["supervisor"] == sup_sel]
 if busqueda_sc:
     mask = (df["nombre"].str.contains(busqueda_sc, case=False, na=False) |
             df["id_vendedor"].astype(str).str.contains(busqueda_sc, na=False))
     df_show = df[mask]
 else:
-    df_show = df.head(10)
+    df_show = df.head(5)
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
 rows = ""
@@ -308,7 +317,7 @@ for _, r in df_show.iterrows():
     <tr>
       <td>
         <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-        <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div>
+        <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{r['pct_plan_3m']}%</b></td>
@@ -330,8 +339,9 @@ st.markdown(f"""
 <tbody>{rows}</tbody>
 </table>
 </div>""", unsafe_allow_html=True)
-if busqueda_sc:
-    st.caption(f"Resultados para '{busqueda_sc}': {len(df_show)} vendedores encontrados")
+if busqueda_sc or sup_sel != "Todos los supervisores":
+    st.caption(f"{len(df_show)} vendedores encontrados")
+
 else:
     st.caption(f"Top 10 de {len(df)} vendedores. Usá el buscador para filtrar.")
 

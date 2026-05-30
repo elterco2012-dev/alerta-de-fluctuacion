@@ -296,14 +296,11 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
                 señales[11].activa = True
                 riesgo_total += señales[11].peso
 
-        # Señal 13: balanza de clientes negativa 2+ meses consecutivos
+        # Señal 13: balanza negativa los últimos 2 meses Y pérdida neta > 3 clientes
+        # Umbral más estricto para evitar falsos positivos (70% de meses son negativos)
         if not bal_vid.empty and "balanza" in bal_vid.columns and len(bal_vid) >= 2:
-            balanzas = bal_vid["balanza"].values
-            negativos_consecutivos = sum(
-                1 for i in range(len(balanzas) - 1)
-                if balanzas[i] < 0 and balanzas[i + 1] < 0
-            )
-            if negativos_consecutivos >= 1:
+            ultimos_2 = bal_vid["balanza"].values[:2]  # más recientes primero (orden DESC)
+            if all(b < 0 for b in ultimos_2) and ultimos_2.sum() < -3:
                 señales[12].activa = True
                 riesgo_total += señales[12].peso
 

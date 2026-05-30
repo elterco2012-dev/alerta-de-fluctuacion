@@ -126,10 +126,39 @@ if args.diagnostico:
     icon.close()
     sys.exit(0)
 
+# ── 0. Fechas reales de vendedores desde f040 ─────────────────────────────────
+print("\n[0/4] Fechas reales de vendedores (f040)...", end=" ", flush=True)
+icur.execute("""
+    SELECT vertr, eintrdat, austrdat
+    FROM f040
+""")
+f040_dates = {}
+for row in icur.fetchall():
+    try:
+        vid = int(row[0])
+    except (TypeError, ValueError):
+        continue
+    eintr = row[1]
+    austr = row[2]
+    # pyodbc devuelve date objects o None; convertir a string ISO
+    def _to_iso(d):
+        if not d:
+            return None
+        s = str(d)[:10]
+        # Descartar fechas inválidas (año 0001, 1900, etc.)
+        if s[:4] in ("0001", "0000", "1900"):
+            return None
+        return s
+    eintr_str = _to_iso(eintr)
+    austr_str = _to_iso(austr)
+    if eintr_str:
+        f040_dates[vid] = {"eintrdat": eintr_str, "austrdat": austr_str}
+print(f"OK — {len(f040_dates)} registros en f040")
+
 # ── 1. Clientes nuevos desde sbas (primera venta del vendedor a ese cliente) ──
 # Más confiable que adrchr.erfuser que almacena username de texto, no vertr1.
 # "Nuevo" = primer mes en que vertr1 vendió a kdnr (dentro del período analizado).
-print("\n[1/3] Clientes nuevos (primera venta en sbas)...", end=" ", flush=True)
+print("\n[1/4] Clientes nuevos (primera venta en sbas)...", end=" ", flush=True)
 # Buscamos la primera aparición histórica de cada (vertr1, kdnr)
 # ya cargada en el paso 2; se calcula en Python al procesar historial.
 nuevos_data = {}  # se completará al procesar historial en el paso 2
@@ -140,7 +169,7 @@ print("OK — se calculará al procesar sbas")
 fecha_historico = hoy - timedelta(days=(MESES_ATRAS + 13) * 30)
 anio_hist       = fecha_historico.year
 
-print(f"[2/3] Historial sbas (desde {anio_hist})...", end=" ", flush=True)
+print(f"[2/4] Historial sbas (desde {anio_hist})...", end=" ", flush=True)
 icur.execute(f"""
     SELECT vertr1, kdnr, bujahr, bumonat, SUM(netwert), COUNT(artnr)
     FROM sbas
@@ -178,7 +207,7 @@ for vid in historial:
 print(f"OK — {total_rows:,} filas, {sum(nuevos_data.values())} clientes nuevos detectados")
 
 # ── 3. Calcular balanza ────────────────────────────────────────────────────────
-print("[3/3] Calculando reactivados / perdidos...", end=" ", flush=True)
+print("[3/4] Calculando reactivados / perdidos...", end=" ", flush=True)
 
 def meses_diff(a1, m1, a2, m2):
     return (a2 * 12 + m2) - (a1 * 12 + m1)
@@ -291,6 +320,24 @@ for k in sorted(todas_keys):
     insertados += 1
 
 lcon.commit()
+
+# ── [4/4] Actualizar fechas reales de vendedores desde f040 ──────────────────
+print("\n[4/4] Actualizando fechas ingreso/egreso en vendedores (f040)...", end=" ", flush=True)
+actualiz = 0
+for vid, fechas in f040_dates.items():
+    eintr = fechas["eintrdat"]
+    austr = fechas["austrdat"]
+    activo = 0 if austr else 1
+    lcur.execute("""
+        UPDATE vendedores
+        SET fecha_ingreso = ?, fecha_egreso = ?, activo = ?
+        WHERE id_vendedor = ?
+    """, (eintr, austr, activo, vid))
+    if lcur.rowcount > 0:
+        actualiz += 1
+lcon.commit()
+print(f"OK — {actualiz} vendedores actualizados")
+
 lcon.close()
 
 print(f"\n✓ {insertados} filas insertadas/actualizadas en balanza_clientes")

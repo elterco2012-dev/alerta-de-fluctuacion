@@ -239,6 +239,31 @@ for vid, clientes in historial.items():
                 balanza_data[k_p]["perdidos"] += 1
 
 print(f"OK — {len(balanza_data)} filas")
+
+# ── [3b] Plan de ventas y clientes activos (vplan) ────────────────────────────
+print("[3b/4] Plan de ventas vplan...", end=" ", flush=True)
+vplan_data = {}
+try:
+    icur.execute(f"""
+        SELECT vertr, bujahr, bumonat, planums, aktivkd
+        FROM vplan
+        WHERE bujahr >= {anio_inicio}
+          AND vertr IN {IN_ACTIVOS}
+    """)
+    for row in icur.fetchall():
+        try:
+            vid_v, anio_v, mes_v, planums, aktivkd = row
+            vid_v = int(vid_v); anio_v = int(anio_v); mes_v = int(mes_v)
+            vplan_data[(vid_v, anio_v, mes_v)] = {
+                "plan":             float(planums or 0),
+                "clientes_activos": int(aktivkd or 0),
+            }
+        except (TypeError, ValueError):
+            continue
+    print(f"OK — {len(vplan_data)} filas")
+except Exception as e:
+    print(f"AVISO: no se pudo leer vplan ({e})")
+
 icon.close()
 
 todas_keys = set(nuevos_data) | set(balanza_data) | set(ticket_data)
@@ -320,6 +345,89 @@ for k in sorted(todas_keys):
     insertados += 1
 
 lcon.commit()
+
+# ── [3c] Actualizar ventas_mensual con datos reales de Informix ───────────────
+print("\n[3c/4] Actualizando ventas_mensual (venta_total + plan + clientes)...", end=" ", flush=True)
+from datetime import date as _date
+
+# Fechas de ingreso para calcular mes_numero
+lcur.execute("SELECT id_vendedor, fecha_ingreso FROM vendedores")
+fecha_ingreso_map = {r[0]: r[1] for r in lcur.fetchall()}
+
+lcur.execute("""
+    CREATE TABLE IF NOT EXISTS ventas_mensual (
+        id_vendedor        INTEGER NOT NULL,
+        anio               INTEGER NOT NULL,
+        mes                INTEGER NOT NULL,
+        mes_numero         INTEGER DEFAULT 0,
+        dias_trabajados    INTEGER DEFAULT 20,
+        dias_venta_cero    INTEGER DEFAULT 0,
+        venta_total        REAL DEFAULT 0,
+        plan               REAL DEFAULT 0,
+        pct_plan           REAL DEFAULT 0,
+        clientes_activos   INTEGER DEFAULT 0,
+        clientes_inactivos INTEGER DEFAULT 0,
+        clientes_nuevos    INTEGER DEFAULT 0,
+        total_clientes     INTEGER DEFAULT 0,
+        cobranza_teorica   REAL DEFAULT 0,
+        cobranza_real      REAL DEFAULT 0,
+        pct_cobranza       REAL DEFAULT 0,
+        dias_cobro         REAL DEFAULT 0,
+        cheques_rechazados INTEGER DEFAULT 0,
+        PRIMARY KEY (id_vendedor, anio, mes)
+    )
+""")
+
+vm_upsert = """
+    INSERT INTO ventas_mensual
+        (id_vendedor, anio, mes, mes_numero,
+         venta_total, plan, pct_plan,
+         clientes_activos, total_clientes, clientes_nuevos)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
+        mes_numero       = excluded.mes_numero,
+        venta_total      = excluded.venta_total,
+        plan             = excluded.plan,
+        pct_plan         = excluded.pct_plan,
+        clientes_activos = excluded.clientes_activos,
+        total_clientes   = excluded.total_clientes,
+        clientes_nuevos  = excluded.clientes_nuevos
+"""
+
+# Solo el período de análisis (sin el extra histórico para balanza)
+todas_keys_vm = {k for k in (set(ticket_data) | set(vplan_data))
+                 if (k[1] * 12 + k[2]) >= (anio_inicio * 12 + mes_inicio)}
+
+vm_count = 0
+for k in sorted(todas_keys_vm):
+    vid, anio, mes = k
+    td  = ticket_data.get(k, {})
+    vp  = vplan_data.get(k, {})
+    venta_total      = td.get("importe", 0)
+    plan             = vp.get("plan", 0)
+    clientes_activos = vp.get("clientes_activos", 0)
+    pct_plan         = round(venta_total / plan * 100, 1) if plan > 0 else 0.0
+    clientes_nuevos  = nuevos_data.get(k, 0)
+
+    fi_str = fecha_ingreso_map.get(vid)
+    mes_numero = 0
+    if fi_str:
+        try:
+            fi = _date.fromisoformat(str(fi_str)[:10])
+            mes_numero = max(1, (anio - fi.year) * 12 + (mes - fi.month) + 1)
+        except Exception:
+            pass
+
+    lcur.execute(vm_upsert, (
+        vid, anio, mes, mes_numero,
+        round(venta_total, 2), round(plan, 2), pct_plan,
+        clientes_activos, clientes_activos,
+        clientes_nuevos,
+    ))
+    vm_count += 1
+
+lcon.commit()
+print(f"OK — {vm_count} filas en ventas_mensual")
 
 # ── [4/4] Actualizar fechas reales de vendedores desde f040 ──────────────────
 print("\n[4/4] Actualizando fechas ingreso/egreso en vendedores (f040)...", end=" ", flush=True)

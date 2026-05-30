@@ -91,15 +91,17 @@ def cargar_historial():
 
     # Supervisor y cantidad de vendedores activos por grupo (excluye supervisores)
     sup_df = pd.read_sql("""
-        SELECT nombre_grupo, supervisor, COUNT(*) as n_activos
-        FROM vendedores
-        WHERE activo = 1
-          AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
-          AND nombre NOT IN (
+        SELECT v.nombre_grupo, v.supervisor, COUNT(*) as n_activos,
+               s.id_vendedor as sup_id
+        FROM vendedores v
+        LEFT JOIN vendedores s ON s.nombre = v.supervisor
+        WHERE v.activo = 1
+          AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
+          AND v.nombre NOT IN (
               SELECT DISTINCT supervisor FROM vendedores
               WHERE supervisor IS NOT NULL AND supervisor != ''
           )
-        GROUP BY nombre_grupo, supervisor
+        GROUP BY v.nombre_grupo, v.supervisor, s.id_vendedor
     """, con)
     con.close()
 
@@ -126,13 +128,16 @@ def cargar_historial():
     # Mapa grupo → supervisor principal y cantidad activa
     sup_map = {}
     cnt_map = {}
+    sup_id_map = {}
     for grp, g in sup_df.groupby("nombre_grupo"):
         idx = g["n_activos"].idxmax()
         s = g.loc[idx, "supervisor"]
+        sup_id = g.loc[idx, "sup_id"] if "sup_id" in g.columns else None
         sup_map[grp] = s if pd.notna(s) and s else ""
+        sup_id_map[grp] = int(sup_id) if pd.notna(sup_id) and sup_id else None
         cnt_map[grp] = int(g["n_activos"].sum())
 
-    return df[df["permanencia_meses"] > 0].copy(), sup_map, cnt_map
+    return df[df["permanencia_meses"] > 0].copy(), sup_map, cnt_map, sup_id_map
 
 
 @st.cache_data(ttl=600)
@@ -170,7 +175,7 @@ def cargar_rotacion_anual():
 
 
 with st.spinner("Cargando historial..."):
-    df, sup_map, cnt_map = cargar_historial()
+    df, sup_map, cnt_map, sup_id_map = cargar_historial()
     rotacion_anual = cargar_rotacion_anual()
 
 if df.empty:
@@ -404,8 +409,9 @@ zona_stats["pct_rotacion_rapida"] = (
 ).round(1)
 zona_stats = zona_stats[zona_stats["total"] >= 2].sort_values("pct_rotacion_rapida", ascending=False)
 
-# Añadir supervisor y cantidad activa
+# Añadir supervisor, su ID y cantidad activa
 zona_stats["supervisor_grupo"] = zona_stats["nombre_grupo"].map(sup_map).fillna("")
+zona_stats["sup_id_grupo"]     = zona_stats["nombre_grupo"].map(sup_id_map)
 zona_stats["activos_hoy"]      = zona_stats["nombre_grupo"].map(cnt_map).fillna(0).astype(int)
 
 # Solo mostrar grupos con al menos un vendedor activo hoy
@@ -420,9 +426,11 @@ else:
 def _y_label(row):
     grp = row["nombre_grupo"]
     sup = row["supervisor_grupo"]
+    sup_id = row.get("sup_id_grupo", None)
     cnt = row["activos_hoy"]
-    if sup and cnt:
-        return f"{grp}<br><span style='font-size:11px'>{sup} ({cnt})</span>"
+    sup_label = f"{sup} ({sup_id})" if sup and sup_id else (sup if sup else "")
+    if sup_label and cnt:
+        return f"{grp}<br><span style='font-size:11px'>{sup_label} · {cnt} activos</span>"
     if cnt:
         return f"{grp}<br>({cnt} activos)"
     return grp

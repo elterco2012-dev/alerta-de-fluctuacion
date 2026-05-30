@@ -56,6 +56,9 @@ def cargar_actividad():
                   SELECT DISTINCT supervisor FROM vendedores
                   WHERE supervisor IS NOT NULL AND supervisor != ''
               )
+              AND (am.anio * 100 + am.mes) <= CAST(strftime('%Y%m', 'now') AS INTEGER)
+              AND (v.fecha_ingreso IS NULL OR v.fecha_ingreso <= date('now'))
+              AND am.id_vendedor != 9800
             ORDER BY am.anio DESC, am.mes DESC
         """, con)
     except Exception:
@@ -215,7 +218,7 @@ def ranking_df(df_tipo, col_plan, col_ejec, col_total):
         return pd.DataFrame()
     df_r = df_tipo.copy()
     df_r["cumpl_%"] = df_r.apply(
-        lambda r: round(r[col_total] / r[col_plan] * 100) if r[col_plan] > 0 else None,
+        lambda r: int(round(r[col_total] / r[col_plan] * 100)) if r[col_plan] > 0 else 0,
         axis=1,
     )
     df_r["espontaneas"] = df_r[col_total] - df_r[col_ejec]

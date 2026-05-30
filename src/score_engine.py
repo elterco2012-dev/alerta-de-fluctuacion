@@ -86,6 +86,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         JOIN grupos g ON v.id_grupo = g.id_grupo
         WHERE v.activo = 1
           AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
+          AND v.id_vendedor != 9800
           AND v.nombre NOT IN (
               SELECT DISTINCT supervisor FROM vendedores
               WHERE supervisor IS NOT NULL AND supervisor != ''
@@ -188,7 +189,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
             Señal("visitas_bajas",         peso=1.5, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
             Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
             Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
-            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio con tendencia bajista"),
+            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
             Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
         ]
 
@@ -295,24 +296,22 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
                 señales[11].activa = True
                 riesgo_total += señales[11].peso
 
-        # Señal 13: balanza de clientes negativa 2+ meses consecutivos
+        # Señal 13: balanza negativa los últimos 2 meses Y pérdida neta > 3 clientes
+        # Umbral más estricto para evitar falsos positivos (70% de meses son negativos)
         if not bal_vid.empty and "balanza" in bal_vid.columns and len(bal_vid) >= 2:
-            balanzas = bal_vid["balanza"].values
-            negativos_consecutivos = sum(
-                1 for i in range(len(balanzas) - 1)
-                if balanzas[i] < 0 and balanzas[i + 1] < 0
-            )
-            if negativos_consecutivos >= 1:
+            ultimos_2 = bal_vid["balanza"].values[:2]  # más recientes primero (orden DESC)
+            if all(b < 0 for b in ultimos_2) and ultimos_2.sum() < -3:
                 señales[12].activa = True
                 riesgo_total += señales[12].peso
 
-        # Señal 14: ticket promedio con tendencia bajista
+        # Señal 14: ticket promedio con tendencia bajista (> 5% del promedio por mes)
         if not bal_vid.empty and "ticket_promedio" in bal_vid.columns and len(bal_vid) >= 2:
             tickets = bal_vid["ticket_promedio"].replace(0, float("nan")).dropna().values
             if len(tickets) >= 2:
                 x_t = np.arange(len(tickets))
                 pend_ticket = np.polyfit(x_t[::-1], tickets, 1)[0]
-                if pend_ticket < -50:  # cae más de $50 por mes
+                mean_ticket = tickets.mean()
+                if mean_ticket > 0 and (-pend_ticket / mean_ticket) > 0.05:
                     señales[13].activa = True
                     riesgo_total += señales[13].peso
 

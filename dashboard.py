@@ -184,7 +184,7 @@ def cargar_datos():
           AND fecha_egreso IS NOT NULL
           AND fecha_ingreso IS NOT NULL
           AND fecha_egreso != fecha_ingreso
-          AND fecha_egreso >= date('now', '-12 months')
+          AND fecha_ingreso >= date('now', '-12 months')
     """, con)
     con.close()
 
@@ -289,9 +289,17 @@ elif filtro == "Viajantes":
 elif filtro == "Televentas":
     df = df[df.tipo == "Televentas"]
 
+busqueda_sc = st.text_input("", placeholder="🔍 Buscar por nombre o número de vendedor...", key="busq_score", label_visibility="collapsed")
+if busqueda_sc:
+    mask = (df["nombre"].str.contains(busqueda_sc, case=False, na=False) |
+            df["id_vendedor"].astype(str).str.contains(busqueda_sc, na=False))
+    df_show = df[mask]
+else:
+    df_show = df.head(10)
+
 # ── Tabla principal ────────────────────────────────────────────────────────────
 rows = ""
-for _, r in df.iterrows():
+for _, r in df_show.iterrows():
     vid   = int(r["id_vendedor"])
     nivel = r["nivel_riesgo"]
     zona_n = _zona_nivel(r["grupo_riesgo_base"])
@@ -322,7 +330,42 @@ st.markdown(f"""
 <tbody>{rows}</tbody>
 </table>
 </div>""", unsafe_allow_html=True)
-st.caption(f"Mostrando {len(df)} vendedores")
+if busqueda_sc:
+    st.caption(f"Resultados para '{busqueda_sc}': {len(df_show)} vendedores encontrados")
+else:
+    st.caption(f"Top 10 de {len(df)} vendedores. Usá el buscador para filtrar.")
+
+with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.markdown("""
+**% Plan 3m**
+Promedio de `venta_real / objetivo * 100` de los últimos 3 meses del vendedor.
+Por ejemplo: si vendió 80%, 75% y 70% en los últimos 3 meses → % Plan 3m = 75%.
+
+**Tendencia (barras mini)**
+Cada barra = % Plan de ese mes (izquierda = más antiguo, derecha = más reciente).
+🟢 Verde ≥ 90% · 🟠 Naranja ≥ 70% · 🔴 Rojo < 70%
+
+**Score (1–10)**
+Suma de señales activas ponderadas, normalizada a escala 1–10.
+Solo se usa la tendencia de los últimos 3 meses, no un dato puntual.
+""")
+    with col_e2:
+        st.markdown("""
+**Señales y sus umbrales**
+
+| Señal | Se activa cuando |
+|---|---|
+| `caída 3m` | El % Plan cae de forma sostenida (pendiente < −3 pts/mes) |
+| `plan<80%` | Promedio % Plan últimos 3 meses está por debajo del 80% |
+| `días cero+` | Más de 3 días sin registrar ninguna venta en promedio |
+| `cobranza baja` | Cobranza real < 90% de la cobranza teórica esperada |
+| `onboarding` | Vendedor en sus primeros 3 meses (riesgo muy alto) |
+| `mes 4-6` | Vendedor entre el mes 4 y 6 (riesgo alto) |
+| `zona quemada` | El grupo tiene rotación histórica elevada (> 60%) |
+| `clientes L:0` | Cero clientes nuevos en los últimos 2 meses |
+""")
 
 with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
     col_e1, col_e2 = st.columns(2)
@@ -366,25 +409,42 @@ with col1:
                 unsafe_allow_html=True)
     zonas = grupos_df.sort_values("permanencia_promedio_meses", na_position="last")
 
-    zona_cards = ""
-    for _, g in zonas.iterrows():
-        perm  = g["permanencia_promedio_meses"]
-        rb    = g.get("riesgo_base", 0.5)
-        nivel = _zona_nivel(rb) if pd.notna(rb) else "medio"
-        perm_str = f"{perm:.1f}m" if pd.notna(perm) else "—"
-        zona_cards += f"""
-        <div class="zc">
-          <div>
-            <div class="zn">{g['nombre_grupo']}</div>
-            <div class="zsb">{int(g['total_vendedores'])} vendedores históricos · perm. prom. {perm_str}</div>
-          </div>
-          <div class="zr">
-            <div class="zpct">{g['cumplimiento_plan_promedio']:.0f}% plan</div>
-            {_bdg(nivel)}
-          </div>
-        </div>"""
+    # Search
+    busqueda_z = st.text_input("", placeholder="🔍 Buscar supervisor o grupo...", key="busq_zona", label_visibility="collapsed")
+    if busqueda_z:
+        zonas_fil = zonas[zonas.apply(lambda r:
+            busqueda_z.lower() in str(r["nombre_grupo"]).lower() or
+            busqueda_z.lower() in str(r.get("supervisor","")).lower(), axis=1)]
+    else:
+        zonas_fil = zonas
 
-    st.markdown(f'<div class="card">{zona_cards}</div>', unsafe_allow_html=True)
+    def _zona_cards_html(subset):
+        cards = ""
+        for _, g in subset.iterrows():
+            perm  = g["permanencia_promedio_meses"]
+            rb    = g.get("riesgo_base", 0.5)
+            nivel = _zona_nivel(rb) if pd.notna(rb) else "medio"
+            perm_str = f"{perm:.1f}m" if pd.notna(perm) else "—"
+            sup_str = f" · {g['supervisor']}" if pd.notna(g.get('supervisor','')) and g.get('supervisor','') else ""
+            cards += f"""
+            <div class="zc">
+              <div>
+                <div class="zn">{g['nombre_grupo']}{sup_str}</div>
+                <div class="zsb">{int(g['total_vendedores'])} vendedores históricos · perm. prom. {perm_str}</div>
+              </div>
+              <div class="zr">
+                <div class="zpct">{g['cumplimiento_plan_promedio']:.0f}% plan</div>
+                {_bdg(nivel)}
+              </div>
+            </div>"""
+        return cards
+
+    top5_zonas = zonas_fil.head(5)
+    resto_zonas = zonas_fil.iloc[5:]
+    st.markdown(f'<div class="card">{_zona_cards_html(top5_zonas)}</div>', unsafe_allow_html=True)
+    if not resto_zonas.empty:
+        with st.expander(f"Ver {len(resto_zonas)} grupos más"):
+            st.markdown(f'<div class="card">{_zona_cards_html(resto_zonas)}</div>', unsafe_allow_html=True)
 
 with col2:
     st.markdown('<div class="sec-header">⏱️ Ventanas críticas de permanencia</div>',
@@ -450,21 +510,33 @@ if not onb.empty:
         "Mes 4-6: el vendedor ya tiene cartera asignada pero aún no alcanzó velocidad de crucero."
     )
 
-    ob_rows = ""
-    for _, r in onb.iterrows():
-        rb     = r["grupo_riesgo_base"]
-        z_n    = _zona_nivel(rb)
-        z_l    = _zona_label(rb)
-        nivel  = r["nivel_riesgo"]
-        ob_rows += f"""
-        <tr>
-          <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
-          <td>{r['tipo']}</td>
-          <td>{_fmt_antiguedad(r['meses_activo'])}</td>
-          <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>
-          <td><b>{r['pct_plan_3m']}%</b></td>
-          <td>{_bdg(nivel)}</td>
-        </tr>"""
+    busqueda_onb = st.text_input("", placeholder="🔍 Buscar vendedor en onboarding...", key="busq_onb", label_visibility="collapsed")
+    if busqueda_onb:
+        onb_show = onb[onb["nombre"].str.contains(busqueda_onb, case=False, na=False) |
+                       onb["id_vendedor"].astype(str).str.contains(busqueda_onb, na=False)]
+    else:
+        onb_show = onb
+
+    def _onb_rows_html(subset):
+        rows = ""
+        for _, r in subset.iterrows():
+            rb    = r["grupo_riesgo_base"]
+            z_n   = _zona_nivel(rb)
+            z_l   = _zona_label(rb)
+            nivel = r["nivel_riesgo"]
+            rows += f"""
+            <tr>
+              <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
+              <td>{r['tipo']}</td>
+              <td>{_fmt_antiguedad(r['meses_activo'])}</td>
+              <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>
+              <td><b>{r['pct_plan_3m']}%</b></td>
+              <td>{_bdg(nivel)}</td>
+            </tr>"""
+        return rows
+
+    top5_onb = onb_show.head(5)
+    resto_onb = onb_show.iloc[5:]
 
     st.markdown(f"""
     <div class="card">
@@ -473,6 +545,19 @@ if not onb.empty:
       <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
       <th>Zona asignada</th><th>% Plan 3m</th><th>Riesgo</th>
     </tr></thead>
-    <tbody>{ob_rows}</tbody>
+    <tbody>{_onb_rows_html(top5_onb)}</tbody>
+    </table>
+    </div>""", unsafe_allow_html=True)
+
+    if not resto_onb.empty:
+        with st.expander(f"Ver {len(resto_onb)} vendedores más en onboarding"):
+            st.markdown(f"""
+    <div class="card">
+    <table class="ot">
+    <thead><tr>
+      <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
+      <th>Zona asignada</th><th>% Plan 3m</th><th>Riesgo</th>
+    </tr></thead>
+    <tbody>{_onb_rows_html(resto_onb)}</tbody>
     </table>
     </div>""", unsafe_allow_html=True)

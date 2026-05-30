@@ -86,6 +86,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
         JOIN grupos g ON v.id_grupo = g.id_grupo
         WHERE v.activo = 1
           AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
+          AND v.id_vendedor != 9800
           AND v.nombre NOT IN (
               SELECT DISTINCT supervisor FROM vendedores
               WHERE supervisor IS NOT NULL AND supervisor != ''

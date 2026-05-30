@@ -203,7 +203,7 @@ st.markdown(f"""<div class="kpi-row">
   <div class="kpi-card ko">
     <div class="kpi-value">{perm_bajas:.0f} m</div>
     <div class="kpi-label">Permanencia mediana — dados de baja</div>
-    <div class="kpi-sub">La mitad de los que se fueron lo hizo antes de este mes · Era 18m hace 10 años</div>
+    <div class="kpi-sub">Toda la historia · la mitad se fue antes, la mitad después · no se distorsiona por casos extremos · era 18m hace 10 años</div>
   </div>
   <div class="kpi-card kr">
     <div class="kpi-value">{pct_menos6:.0f}%</div>

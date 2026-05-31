@@ -253,7 +253,7 @@ st.markdown(f"""
   <div class="kpi-card ka">
     <div class="kpi-value">{perm_egreso_prom:.1f} m</div>
     <div class="kpi-label">Permanencia promedio al egreso</div>
-    <div class="kpi-sub">Últimos 12 meses · era 18m hace 10 años</div>
+    <div class="kpi-sub">Solo últimos 12 meses · puede variar si hay pocos casos · mediana histórica (más robusta) está en Historial</div>
   </div>
   <div class="kpi-card ki">
     <div class="kpi-value" style="color:#4A90D9">{ob_critico}</div>

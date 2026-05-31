@@ -239,6 +239,95 @@ for vid, clientes in historial.items():
                 balanza_data[k_p]["perdidos"] += 1
 
 print(f"OK — {len(balanza_data)} filas")
+
+# ── [3b] Plan de ventas y clientes activos (vplan) ────────────────────────────
+print("[3b/4] Plan de ventas vplan...", end=" ", flush=True)
+vplan_data = {}
+try:
+    icur.execute(f"""
+        SELECT vertr, bujahr, bumonat, planums, aktivkd
+        FROM vplan
+        WHERE bujahr >= {anio_inicio}
+          AND vertr IN {IN_ACTIVOS}
+    """)
+    for row in icur.fetchall():
+        try:
+            vid_v, anio_v, mes_v, planums, aktivkd = row
+            vid_v = int(vid_v); anio_v = int(anio_v); mes_v = int(mes_v)
+            vplan_data[(vid_v, anio_v, mes_v)] = {
+                "plan":             float(planums or 0),
+                "clientes_activos": int(aktivkd or 0),
+            }
+        except (TypeError, ValueError):
+            continue
+    print(f"OK — {len(vplan_data)} filas")
+except Exception as e:
+    print(f"AVISO: no se pudo leer vplan ({e})")
+
+# ── [3b2/4] Portfolio total por vendedor (kund) ───────────────────────────────
+print("[3b2/4] Portfolio de clientes por vendedor (kund)...", end=" ", flush=True)
+kund_total = {}  # vid → total_clientes en cartera
+try:
+    icur.execute(f"""
+        SELECT vertr1, COUNT(kdnr)
+        FROM kund
+        WHERE firma = {FIRMA}
+          AND vertr1 IN {IN_ACTIVOS}
+        GROUP BY 1
+    """)
+    for row in icur.fetchall():
+        try:
+            kund_total[int(row[0])] = int(row[1])
+        except (TypeError, ValueError):
+            continue
+    print(f"OK — {len(kund_total)} vendedores en kund")
+except Exception as e:
+    print(f"AVISO: no se pudo leer kund ({e})")
+
+# ── [3b3/4] Días con venta por vendedor/mes (sbas.budat) ─────────────────────
+print("[3b3/4] Días con venta (sbas.budat)...", end=" ", flush=True)
+dias_con_venta = {}  # (vid, anio, mes) → int
+try:
+    icur.execute(f"""
+        SELECT vertr1, bujahr, bumonat, COUNT(*)
+        FROM (
+            SELECT DISTINCT vertr1, bujahr, bumonat, budat
+            FROM sbas
+            WHERE firma = {FIRMA}
+              AND bujahr >= {anio_inicio}
+              AND vertr1 IN {IN_ACTIVOS}
+        ) t
+        GROUP BY 1, 2, 3
+    """)
+    for row in icur.fetchall():
+        try:
+            vid_d, anio_d, mes_d, dias = row
+            dias_con_venta[(int(vid_d), int(anio_d), int(mes_d))] = int(dias)
+        except (TypeError, ValueError):
+            continue
+    print(f"OK — {len(dias_con_venta)} filas")
+except Exception as e:
+    print(f"AVISO: no se pudo leer días de sbas ({e}) — dias_venta_cero quedará en 0")
+
+# ── [3b4/4] Días hábiles por mes (works_days_log) ────────────────────────────
+print("[3b4/4] Días hábiles (works_days_log)...", end=" ", flush=True)
+dias_habiles = {}  # (anio, mes) → int
+try:
+    icur.execute("""
+        SELECT YEAR(fecha), MONTH(fecha), COUNT(fecha)
+        FROM works_days_log
+        WHERE fecha >= ?
+        GROUP BY 1, 2
+    """, fecha_desde_dt)
+    for row in icur.fetchall():
+        try:
+            dias_habiles[(int(row[0]), int(row[1]))] = int(row[2])
+        except (TypeError, ValueError):
+            continue
+    print(f"OK — {len(dias_habiles)} meses cargados")
+except Exception as e:
+    print(f"AVISO: no se pudo leer works_days_log ({e}) — se usará 20 días/mes por defecto")
+
 icon.close()
 
 todas_keys = set(nuevos_data) | set(balanza_data) | set(ticket_data)
@@ -321,6 +410,101 @@ for k in sorted(todas_keys):
 
 lcon.commit()
 
+# ── [3c] Actualizar ventas_mensual con datos reales de Informix ───────────────
+print("\n[3c/4] Actualizando ventas_mensual (venta_total + plan + clientes)...", end=" ", flush=True)
+from datetime import date as _date
+
+# Fechas de ingreso para calcular mes_numero
+lcur.execute("SELECT id_vendedor, fecha_ingreso FROM vendedores")
+fecha_ingreso_map = {r[0]: r[1] for r in lcur.fetchall()}
+
+lcur.execute("""
+    CREATE TABLE IF NOT EXISTS ventas_mensual (
+        id_vendedor        INTEGER NOT NULL,
+        anio               INTEGER NOT NULL,
+        mes                INTEGER NOT NULL,
+        mes_numero         INTEGER DEFAULT 0,
+        dias_trabajados    INTEGER DEFAULT 20,
+        dias_venta_cero    INTEGER DEFAULT 0,
+        venta_total        REAL DEFAULT 0,
+        plan               REAL DEFAULT 0,
+        pct_plan           REAL DEFAULT 0,
+        clientes_activos   INTEGER DEFAULT 0,
+        clientes_inactivos INTEGER DEFAULT 0,
+        clientes_nuevos    INTEGER DEFAULT 0,
+        total_clientes     INTEGER DEFAULT 0,
+        cobranza_teorica   REAL DEFAULT 0,
+        cobranza_real      REAL DEFAULT 0,
+        pct_cobranza       REAL DEFAULT 0,
+        dias_cobro         REAL DEFAULT 0,
+        cheques_rechazados INTEGER DEFAULT 0,
+        PRIMARY KEY (id_vendedor, anio, mes)
+    )
+""")
+
+vm_upsert = """
+    INSERT INTO ventas_mensual
+        (id_vendedor, anio, mes, mes_numero,
+         venta_total, plan, pct_plan,
+         clientes_activos, clientes_inactivos, total_clientes,
+         clientes_nuevos, dias_venta_cero)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
+        mes_numero         = excluded.mes_numero,
+        venta_total        = excluded.venta_total,
+        plan               = excluded.plan,
+        pct_plan           = excluded.pct_plan,
+        clientes_activos   = excluded.clientes_activos,
+        clientes_inactivos = excluded.clientes_inactivos,
+        total_clientes     = excluded.total_clientes,
+        clientes_nuevos    = excluded.clientes_nuevos,
+        dias_venta_cero    = excluded.dias_venta_cero
+"""
+
+# Solo el período de análisis (sin el extra histórico para balanza)
+todas_keys_vm = {k for k in (set(ticket_data) | set(vplan_data))
+                 if (k[1] * 12 + k[2]) >= (anio_inicio * 12 + mes_inicio)}
+
+vm_count = 0
+for k in sorted(todas_keys_vm):
+    vid, anio, mes = k
+    td  = ticket_data.get(k, {})
+    vp  = vplan_data.get(k, {})
+    venta_total = td.get("importe", 0)
+    plan        = vp.get("plan", 0)
+    # clientes_activos: clientes que facturaron este mes (fuente real: sbas)
+    clientes_activos   = len(td.get("clientes", set()))
+    # total_clientes: cartera asignada al vendedor (fuente: kund, snapshot actual)
+    total_clientes     = kund_total.get(vid, max(clientes_activos, 1))
+    clientes_inactivos = max(0, total_clientes - clientes_activos)
+    pct_plan           = round(venta_total / plan * 100, 1) if plan > 0 else 0.0
+    clientes_nuevos    = nuevos_data.get(k, 0)
+
+    # dias_venta_cero: días hábiles sin ninguna factura (fuente: sbas.budat + works_days_log)
+    dcv             = dias_con_venta.get(k, None)
+    dh              = dias_habiles.get((anio, mes), 20)
+    dias_venta_cero = max(0, dh - dcv) if dcv is not None else 0
+
+    fi_str = fecha_ingreso_map.get(vid)
+    mes_numero = 0
+    if fi_str:
+        try:
+            fi = _date.fromisoformat(str(fi_str)[:10])
+            mes_numero = max(1, (anio - fi.year) * 12 + (mes - fi.month) + 1)
+        except Exception:
+            pass
+
+    lcur.execute(vm_upsert, (
+        vid, anio, mes, mes_numero,
+        round(venta_total, 2), round(plan, 2), pct_plan,
+        clientes_activos, clientes_inactivos, total_clientes,
+        clientes_nuevos, dias_venta_cero,
+    ))
+    vm_count += 1
+
+lcon.commit()
+print(f"OK — {vm_count} filas en ventas_mensual")
+
 # ── [4/4] Actualizar fechas reales de vendedores desde f040 ──────────────────
 print("\n[4/4] Actualizando fechas ingreso/egreso en vendedores (f040)...", end=" ", flush=True)
 actualiz = 0
@@ -337,6 +521,37 @@ for vid, fechas in f040_dates.items():
         actualiz += 1
 lcon.commit()
 print(f"OK — {actualiz} vendedores actualizados")
+
+# ── [5/4] Recalcular riesgo_base por grupo desde datos reales ─────────────────
+# riesgo_base = % de vendedores del grupo que se fueron en menos de 6 meses
+print("\n[5/4] Recalculando riesgo_base de grupos...", end=" ", flush=True)
+lcur.execute("SELECT id_grupo FROM grupos")
+grupos_ids = [r[0] for r in lcur.fetchall()]
+actualizados_riesgo = 0
+for gid in grupos_ids:
+    lcur.execute("""
+        SELECT COUNT(*) AS total,
+               SUM(CASE
+                   WHEN activo = 0
+                     AND fecha_egreso IS NOT NULL
+                     AND fecha_egreso != fecha_ingreso
+                     AND CAST((julianday(fecha_egreso) - julianday(fecha_ingreso)) / 30.0 AS INTEGER) < 6
+                   THEN 1 ELSE 0
+               END) AS bajas_rapidas
+        FROM vendedores
+        WHERE id_grupo = ?
+          AND fecha_ingreso IS NOT NULL
+          AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
+          AND id_vendedor != 9800
+    """, (gid,))
+    row = lcur.fetchone()
+    total         = row[0] or 0
+    bajas_rapidas = row[1] or 0
+    riesgo = round(bajas_rapidas / total, 3) if total > 0 else 0.5
+    lcur.execute("UPDATE grupos SET riesgo_base = ? WHERE id_grupo = ?", (riesgo, gid))
+    actualizados_riesgo += lcur.rowcount
+lcon.commit()
+print(f"OK — {actualizados_riesgo} grupos actualizados con datos reales")
 
 lcon.close()
 

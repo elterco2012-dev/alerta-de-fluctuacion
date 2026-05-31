@@ -285,30 +285,44 @@ try:
 except Exception as e:
     print(f"AVISO: no se pudo leer kund ({e})")
 
-# ── [3b3/4] Días con venta por vendedor/mes (sbas.budat) ─────────────────────
-print("[3b3/4] Días con venta (sbas.budat)...", end=" ", flush=True)
+# ── [3b3/4] Días con venta por vendedor/mes (sbas, campo fecha auto-detectado) ─
+print("[3b3/4] Días con venta (sbas)...", end=" ", flush=True)
 dias_con_venta = {}  # (vid, anio, mes) → int
-try:
-    icur.execute(f"""
-        SELECT vertr1, bujahr, bumonat, COUNT(*)
-        FROM (
-            SELECT DISTINCT vertr1, bujahr, bumonat, budat
+_sbas_date_field = None
+for _campo in ("budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
+    try:
+        icur.execute(f"SELECT FIRST 1 {_campo} FROM sbas WHERE firma = {FIRMA}")
+        icur.fetchone()
+        _sbas_date_field = _campo
+        break
+    except Exception:
+        continue
+
+if _sbas_date_field:
+    try:
+        icur.execute(f"""
+            SELECT vertr1, bujahr, bumonat, {_sbas_date_field}
             FROM sbas
             WHERE firma = {FIRMA}
               AND bujahr >= {anio_inicio}
               AND vertr1 IN {IN_ACTIVOS}
-        ) t
-        GROUP BY 1, 2, 3
-    """)
-    for row in icur.fetchall():
-        try:
-            vid_d, anio_d, mes_d, dias = row
-            dias_con_venta[(int(vid_d), int(anio_d), int(mes_d))] = int(dias)
-        except (TypeError, ValueError):
-            continue
-    print(f"OK — {len(dias_con_venta)} filas")
-except Exception as e:
-    print(f"AVISO: no se pudo leer días de sbas ({e}) — dias_venta_cero quedará en 0")
+              AND {_sbas_date_field} IS NOT NULL
+        """)
+        from collections import defaultdict as _dd
+        _days_set = _dd(set)
+        for row in icur.fetchall():
+            try:
+                vid_d, anio_d, mes_d, fecha_d = row
+                _days_set[(int(vid_d), int(anio_d), int(mes_d))].add(str(fecha_d)[:10])
+            except (TypeError, ValueError):
+                continue
+        for k, dset in _days_set.items():
+            dias_con_venta[k] = len(dset)
+        print(f"OK — campo '{_sbas_date_field}', {len(dias_con_venta)} filas")
+    except Exception as e:
+        print(f"AVISO: no se pudo leer días de sbas ({e}) — dias_venta_cero quedará en 0")
+else:
+    print("AVISO: no se encontró campo de fecha en sbas — dias_venta_cero quedará en 0")
 
 # ── [3b4/4] Días hábiles por mes (works_days_log) ────────────────────────────
 print("[3b4/4] Días hábiles (works_days_log)...", end=" ", flush=True)
@@ -442,6 +456,23 @@ lcur.execute("""
         PRIMARY KEY (id_vendedor, anio, mes)
     )
 """)
+# Si la tabla fue creada por el simulador sin PRIMARY KEY compuesto, agregar el índice único
+lcur.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_vm_unique
+    ON ventas_mensual (id_vendedor, anio, mes)
+""")
+# Si la tabla existía con esquema viejo, agregar columnas nuevas que puedan faltar
+for _col, _def in [
+    ("clientes_inactivos", "INTEGER DEFAULT 0"),
+    ("total_clientes",     "INTEGER DEFAULT 0"),
+    ("dias_venta_cero",    "INTEGER DEFAULT 0"),
+    ("cobranza_teorica",   "REAL DEFAULT 0"),
+]:
+    try:
+        lcur.execute(f"ALTER TABLE ventas_mensual ADD COLUMN {_col} {_def}")
+    except Exception:
+        pass  # columna ya existe
+lcon.commit()
 
 vm_upsert = """
     INSERT INTO ventas_mensual

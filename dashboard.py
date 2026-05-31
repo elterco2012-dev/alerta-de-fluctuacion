@@ -459,7 +459,7 @@ col1, col2 = st.columns([1, 1.6])
 with col1:
     st.markdown('<div class="sec-header">📍 Zonas con mayor rotación histórica</div>',
                 unsafe_allow_html=True)
-    zonas = grupos_df[grupos_df["activos_hoy"] > 0].sort_values("permanencia_promedio_meses", na_position="last")
+    zonas = grupos_df[grupos_df["activos_hoy"] > 0].sort_values("riesgo_base", ascending=False, na_position="last")
 
     # Search
     busqueda_z = st.text_input("", placeholder="🔍 Buscar supervisor o grupo...", key="busq_zona", label_visibility="collapsed")
@@ -542,7 +542,7 @@ with col2:
 # Mes 1-3: riesgo muy alto (57% de bajas de toda la carrera ocurren acá)
 # Mes 4-6: riesgo alto (se requiere seguimiento activo del supervisor)
 # A partir del mes 7 el riesgo cae significativamente.
-onb = scores_df[scores_df.meses_activo <= 6].sort_values("score", ascending=False)
+onb = scores_df[scores_df.meses_activo <= 6].sort_values(["score", "grupo_riesgo_base"], ascending=[False, False])
 
 if not onb.empty:
     st.markdown("<br>", unsafe_allow_html=True)

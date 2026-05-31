@@ -90,9 +90,11 @@ def cargar_historial():
     """, con)
 
     # Supervisor y cantidad de vendedores activos por grupo (excluye supervisores)
+    # sup_activo: 1 si el supervisor sigue activo, 0 si ya no trabaja
     sup_df = pd.read_sql("""
         SELECT v.nombre_grupo, v.supervisor, COUNT(*) as n_activos,
-               s.id_vendedor as sup_id
+               s.id_vendedor as sup_id,
+               COALESCE(s.activo, 0) as sup_activo
         FROM vendedores v
         LEFT JOIN vendedores s ON s.nombre = v.supervisor
         WHERE v.activo = 1
@@ -101,7 +103,7 @@ def cargar_historial():
               SELECT DISTINCT supervisor FROM vendedores
               WHERE supervisor IS NOT NULL AND supervisor != ''
           )
-        GROUP BY v.nombre_grupo, v.supervisor, s.id_vendedor
+        GROUP BY v.nombre_grupo, v.supervisor, s.id_vendedor, s.activo
     """, con)
     con.close()
 
@@ -130,12 +132,18 @@ def cargar_historial():
     cnt_map = {}
     sup_id_map = {}
     for grp, g in sup_df.groupby("nombre_grupo"):
-        idx = g["n_activos"].idxmax()
-        s = g.loc[idx, "supervisor"]
-        sup_id = g.loc[idx, "sup_id"] if "sup_id" in g.columns else None
-        sup_map[grp] = s if pd.notna(s) and s else ""
-        sup_id_map[grp] = int(sup_id) if pd.notna(sup_id) and sup_id else None
         cnt_map[grp] = int(g["n_activos"].sum())
+        # Solo usar supervisores activos; si ya no trabaja, dejar el campo vacío
+        g_act = g[g["sup_activo"] == 1] if "sup_activo" in g.columns else g
+        if g_act.empty:
+            sup_map[grp] = ""
+            sup_id_map[grp] = None
+            continue
+        idx = g_act["n_activos"].idxmax()
+        s = g_act.loc[idx, "supervisor"]
+        sup_id = g_act.loc[idx, "sup_id"] if "sup_id" in g_act.columns else None
+        sup_map[grp] = s if pd.notna(s) and s else ""
+        sup_id_map[grp] = int(sup_id) if sup_id is not None and pd.notna(sup_id) else None
 
     return df[df["permanencia_meses"] > 0].copy(), sup_map, cnt_map, sup_id_map
 
@@ -426,7 +434,9 @@ else:
 def _y_label(row):
     grp = row["nombre_grupo"]
     sup = row["supervisor_grupo"]
-    sup_id = row.get("sup_id_grupo", None)
+    raw_id = row.get("sup_id_grupo", None)
+    # pandas guarda int como float64 cuando hay NaN en la columna — convertir a int
+    sup_id = int(raw_id) if raw_id is not None and not (isinstance(raw_id, float) and pd.isna(raw_id)) else None
     cnt = row["activos_hoy"]
     sup_label = f"{sup} ({sup_id})" if sup and sup_id else (sup if sup else "")
     if sup_label and cnt:

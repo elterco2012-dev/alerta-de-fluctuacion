@@ -108,28 +108,81 @@ header { display: none; }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 SEÑAL_TAGS = {
-    "% Plan cayendo 3 meses seguidos":    ("caída 3m",     "red"),
-    "% Plan < 80% promedio últimos meses":("plan<80%",     "orange"),
-    "Días sin venta > 3 en promedio":     ("días cero↑",   "red"),
-    "< 60% de cartera activa":            ("inactivos↑",   "orange"),
-    "Cobranza real < 90% de teórica":     ("cobranza baja","orange"),
-    "En ventana crítica mes 1-3":         ("onboarding",   "red"),
-    "En ventana crítica mes 4-6":         ("mes 4-6",      "orange"),
-    "Grupo con alta rotación histórica":  ("zona quemada", "orange"),
-    "Sin clientes nuevos últimos 2 meses":("clientes L:0", "yellow"),
+    "% Plan cayendo 3 meses seguidos":
+        ("caída 3m", "red",
+         "El % de cumplimiento de plan cayó de forma sostenida los últimos 3 meses (pendiente < −3 pts/mes)"),
+    "% Plan < 80% promedio últimos meses":
+        ("plan<80%", "orange",
+         "El promedio de cumplimiento de plan de los últimos 3 meses está por debajo del 80%"),
+    "Días sin venta > 3 en promedio":
+        ("días cero↑", "red",
+         "Más de 3 días hábiles sin registrar ninguna venta en promedio mensual"),
+    "< 60% de cartera activa":
+        ("inactivos↑", "orange",
+         "Menos del 60% de los clientes de su cartera realizaron alguna compra en el período"),
+    "Cobranza real < 90% de teórica":
+        ("cobranza baja", "orange",
+         "La cobranza cobrada está por debajo del 90% del plan de cobranza (planumsk de vplan)"),
+    "En ventana crítica mes 1-3":
+        ("inducción", "red",
+         "El vendedor lleva entre 1 y 3 meses en la empresa — período de mayor riesgo (históricamente >50% de las renuncias ocurren acá)"),
+    "En ventana crítica mes 4-6":
+        ("mes 4-6", "orange",
+         "El vendedor lleva entre 4 y 6 meses — segundo período crítico antes de estabilizarse"),
+    "Grupo con alta rotación histórica":
+        ("zona quemada", "orange",
+         "Más del 60% de los vendedores históricos de este grupo se fueron en menos de 6 meses"),
+    "Sin clientes nuevos últimos 2 meses":
+        ("clientes L:0", "yellow",
+         "No captó ningún cliente nuevo en los últimos 2 meses consecutivos"),
+    "< 70% de llamadas planificadas gestionadas (Televentas)":
+        ("< 70% llamadas", "orange",
+         "Gestionó menos del 70% de las llamadas planificadas en Reactor CRM (promedio últimos 3 meses)"),
+    "< 70% de visitas planificadas realizadas (Viajante)":
+        ("< 70% visitas", "orange",
+         "Realizó menos del 70% de las visitas planificadas en Reactor CRM (promedio últimos 3 meses)"),
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3":
+        ("ausencias↑", "red",
+         "Más de 2 días/mes de ausencias no justificadas como vacaciones en los primeros 3 meses"),
+    "Balanza clientes negativa 2+ meses consecutivos":
+        ("balanza neg.", "orange",
+         "Perdió más clientes de los que ganó en los últimos 2 meses (pérdida neta > 3 clientes)"),
+    "Ticket promedio cae > 5% por mes":
+        ("ticket↓", "yellow",
+         "El importe promedio por cliente cayó más del 5% mensual en los últimos 3 meses"),
+    "Supervisor no acompañó en ventana crítica 1-6":
+        ("sin acomp.", "orange",
+         "El supervisor no registró ninguna visita de acompañamiento en Reactor durante los primeros 6 meses del vendedor"),
+}
+
+_NIVEL_TOOLTIP = {
+    "critico": "CRÍTICO (score 8-10): señal de fuga inminente — acción inmediata del supervisor",
+    "alto":    "ALTO (score 6-7): riesgo elevado — seguimiento activo esta semana",
+    "medio":   "MEDIO (score 4-5): riesgo moderado — monitoreo mensual",
+    "bajo":    "BAJO (score 1-3): riesgo bajo — seguimiento normal",
+}
+
+_ZONA_TOOLTIP = {
+    "critico": "Rot. alta: más del 60% de vendedores históricos de este grupo se fueron en menos de 6 meses",
+    "alto":    "Rot. alta: entre 45% y 60% se fueron en menos de 6 meses",
+    "medio":   "Rot. media: entre 30% y 45% se fueron en menos de 6 meses",
+    "bajo":    "Rot. baja: menos del 30% se fueron en menos de 6 meses — zona más estable",
 }
 
 def _pills(tags):
     if not tags:
         return '<span style="color:#ccc;font-size:12px;">Sin alertas</span>'
-    return "".join(
-        f'<span class="pill pill-{SEÑAL_TAGS.get(d, (d,"yellow"))[1]}">'
-        f'{SEÑAL_TAGS.get(d, (d,"yellow"))[0]}</span>'
-        for d in tags
-    )
+    parts = []
+    for d in tags:
+        entry = SEÑAL_TAGS.get(d, (d, "yellow", d))
+        label, color = entry[0], entry[1]
+        tooltip = entry[2] if len(entry) > 2 else d
+        parts.append(f'<span class="pill pill-{color}" title="{tooltip}">{label}</span>')
+    return "".join(parts)
 
 def _score_circle(score, nivel):
-    return f'<div class="sc sc-{nivel}">{int(score)}</div>'
+    tip = _NIVEL_TOOLTIP.get(nivel, "")
+    return f'<div class="sc sc-{nivel}" title="{tip}">{int(score)}</div>'
 
 def _spark(vals):
     if not vals:
@@ -144,7 +197,8 @@ def _spark(vals):
 
 def _bdg(nivel, label=None):
     labels = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "bajo": "Bajo"}
-    return f'<span class="bdg bdg-{nivel}">{label or labels[nivel]}</span>'
+    tip = _ZONA_TOOLTIP.get(nivel, "")
+    return f'<span class="bdg bdg-{nivel}" title="{tip}">{label or labels[nivel]}</span>'
 
 def _zona_nivel(riesgo_base):
     if riesgo_base > 0.60: return "critico"
@@ -186,7 +240,6 @@ def cargar_datos():
           AND fecha_egreso != fecha_ingreso
           AND fecha_ingreso >= date('now', '-12 months')
     """, con)
-    con.close()
 
     egresados["fecha_ingreso"] = pd.to_datetime(egresados["fecha_ingreso"], errors="coerce")
     egresados["fecha_egreso"]  = pd.to_datetime(egresados["fecha_egreso"],  errors="coerce")
@@ -194,6 +247,28 @@ def cargar_datos():
     perm_egreso = egresados["meses"].mean() if len(egresados) else 0
 
     grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
+
+    # Fallback: grupos no en la tabla grupos (ej. Televentas) reciben riesgo_base
+    # calculado directamente desde vendedores (% que se fueron en < 6 meses)
+    if grupos["riesgo_base"].isna().any():
+        rb_fallback = pd.read_sql("""
+            SELECT nombre_grupo,
+                   ROUND(CAST(SUM(CASE WHEN activo=0 AND fecha_egreso IS NOT NULL
+                        AND fecha_egreso != fecha_ingreso
+                        AND CAST((julianday(fecha_egreso)-julianday(fecha_ingreso))/30.0 AS INTEGER) < 6
+                        THEN 1 ELSE 0 END) AS REAL) / NULLIF(COUNT(*), 0), 3) AS rb
+            FROM vendedores
+            WHERE fecha_ingreso IS NOT NULL
+              AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
+              AND id_vendedor != 9800
+            GROUP BY nombre_grupo
+        """, con)
+        grupos = grupos.merge(rb_fallback, on="nombre_grupo", how="left")
+        mask_nan = grupos["riesgo_base"].isna()
+        grupos.loc[mask_nan, "riesgo_base"] = grupos.loc[mask_nan, "rb"].fillna(0.35)
+        grupos = grupos.drop(columns=["rb"], errors="ignore")
+
+    con.close()
     return scores, grupos, sparks, ventanas, perm_egreso
 
 scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom = cargar_datos()
@@ -303,17 +378,23 @@ if busqueda_sc:
     mask = (df["nombre"].str.contains(busqueda_sc, case=False, na=False) |
             df["id_vendedor"].astype(str).str.contains(busqueda_sc, na=False))
     df_show = df[mask]
+    df_extra = pd.DataFrame()
+elif sup_sel != "Todos los supervisores":
+    df_show = df          # mostrar todos los vendedores del supervisor seleccionado
+    df_extra = pd.DataFrame()
 else:
     df_show = df.head(5)
+    df_extra = df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
-rows = ""
-for _, r in df_show.iterrows():
-    vid   = int(r["id_vendedor"])
-    nivel = r["nivel_riesgo"]
-    zona_n = _zona_nivel(r["grupo_riesgo_base"])
-    zona_l = _zona_label(r["grupo_riesgo_base"])
-    rows += f"""
+def _tabla_rows(subset):
+    rows = ""
+    for _, r in subset.iterrows():
+        vid    = int(r["id_vendedor"])
+        nivel  = r["nivel_riesgo"]
+        zona_n = _zona_nivel(r["grupo_riesgo_base"])
+        zona_l = _zona_label(r["grupo_riesgo_base"])
+        rows += f"""
     <tr>
       <td>
         <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
@@ -328,54 +409,36 @@ for _, r in df_show.iterrows():
       </td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
+    return rows
 
-st.markdown(f"""
+def _tabla_html(rows_html):
+    return f"""
 <div class="card" style="margin-bottom:6px;overflow-x:auto;">
 <table class="vt">
 <thead><tr>
-  <th>Vendedor</th><th>Señales detectadas</th><th>% Plan 3m</th>
-  <th>Tendencia</th><th>Zona</th><th>Score</th>
+  <th>Vendedor</th>
+  <th>Señales detectadas <span style="font-weight:400;color:#bbb;font-size:10px;">— pasá el mouse sobre cada señal para ver la explicación</span></th>
+  <th title="Promedio de venta÷objetivo×100 de los últimos 3 meses">% Plan 3m</th>
+  <th title="3 barras = % Plan de los últimos 3 meses (izq→der). Verde ≥90% · Naranja ≥70% · Rojo &lt;70%">Tendencia ⓘ</th>
+  <th title="Rot. baja: &lt;30% se fue en &lt;6m · Rot. media: 30-45% · Rot. alta: &gt;45%">Zona ⓘ</th>
+  <th title="Crítico 8-10: acción inmediata · Alto 6-7: seguimiento activo · Medio 4-5: monitoreo mensual · Bajo 1-3: seguimiento normal">Score ⓘ</th>
 </tr></thead>
-<tbody>{rows}</tbody>
+<tbody>{rows_html}</tbody>
 </table>
-</div>""", unsafe_allow_html=True)
-if busqueda_sc or sup_sel != "Todos los supervisores":
-    st.caption(f"{len(df_show)} vendedores encontrados")
+</div>"""
 
+st.markdown(_tabla_html(_tabla_rows(df_show)), unsafe_allow_html=True)
+
+if not df_extra.empty:
+    with st.expander(f"Ver {len(df_extra)} vendedores más"):
+        st.markdown(_tabla_html(_tabla_rows(df_extra)), unsafe_allow_html=True)
+
+if busqueda_sc:
+    st.caption(f"{len(df_show)} vendedores encontrados.")
+elif sup_sel != "Todos los supervisores":
+    st.caption(f"{len(df_show)} vendedor{'es' if len(df_show) != 1 else ''} de {sup_sel}.")
 else:
-    st.caption(f"Top 10 de {len(df)} vendedores. Usá el buscador para filtrar.")
-
-with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
-    col_e1, col_e2 = st.columns(2)
-    with col_e1:
-        st.markdown("""
-**% Plan 3m**
-Promedio de `venta_real / objetivo * 100` de los últimos 3 meses del vendedor.
-Por ejemplo: si vendió 80%, 75% y 70% en los últimos 3 meses → % Plan 3m = 75%.
-
-**Tendencia (barras mini)**
-Cada barra = % Plan de ese mes (izquierda = más antiguo, derecha = más reciente).
-🟢 Verde ≥ 90% · 🟠 Naranja ≥ 70% · 🔴 Rojo < 70%
-
-**Score (1–10)**
-Suma de señales activas ponderadas, normalizada a escala 1–10.
-Solo se usa la tendencia de los últimos 3 meses, no un dato puntual.
-""")
-    with col_e2:
-        st.markdown("""
-**Señales y sus umbrales**
-
-| Señal | Se activa cuando |
-|---|---|
-| `caída 3m` | El % Plan cae de forma sostenida (pendiente < −3 pts/mes) |
-| `plan<80%` | Promedio % Plan últimos 3 meses está por debajo del 80% |
-| `días cero+` | Más de 3 días sin registrar ninguna venta en promedio |
-| `cobranza baja` | Cobranza real < 90% de la cobranza teórica esperada |
-| `onboarding` | Vendedor en sus primeros 3 meses (riesgo muy alto) |
-| `mes 4-6` | Vendedor entre el mes 4 y 6 (riesgo alto) |
-| `zona quemada` | El grupo tiene rotación histórica elevada (> 60%) |
-| `clientes L:0` | Cero clientes nuevos en los últimos 2 meses |
-""")
+    st.caption(f"Top 5 de {len(df)} vendedores. Usá el buscador o filtrá por supervisor para ver más.")
 
 with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
     col_e1, col_e2 = st.columns(2)
@@ -417,7 +480,7 @@ col1, col2 = st.columns([1, 1.6])
 with col1:
     st.markdown('<div class="sec-header">📍 Zonas con mayor rotación histórica</div>',
                 unsafe_allow_html=True)
-    zonas = grupos_df.sort_values("permanencia_promedio_meses", na_position="last")
+    zonas = grupos_df[grupos_df["activos_hoy"] > 0].sort_values("riesgo_base", ascending=False, na_position="last")
 
     # Search
     busqueda_z = st.text_input("", placeholder="🔍 Buscar supervisor o grupo...", key="busq_zona", label_visibility="collapsed")
@@ -490,7 +553,7 @@ with col2:
         font=dict(size=11),
     )
     st.caption(
-        "🔴 Mes 1-3 (onboarding) · 🟠 Mes 4-6 (adaptación) · ⬜ Mes 7-12 · "
+        "🔴 Mes 1-3 (inducción) · 🟠 Mes 4-6 (adaptación) · ⬜ Mes 7-12 · "
         f"Vendedores que renunciaron con más de 18 meses: {m19_total} (no se muestran para preservar escala)"
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -500,7 +563,7 @@ with col2:
 # Mes 1-3: riesgo muy alto (57% de bajas de toda la carrera ocurren acá)
 # Mes 4-6: riesgo alto (se requiere seguimiento activo del supervisor)
 # A partir del mes 7 el riesgo cae significativamente.
-onb = scores_df[scores_df.meses_activo <= 6].sort_values("score", ascending=False)
+onb = scores_df[scores_df.meses_activo <= 6].sort_values(["score", "grupo_riesgo_base"], ascending=[False, False])
 
 if not onb.empty:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -534,12 +597,14 @@ if not onb.empty:
             z_n   = _zona_nivel(rb)
             z_l   = _zona_label(rb)
             nivel = r["nivel_riesgo"]
+            # ⚠️ alerta extra cuando zona de alta rotación + onboarding (riesgo estructural)
+            warn  = " ⚠️" if z_n in ("critico", "alto") else ""
             rows += f"""
             <tr>
               <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
               <td>{r['tipo']}</td>
               <td>{_fmt_antiguedad(r['meses_activo'])}</td>
-              <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>
+              <td>{r['nombre_grupo']} {_bdg(z_n, z_l + warn)}</td>
               <td><b>{r['pct_plan_3m']}%</b></td>
               <td>{_bdg(nivel)}</td>
             </tr>"""

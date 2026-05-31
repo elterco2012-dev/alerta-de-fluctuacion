@@ -164,20 +164,19 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 
-# ── Nav ────────────────────────────────────────────────────────────────────────
-cols_nav = st.columns([2, 1, 1, 1])
-with cols_nav[0]:
-    st.markdown("### 💰 Costo de Rotación")
-with cols_nav[1]:
-    if st.button("← Volver al inicio"):
-        st.switch_page("dashboard.py")
-with cols_nav[2]:
-    if st.button("👤 Por Supervisor"):
-        st.switch_page("pages/Supervisor.py")
-with cols_nav[3]:
-    pass
-
-st.markdown("---")
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
+  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">💰 Costo de Rotación — Wurth Argentina</div>
+  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
+    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
+    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
+    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
+    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
+    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ── Datos ──────────────────────────────────────────────────────────────────────

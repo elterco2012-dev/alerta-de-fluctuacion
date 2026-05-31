@@ -107,15 +107,22 @@ if not hay_datos_demo():
     cargar_demo(scores_df)
     st.cache_data.clear()
 
-# ── Navegación ─────────────────────────────────────────────────────────────────
-nav1, nav2, _ = st.columns([1, 1, 5])
-with nav1:
-    st.page_link("dashboard.py", label="← Dashboard", icon="📊")
-with nav2:
-    st.page_link("pages/Supervisor.py", label="👤 Supervisores")
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
+  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">📝 Intervenciones — Wurth Argentina</div>
+  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
+    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
+    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
+    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
+    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
+    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("""
-<div style="margin-bottom:24px;margin-top:12px;">
+<div style="margin-bottom:24px;">
   <div style="font-size:22px;font-weight:800;color:#1a1a2e;">📝 Registro de intervenciones</div>
   <div style="font-size:14px;color:#888;margin-top:4px;">
     Documentá qué acción se tomó sobre cada vendedor en riesgo y medí el impacto real

@@ -222,11 +222,11 @@ def ranking_df(df_tipo, col_plan, col_ejec, col_total):
         axis=1,
     )
     df_r["espontaneas"] = df_r[col_total] - df_r[col_ejec]
+    df_r["Vendedor"] = df_r["nombre"] + " (" + df_r["id_vendedor"].astype(int).astype(str) + ")"
     return (
-        df_r[["nombre", "supervisor", "nombre_grupo", col_plan, col_ejec, "espontaneas", col_total, "cumpl_%"]]
+        df_r[["Vendedor", "supervisor", "nombre_grupo", col_plan, col_ejec, "espontaneas", col_total, "cumpl_%"]]
         .sort_values("cumpl_%", ascending=True)
         .rename(columns={
-            "nombre": "Vendedor",
             "supervisor": "Supervisor",
             "nombre_grupo": "Grupo",
             col_plan: "Planificadas",

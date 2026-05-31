@@ -245,18 +245,19 @@ print("[3b/4] Plan de ventas vplan...", end=" ", flush=True)
 vplan_data = {}
 try:
     icur.execute(f"""
-        SELECT vertr, bujahr, bumonat, planums, aktivkd
+        SELECT vertr, bujahr, bumonat, planums, planumsk, aktivkd
         FROM vplan
         WHERE bujahr >= {anio_inicio}
           AND vertr IN {IN_ACTIVOS}
     """)
     for row in icur.fetchall():
         try:
-            vid_v, anio_v, mes_v, planums, aktivkd = row
+            vid_v, anio_v, mes_v, planums, planumsk, aktivkd = row
             vid_v = int(vid_v); anio_v = int(anio_v); mes_v = int(mes_v)
             vplan_data[(vid_v, anio_v, mes_v)] = {
-                "plan":             float(planums or 0),
-                "clientes_activos": int(aktivkd or 0),
+                "plan":             float(planums  or 0),
+                "plan_cobranza":    float(planumsk or 0),
+                "clientes_activos": int(aktivkd   or 0),
             }
         except (TypeError, ValueError):
             continue
@@ -447,8 +448,8 @@ vm_upsert = """
         (id_vendedor, anio, mes, mes_numero,
          venta_total, plan, pct_plan,
          clientes_activos, clientes_inactivos, total_clientes,
-         clientes_nuevos, dias_venta_cero)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         clientes_nuevos, dias_venta_cero, cobranza_teorica)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_vendedor, anio, mes) DO UPDATE SET
         mes_numero         = excluded.mes_numero,
         venta_total        = excluded.venta_total,
@@ -458,7 +459,8 @@ vm_upsert = """
         clientes_inactivos = excluded.clientes_inactivos,
         total_clientes     = excluded.total_clientes,
         clientes_nuevos    = excluded.clientes_nuevos,
-        dias_venta_cero    = excluded.dias_venta_cero
+        dias_venta_cero    = excluded.dias_venta_cero,
+        cobranza_teorica   = excluded.cobranza_teorica
 """
 
 # Solo el período de análisis (sin el extra histórico para balanza)
@@ -485,6 +487,9 @@ for k in sorted(todas_keys_vm):
     dh              = dias_habiles.get((anio, mes), 20)
     dias_venta_cero = max(0, dh - dcv) if dcv is not None else 0
 
+    # cobranza_teorica desde vplan.planumsk (plan de cobranza oficial)
+    plan_cobranza = vp.get("plan_cobranza", 0)
+
     fi_str = fecha_ingreso_map.get(vid)
     mes_numero = 0
     if fi_str:
@@ -498,7 +503,7 @@ for k in sorted(todas_keys_vm):
         vid, anio, mes, mes_numero,
         round(venta_total, 2), round(plan, 2), pct_plan,
         clientes_activos, clientes_inactivos, total_clientes,
-        clientes_nuevos, dias_venta_cero,
+        clientes_nuevos, dias_venta_cero, round(plan_cobranza, 2),
     ))
     vm_count += 1
 

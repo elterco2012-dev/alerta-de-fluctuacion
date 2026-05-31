@@ -272,9 +272,12 @@ for (vid, anio, mes), datos in sun_data.items():
     venta_sun     = datos["venta_sun"]
 
     if clave in existing:
-        # Usar venta_total de Informix si existe y no es 0; si no, usar la de SUN
-        venta_inf = existing[clave]["venta_total"]
-        cobr_teo  = venta_inf if venta_inf and venta_inf > 0 else venta_sun
+        # Jerarquía: planumsk (vplan) > venta_total Informix > venta SUN
+        cobr_teo_plan = existing[clave]["cobr_teo"]
+        venta_inf     = existing[clave]["venta_total"]
+        cobr_teo = (cobr_teo_plan if cobr_teo_plan and cobr_teo_plan > 0
+                    else venta_inf  if venta_inf  and venta_inf  > 0
+                    else venta_sun)
 
         pct_cobr = round(cobranza_real / cobr_teo * 100, 1) if cobr_teo > 0 else 0.0
 

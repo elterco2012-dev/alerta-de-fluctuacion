@@ -175,18 +175,19 @@ supervisor_sel = st.query_params.get("supervisor", None)
 # LANDING
 # ══════════════════════════════════════════════════════════════════════════════
 if not supervisor_sel:
-    nav_col, _ = st.columns([1, 4])
-    with nav_col:
-        st.page_link("dashboard.py", label="← Dashboard principal", icon="📊")
-
     st.markdown("""
-    <div style="margin-bottom:28px;margin-top:12px;">
-      <div style="font-size:22px;font-weight:800;color:#1a1a2e;">👤 Vista por supervisor</div>
-      <div style="font-size:14px;color:#888;margin-top:4px;">
-        Seleccioná tu zona para ver tus vendedores y alertas activas
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
+  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">👤 Por supervisor — Wurth Argentina</div>
+  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
+    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
+    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
+    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
+    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
+    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     resumen = scores_df.groupby("supervisor").agg(
         activos  =("id_vendedor", "count"),
@@ -261,15 +262,23 @@ perm_zona    = grupo_info["permanencia_promedio_meses"].values[0] if not grupo_i
 perm_general = grupos_df["permanencia_promedio_meses"].mean()
 
 # Navegación
-nav1, nav2, nav3, _ = st.columns([1, 1, 1, 3])
-with nav1:
-    st.page_link("dashboard.py", label="← Dashboard", icon="📊")
-with nav2:
+nav_b, _ = st.columns([1, 5])
+with nav_b:
     if st.button("← Todas las zonas"):
         st.query_params.clear()
         st.rerun()
-with nav3:
-    st.page_link("pages/Intervenciones.py", label="📝 Intervenciones")
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #eee;">
+  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
+    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
+    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
+    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
+    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
+    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Header
 st.markdown(f"""

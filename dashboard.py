@@ -124,7 +124,7 @@ SEÑAL_TAGS = {
         ("cobranza baja", "orange",
          "La cobranza cobrada está por debajo del 90% del plan de cobranza (planumsk de vplan)"),
     "En ventana crítica mes 1-3":
-        ("onboarding", "red",
+        ("inducción", "red",
          "El vendedor lleva entre 1 y 3 meses en la empresa — período de mayor riesgo (históricamente >50% de las renuncias ocurren acá)"),
     "En ventana crítica mes 4-6":
         ("mes 4-6", "orange",
@@ -240,7 +240,6 @@ def cargar_datos():
           AND fecha_egreso != fecha_ingreso
           AND fecha_ingreso >= date('now', '-12 months')
     """, con)
-    con.close()
 
     egresados["fecha_ingreso"] = pd.to_datetime(egresados["fecha_ingreso"], errors="coerce")
     egresados["fecha_egreso"]  = pd.to_datetime(egresados["fecha_egreso"],  errors="coerce")
@@ -248,6 +247,28 @@ def cargar_datos():
     perm_egreso = egresados["meses"].mean() if len(egresados) else 0
 
     grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
+
+    # Fallback: grupos no en la tabla grupos (ej. Televentas) reciben riesgo_base
+    # calculado directamente desde vendedores (% que se fueron en < 6 meses)
+    if grupos["riesgo_base"].isna().any():
+        rb_fallback = pd.read_sql("""
+            SELECT nombre_grupo,
+                   ROUND(CAST(SUM(CASE WHEN activo=0 AND fecha_egreso IS NOT NULL
+                        AND fecha_egreso != fecha_ingreso
+                        AND CAST((julianday(fecha_egreso)-julianday(fecha_ingreso))/30.0 AS INTEGER) < 6
+                        THEN 1 ELSE 0 END) AS REAL) / NULLIF(COUNT(*), 0), 3) AS rb
+            FROM vendedores
+            WHERE fecha_ingreso IS NOT NULL
+              AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
+              AND id_vendedor != 9800
+            GROUP BY nombre_grupo
+        """, con)
+        grupos = grupos.merge(rb_fallback, on="nombre_grupo", how="left")
+        mask_nan = grupos["riesgo_base"].isna()
+        grupos.loc[mask_nan, "riesgo_base"] = grupos.loc[mask_nan, "rb"].fillna(0.35)
+        grupos = grupos.drop(columns=["rb"], errors="ignore")
+
+    con.close()
     return scores, grupos, sparks, ventanas, perm_egreso
 
 scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom = cargar_datos()
@@ -532,7 +553,7 @@ with col2:
         font=dict(size=11),
     )
     st.caption(
-        "🔴 Mes 1-3 (onboarding) · 🟠 Mes 4-6 (adaptación) · ⬜ Mes 7-12 · "
+        "🔴 Mes 1-3 (inducción) · 🟠 Mes 4-6 (adaptación) · ⬜ Mes 7-12 · "
         f"Vendedores que renunciaron con más de 18 meses: {m19_total} (no se muestran para preservar escala)"
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -576,12 +597,14 @@ if not onb.empty:
             z_n   = _zona_nivel(rb)
             z_l   = _zona_label(rb)
             nivel = r["nivel_riesgo"]
+            # ⚠️ alerta extra cuando zona de alta rotación + onboarding (riesgo estructural)
+            warn  = " ⚠️" if z_n in ("critico", "alto") else ""
             rows += f"""
             <tr>
               <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
               <td>{r['tipo']}</td>
               <td>{_fmt_antiguedad(r['meses_activo'])}</td>
-              <td>{r['nombre_grupo']} {_bdg(z_n, z_l)}</td>
+              <td>{r['nombre_grupo']} {_bdg(z_n, z_l + warn)}</td>
               <td><b>{r['pct_plan_3m']}%</b></td>
               <td>{_bdg(nivel)}</td>
             </tr>"""

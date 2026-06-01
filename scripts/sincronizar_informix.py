@@ -128,9 +128,10 @@ if args.diagnostico:
 
 # ── 0. Fechas reales de vendedores desde f040 ─────────────────────────────────
 print("\n[0/4] Fechas reales de vendedores (f040)...", end=" ", flush=True)
-icur.execute("""
+icur.execute(f"""
     SELECT vertr, eintrdat, austrdat
     FROM f040
+    WHERE firma = {FIRMA}
 """)
 f040_dates = {}
 for row in icur.fetchall():
@@ -247,7 +248,8 @@ try:
     icur.execute(f"""
         SELECT vertr, bujahr, bumonat, planums, planumsk, aktivkd
         FROM vplan
-        WHERE bujahr >= {anio_inicio}
+        WHERE firma = {FIRMA}
+          AND bujahr >= {anio_inicio}
           AND vertr IN {IN_ACTIVOS}
     """)
     for row in icur.fetchall():

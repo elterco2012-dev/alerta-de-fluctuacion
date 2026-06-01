@@ -203,19 +203,24 @@ CREATE TABLE IF NOT EXISTS vendedores (
 );
 
 CREATE TABLE IF NOT EXISTS ventas_mensual (
-    id_vendedor       INTEGER,
-    anio              INTEGER,
-    mes               INTEGER,
-    mes_numero        INTEGER,
-    venta_total       REAL DEFAULT 0,
-    plan              REAL DEFAULT 0,
-    pct_plan          REAL DEFAULT 0,
-    clientes_activos  INTEGER DEFAULT 0,
+    id_vendedor        INTEGER NOT NULL,
+    anio               INTEGER NOT NULL,
+    mes                INTEGER NOT NULL,
+    mes_numero         INTEGER DEFAULT 0,
+    dias_trabajados    INTEGER DEFAULT 20,
+    dias_venta_cero    INTEGER DEFAULT 0,
+    venta_total        REAL DEFAULT 0,
+    plan               REAL DEFAULT 0,
+    pct_plan           REAL DEFAULT 0,
+    clientes_activos   INTEGER DEFAULT 0,
     clientes_inactivos INTEGER DEFAULT 0,
-    clientes_totales  INTEGER DEFAULT 0,
-    clientes_nuevos   INTEGER DEFAULT 0,
-    dias_venta_cero   INTEGER DEFAULT 0,
-    plan_cobranza     REAL DEFAULT 0,
+    clientes_nuevos    INTEGER DEFAULT 0,
+    total_clientes     INTEGER DEFAULT 0,
+    cobranza_teorica   REAL DEFAULT 0,
+    cobranza_real      REAL DEFAULT 0,
+    pct_cobranza       REAL DEFAULT 0,
+    dias_cobro         REAL DEFAULT 0,
+    cheques_rechazados INTEGER DEFAULT 0,
     PRIMARY KEY (id_vendedor, anio, mes)
 );
 

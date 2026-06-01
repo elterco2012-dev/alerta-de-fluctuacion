@@ -465,10 +465,15 @@ lcur.execute("""
 """)
 # Si la tabla existía con esquema viejo, agregar columnas nuevas que puedan faltar
 for _col, _def in [
-    ("clientes_inactivos", "INTEGER DEFAULT 0"),
-    ("total_clientes",     "INTEGER DEFAULT 0"),
-    ("dias_venta_cero",    "INTEGER DEFAULT 0"),
-    ("cobranza_teorica",   "REAL DEFAULT 0"),
+    ("clientes_inactivos",   "INTEGER DEFAULT 0"),
+    ("total_clientes",       "INTEGER DEFAULT 0"),
+    ("dias_venta_cero",      "INTEGER DEFAULT 0"),
+    ("cobranza_teorica",     "REAL DEFAULT 0"),
+    ("cobranza_real",        "REAL DEFAULT 0"),
+    ("pct_cobranza",         "REAL DEFAULT 0"),
+    ("dias_cobro",           "REAL DEFAULT 0"),
+    ("cheques_rechazados",   "INTEGER DEFAULT 0"),
+    ("dias_trabajados",      "INTEGER DEFAULT 20"),
 ]:
     try:
         lcur.execute(f"ALTER TABLE ventas_mensual ADD COLUMN {_col} {_def}")

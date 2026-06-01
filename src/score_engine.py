@@ -377,7 +377,7 @@ def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
     if not scores:
         return pd.DataFrame(columns=[
             "id_vendedor","nombre","tipo","nombre_grupo","supervisor",
-            "fecha_ingreso","riesgo_base","score","nivel_riesgo",
+            "meses_activo","score","nivel_riesgo",
             "pct_plan_3m","tendencia_plan","dias_cero_promedio",
             "pct_clientes_activos","pct_cobranza","en_ventana_critica",
             "grupo_riesgo_base","señales_activas",

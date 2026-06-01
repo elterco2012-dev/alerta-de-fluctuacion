@@ -32,33 +32,18 @@ except Exception as e:
     print(f"FALLÓ: {e}")
     sys.exit(1)
 
-# ── Explorar columnas de f040 via catálogo del sistema ───────────────────────
+# ── Explorar columnas de f040 via API de metadatos pyodbc ────────────────────
 print("\nColumnas disponibles en f040:")
 try:
-    icur.execute("""
-        SELECT c.colname
-        FROM syscolumns c
-        JOIN systables t ON c.tabid = t.tabid
-        WHERE t.tabname = 'f040'
-        ORDER BY c.colno
-    """)
-    cols_f040 = [row[0].lower() for row in icur.fetchall()]
+    cols_f040 = [c.column_name.lower() for c in icur.columns(table="f040")]
     print(f"  {cols_f040}")
     if not cols_f040:
-        raise ValueError("No se encontraron columnas para f040 en el catálogo")
+        raise ValueError("pyodbc no devolvió columnas para f040")
 except Exception as e:
-    print(f"  ERROR al leer catálogo: {e}")
-    print("  Intentando detección directa...")
-    try:
-        icur.execute(f"SELECT vertr, eintrdat, austrdat FROM f040 WHERE firma = {FIRMA} AND ROWNUM = 1")
-    except Exception:
-        try:
-            icur.execute(f"SELECT FIRST 1 vertr, eintrdat, austrdat FROM f040 WHERE firma = {FIRMA}")
-        except Exception as e2:
-            print(f"  No se puede acceder a f040: {e2}")
-            sys.exit(1)
+    print(f"  ERROR al leer metadatos: {e}")
+    print("  Usando columnas mínimas conocidas")
     cols_f040 = ["vertr", "eintrdat", "austrdat"]
-    print(f"  Usando columnas mínimas: {cols_f040}")
+print(f"  Total columnas: {len(cols_f040)}")
 
 # ── Leer todos los vendedores de f040 ─────────────────────────────────────────
 print("\nLeyendo vendedores de f040...", end=" ", flush=True)

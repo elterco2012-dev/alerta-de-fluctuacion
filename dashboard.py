@@ -503,7 +503,7 @@ with col1:
             <div class="zc">
               <div>
                 <div class="zn">{g['nombre_grupo']}{sup_str}</div>
-                <div class="zsb">{int(g['total_vendedores'])} vendedores históricos · perm. prom. {perm_str}</div>
+                <div class="zsb">{int(g['total_vendedores'])} vendedores históricos · duración prom. al egreso: {perm_str}</div>
               </div>
               <div class="zr">
                 <div class="zpct">{g['cumplimiento_plan_promedio']:.0f}% plan</div>

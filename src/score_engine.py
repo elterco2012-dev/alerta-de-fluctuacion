@@ -407,6 +407,10 @@ def resumen_grupos() -> pd.DataFrame:
         (vend_df["fecha_egreso"].fillna(today) - vend_df["fecha_ingreso"]).dt.days / 30
     )
 
+    # meses_egreso: solo para los que ya se fueron (activo=0)
+    # Excluye activos para que los veteranos de muchos años no inflen el promedio
+    vend_df["meses_egreso"] = vend_df["meses"].where(vend_df["activo"] == 0)
+
     df = (
         vend_df
         .groupby(["nombre_grupo", "supervisor"])
@@ -414,7 +418,7 @@ def resumen_grupos() -> pd.DataFrame:
             total_vendedores=("activo", "count"),
             bajas=("activo", lambda x: (x == 0).sum()),
             activos_hoy=("activo", lambda x: (x == 1).sum()),
-            permanencia_promedio_meses=("meses", "mean"),
+            permanencia_promedio_meses=("meses_egreso", "mean"),
         )
         .reset_index()
     )

@@ -11,6 +11,5 @@ data/estado_alertas.json
 # Claude Code internal files
 .claude/
 
-# IMPORTANTE: cuando conectes Informix, ejecutar:
-#   git update-index --skip-worktree data/wurth.db
-# para evitar commitear datos reales accidentalmente.
+# Base de datos local — nunca commitear datos reales de Informix
+data/wurth.db

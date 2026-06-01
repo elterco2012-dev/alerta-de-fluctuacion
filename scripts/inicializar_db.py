@@ -32,15 +32,33 @@ except Exception as e:
     print(f"FALLÓ: {e}")
     sys.exit(1)
 
-# ── Explorar columnas de f040 ─────────────────────────────────────────────────
+# ── Explorar columnas de f040 via catálogo del sistema ───────────────────────
 print("\nColumnas disponibles en f040:")
 try:
-    icur.execute(f"SELECT FIRST 1 * FROM f040 WHERE firma = {FIRMA}")
-    cols_f040 = [d[0].lower() for d in icur.description]
+    icur.execute("""
+        SELECT c.colname
+        FROM syscolumns c
+        JOIN systables t ON c.tabid = t.tabid
+        WHERE t.tabname = 'f040'
+        ORDER BY c.colno
+    """)
+    cols_f040 = [row[0].lower() for row in icur.fetchall()]
     print(f"  {cols_f040}")
+    if not cols_f040:
+        raise ValueError("No se encontraron columnas para f040 en el catálogo")
 except Exception as e:
-    print(f"  ERROR: {e}")
-    sys.exit(1)
+    print(f"  ERROR al leer catálogo: {e}")
+    print("  Intentando detección directa...")
+    try:
+        icur.execute(f"SELECT vertr, eintrdat, austrdat FROM f040 WHERE firma = {FIRMA} AND ROWNUM = 1")
+    except Exception:
+        try:
+            icur.execute(f"SELECT FIRST 1 vertr, eintrdat, austrdat FROM f040 WHERE firma = {FIRMA}")
+        except Exception as e2:
+            print(f"  No se puede acceder a f040: {e2}")
+            sys.exit(1)
+    cols_f040 = ["vertr", "eintrdat", "austrdat"]
+    print(f"  Usando columnas mínimas: {cols_f040}")
 
 # ── Leer todos los vendedores de f040 ─────────────────────────────────────────
 print("\nLeyendo vendedores de f040...", end=" ", flush=True)

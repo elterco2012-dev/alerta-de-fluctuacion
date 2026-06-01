@@ -72,7 +72,9 @@ def _to_iso(d):
 # Detectar campos disponibles (nombres comunes en Würth Informix)
 campo_nombre     = next((c for c in cols_f040 if c in ("name1","vertrname","nam","name")), None)
 campo_grupo_id   = next((c for c in cols_f040 if c in ("vgrp","gebiet","bezirk","grp","gruppe","grupid")), None)
-campo_grupo_nom  = next((c for c in cols_f040 if c in ("zone","region","gebinam","gebietname","grpnam","grupnom","niederl")), None)
+campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","grpnam","grupnom")), None)
+# zone/region son códigos internos (ej: "SUR1500"), no el nombre de grupo visible.
+# Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
 

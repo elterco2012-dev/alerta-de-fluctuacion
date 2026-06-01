@@ -32,15 +32,31 @@ except Exception as e:
     print(f"FALLÓ: {e}")
     sys.exit(1)
 
-# ── Explorar columnas de f040 ─────────────────────────────────────────────────
+# ── Explorar columnas de f040 via API de metadatos pyodbc ────────────────────
 print("\nColumnas disponibles en f040:")
 try:
-    icur.execute(f"SELECT FIRST 1 * FROM f040 WHERE firma = {FIRMA}")
-    cols_f040 = [d[0].lower() for d in icur.description]
+    cols_f040 = [c.column_name.lower() for c in icur.columns(table="f040")]
     print(f"  {cols_f040}")
+    if not cols_f040:
+        raise ValueError("pyodbc no devolvió columnas para f040")
 except Exception as e:
-    print(f"  ERROR: {e}")
-    sys.exit(1)
+    print(f"  ERROR al leer metadatos: {e}")
+    print("  Usando columnas mínimas conocidas")
+    cols_f040 = ["vertr", "eintrdat", "austrdat"]
+print(f"  Total columnas: {len(cols_f040)}")
+
+# ── Pre-cargar mapa vertr→nombre para resolver supervisores ──────────────────
+vertr_nombre = {}
+if "name1" in cols_f040:
+    try:
+        icur.execute(f"SELECT vertr, name1 FROM f040 WHERE firma = {FIRMA}")
+        for row in icur.fetchall():
+            try:
+                vertr_nombre[int(row[0])] = str(row[1]).strip() if row[1] else ""
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
 
 # ── Leer todos los vendedores de f040 ─────────────────────────────────────────
 print("\nLeyendo vendedores de f040...", end=" ", flush=True)
@@ -53,12 +69,14 @@ def _to_iso(d):
         return None
     return s
 
-# Detectar campos disponibles
+# Detectar campos disponibles (nombres comunes en Würth Informix)
 campo_nombre     = next((c for c in cols_f040 if c in ("name1","vertrname","nam","name")), None)
-campo_grupo_id   = next((c for c in cols_f040 if c in ("gebiet","bezirk","grp","gruppe","grupid")), None)
+campo_grupo_id   = next((c for c in cols_f040 if c in ("vgrp","gebiet","bezirk","grp","gruppe","grupid")), None)
 campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","grpnam","grupnom")), None)
-campo_supervisor = next((c for c in cols_f040 if c in ("vorgesetzt","supervisor","supvertr")), None)
-campo_tipo       = next((c for c in cols_f040 if c in ("vertrtyp","typ","tipo","kategorie")), None)
+# zone/region son códigos internos (ej: "SUR1500"), no el nombre de grupo visible.
+# Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
+campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
+campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
 
 print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}")
 
@@ -90,7 +108,8 @@ for row in icur.fetchall():
     except (TypeError, ValueError):
         continue
 
-    nombre     = str(row[idx]).strip() if campo_nombre     and idx < len(row) else f"ID {vid}"
+    nombre_raw = str(row[idx]).strip() if campo_nombre and idx < len(row) and row[idx] else ""
+    nombre = nombre_raw if nombre_raw else f"ID {vid}"
     if campo_nombre: idx += 1
 
     id_grupo   = None
@@ -106,20 +125,32 @@ for row in icur.fetchall():
         nombre_grupo = str(row[idx]).strip() if row[idx] else None
         idx += 1
 
-    if id_grupo and nombre_grupo:
-        grupos_set[id_grupo] = nombre_grupo
-    elif id_grupo and id_grupo not in grupos_set:
-        grupos_set[id_grupo] = f"Grupo {id_grupo}"
+    # Si hay id_grupo pero no nombre, construir "Grupo {id_grupo}"
+    if id_grupo:
+        if not nombre_grupo:
+            nombre_grupo = f"Grupo {id_grupo}"
+        if id_grupo not in grupos_set:
+            grupos_set[id_grupo] = nombre_grupo
 
-    supervisor = None
+    supervisor_raw = None
     if campo_supervisor and idx < len(row):
-        supervisor = str(row[idx]).strip() if row[idx] else None
+        supervisor_raw = str(row[idx]).strip() if row[idx] else None
         idx += 1
+    # bvertr es ID numérico del supervisor → resolver nombre desde vertr_nombre
+    if supervisor_raw:
+        try:
+            sup_id = int(supervisor_raw)
+            supervisor = vertr_nombre.get(sup_id, supervisor_raw)
+        except (TypeError, ValueError):
+            supervisor = supervisor_raw
+    else:
+        supervisor = None
 
     tipo = "Viajante"
     if campo_tipo and idx < len(row):
         raw_tipo = str(row[idx]).strip() if row[idx] else ""
-        if raw_tipo in ("T", "TV", "Televentas", "2"):
+        # vart en Würth: 1=Viajante (Außendienst), 2=Televentas (Innendienst)
+        if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
 
     eintr_str = _to_iso(eintrdat)

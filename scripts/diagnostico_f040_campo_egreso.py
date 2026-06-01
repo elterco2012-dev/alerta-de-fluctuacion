@@ -1,12 +1,12 @@
 """
 diagnostico_f040_campo_egreso.py
 ---------------------------------
-Busca en f040 de Informix cuál es el campo real donde está almacenada
+Busca en f040 de Informix cual es el campo real donde esta almacenada
 la fecha de egreso del vendedor 1407 (que austrdat tiene en NULL pero
 la pantalla muestra 04.08.2017).
 
-Requiere Python 32 bits:
-  C:\Users\aarmoa\AppData\Local\Programs\Python\Python312-32\python.exe scripts\diagnostico_f040_campo_egreso.py
+Requiere Python 32 bits (ejemplo de ruta):
+  python312-32 scripts/diagnostico_f040_campo_egreso.py
 """
 
 import sys

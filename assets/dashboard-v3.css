@@ -1,0 +1,119 @@
+/* ============================================================================
+   dashboard-v3.css  —  Würth Rotación, propuesta v2/v3
+   ============================================================================ */
+
+:root {
+  --red-accent:#E24B4A;  --red-bg:#FDECEA;  --red-text:#B71C1C;
+  --orange-accent:#EF9F27; --orange-bg:#FFF3E0; --orange-text:#E65100;
+  --blue-accent:#4A90D9;  --blue-bg:#E3F2FD;  --blue-text:#1565C0;
+  --green-accent:#639922; --green-bg:#F1F8E9; --green-text:#2E7D32;
+  --purple-bg:#F3E8FF;    --purple-text:#6B21A8;
+  --green-soft:#8DB56B;   --chart-neutral:#B4B2A9;
+
+  --cell-good-bg:#D4EDDA; --cell-good-tx:#155724;
+  --cell-warn-bg:#FFF3CD; --cell-warn-tx:#856404;
+  --cell-bad-bg:#FFE0E0;  --cell-bad-tx:#C0392B;
+
+  --ink-900:#1a1a2e; --ink-700:#333; --ink-600:#555; --ink-500:#666;
+  --ink-400:#888; --ink-300:#999; --ink-250:#aaa; --ink-150:#ccc;
+
+  --surface:#fff; --table-head-bg:#f8f9fa; --row-hover:#fafafa;
+  --line-strong:#e9ecef; --line:#eee; --line-faint:#f2f2f2; --border-idle:#e0e0e0;
+
+  --font: 'Source Sans 3','Source Sans Pro',-apple-system,'Segoe UI',Roboto,sans-serif;
+  --shadow-card:0 1px 4px rgba(0,0,0,.08);
+  --radius:14px; --radius-sm:10px; --radius-badge:4px;
+}
+
+/* ---- banner de acción del día (#4 acción) -------------------------------- */
+.wz-banner{display:flex;align-items:center;gap:14px;padding:14px 20px;
+  border-radius:12px;margin:6px 0 24px;font-family:var(--font);}
+.wz-banner .em{font-size:22px;}
+.wz-banner .ttl{font-weight:800;font-size:16px;}
+.wz-banner .sub{font-size:13px;margin-top:2px;opacity:.85;}
+.wz-banner.red{background:var(--red-bg);border:1px solid #f4cfcd;color:var(--red-text);}
+.wz-banner.orange{background:var(--orange-bg);border:1px solid #f3d9a8;color:var(--orange-text);}
+.wz-banner.blue{background:var(--blue-bg);border:1px solid #bcdcf5;color:var(--blue-text);}
+.wz-banner.green{background:var(--green-bg);border:1px solid #cfe6b8;color:var(--green-text);}
+
+/* ---- KPI hero dominante (#1 jerarquía) ----------------------------------- */
+.wz-hero{background:var(--surface);border-radius:var(--radius);padding:22px 24px;
+  box-shadow:var(--shadow-card);border-top:4px solid var(--red-accent);font-family:var(--font);}
+.wz-hero .lbl{font-weight:700;font-size:13px;color:var(--ink-600);
+  text-transform:uppercase;letter-spacing:.04em;}
+.wz-hero .val{font-weight:800;font-size:56px;line-height:1;color:var(--ink-900);margin-top:8px;}
+.wz-hero .val.red{color:var(--red-accent);}
+.wz-hero .sub{font-size:12px;color:var(--ink-500);margin-top:8px;}
+
+/* ---- KPI secundaria, de-enfatizada --------------------------------------- */
+.wz-stat{background:var(--surface);border-radius:var(--radius-sm);padding:14px 18px;
+  box-shadow:var(--shadow-card);font-family:var(--font);}
+.wz-stat .val{font-weight:800;font-size:26px;color:var(--ink-900);}
+.wz-stat .lbl{font-size:12px;color:var(--ink-400);margin-top:2px;}
+
+/* ---- score circle (con anillo) ------------------------------------------- */
+.wz-score{display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;border-radius:50%;font-weight:800;font-size:15px;font-family:var(--font);}
+.wz-score.critico{background:var(--red-bg);color:var(--red-text);border:2px solid var(--red-accent);}
+.wz-score.alto{background:var(--orange-bg);color:var(--orange-text);border:2px solid var(--orange-accent);}
+.wz-score.medio{background:var(--blue-bg);color:var(--blue-text);border:2px solid var(--blue-accent);}
+.wz-score.bajo{background:var(--green-bg);color:var(--green-text);border:2px solid var(--green-accent);}
+
+/* ---- badge de riesgo con FORMA (#4 accesibilidad: ▲◆■●) ------------------ */
+.wz-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+  border-radius:var(--radius-badge);font-size:11px;font-weight:600;font-family:var(--font);white-space:nowrap;}
+.wz-badge .shp{font-size:8px;line-height:1;}
+.wz-badge.critico{background:var(--red-bg);color:var(--red-text);}
+.wz-badge.alto{background:var(--orange-bg);color:var(--orange-text);}
+.wz-badge.medio{background:var(--blue-bg);color:var(--blue-text);}
+.wz-badge.bajo{background:var(--green-bg);color:var(--green-text);}
+.wz-badge.tipo{background:var(--purple-bg);color:var(--purple-text);}
+
+/* ---- pill de señal -------------------------------------------------------- */
+.wz-pill{display:inline-block;padding:2px 8px;border-radius:var(--radius-sm);
+  font-size:11px;font-weight:600;margin:1px 2px;font-family:var(--font);white-space:nowrap;}
+.wz-pill.red{background:var(--red-bg);color:var(--red-text);}
+.wz-pill.orange{background:var(--orange-bg);color:var(--orange-text);}
+.wz-pill.yellow{background:#FFFDE7;color:#F57F17;}
+
+/* ---- tag de acción sugerida (#4 acción) ---------------------------------- */
+.wz-accion{display:inline-block;padding:4px 10px;border-radius:7px;
+  font-size:12px;font-weight:700;font-family:var(--font);white-space:nowrap;}
+.wz-accion.critico{background:var(--red-bg);color:var(--red-text);}
+.wz-accion.alto{background:var(--orange-bg);color:var(--orange-text);}
+.wz-accion.medio{background:var(--table-head-bg);color:var(--ink-600);}
+.wz-accion.bajo{color:var(--ink-400);}
+
+/* ---- delta de score (#2 trayectoria): ▲ peor / ▼ mejor ------------------- */
+.wz-delta{font-size:12px;font-weight:700;white-space:nowrap;}
+.wz-delta.worse{color:var(--red-text);}
+.wz-delta.better{color:var(--green-text);}
+.wz-delta.flat{color:var(--ink-300);}
+
+/* ---- card genérica v3 ----------------------------------------------------- */
+.wz-card{background:var(--surface);border-radius:var(--radius);
+  box-shadow:var(--shadow-card);padding:20px 24px;font-family:var(--font);}
+
+/* ---- frescura del dato (#5) ---------------------------------------------- */
+.wz-fresh{display:inline-flex;align-items:center;gap:7px;font-size:12px;
+  color:var(--ink-400);font-family:var(--font);}
+.wz-fresh .dot{width:7px;height:7px;border-radius:50%;background:#27AE60;}
+
+/* ---- matriz de confusión (#1 precisión) ---------------------------------- */
+.wz-cm{padding:16px 18px;border-radius:10px;font-family:var(--font);}
+.wz-cm .n{font-weight:800;font-size:30px;line-height:1;}
+.wz-cm .d{font-size:12.5px;margin-top:6px;line-height:1.4;}
+.wz-cm.good{background:var(--green-bg);border:1px solid #cfe6b8;color:var(--green-text);}
+.wz-cm.bad{background:var(--red-bg);border:1px solid #f4cfcd;color:var(--red-text);}
+.wz-cm.warn{background:var(--orange-bg);border:1px solid #f3d9a8;color:var(--orange-text);}
+.wz-cm.neutral{background:var(--table-head-bg);border:1px solid var(--line-strong);color:var(--ink-600);}
+
+/* ---- tablas: aire + hover (#2 densidad la maneja Streamlit/df config) ----- */
+.wz-table{width:100%;border-collapse:collapse;font-family:var(--font);}
+.wz-table th{padding:0 14px 10px;text-align:left;font-size:11px;font-weight:700;
+  color:var(--ink-400);text-transform:uppercase;letter-spacing:.04em;
+  border-bottom:2px solid var(--line-strong);}
+.wz-table td{padding:14px;border-bottom:1px solid var(--line-faint);
+  vertical-align:middle;font-size:13px;color:var(--ink-700);}
+.wz-table.compacto td{padding:7px 14px;font-size:12.5px;}
+.wz-table tr:hover td{background:var(--row-hover);}

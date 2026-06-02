@@ -12,6 +12,10 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
+from snippets_v3 import (
+    banner, hero_kpi, stat_kpi, accion_tag, score_circle as wz_score_circle,
+    badge as wz_badge, fmt_num, fmt_meses,
+)
 
 def _fmt_antiguedad(meses):
     if meses < 12:
@@ -31,6 +35,9 @@ st.set_page_config(
 )
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
+_v3_css_path = os.path.join(os.path.dirname(__file__), "assets", "dashboard-v3.css")
+st.markdown(f"<style>{open(_v3_css_path).read()}</style>", unsafe_allow_html=True)
+
 st.markdown("""<style>
 [data-testid="stSidebar"] { display: none; }
 .block-container { padding: 2.5rem 2.5rem 3rem !important; max-width: 100% !important; }
@@ -305,43 +312,61 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── KPIs ───────────────────────────────────────────────────────────────────────
-total          = len(scores_df)
-en_critica     = len(scores_df[scores_df.nivel_riesgo.isin(["critico", "alto"])])
-perm_prom      = scores_df["meses_activo"].mean()   # solo vendedores activos, sin supervisores
-ob_critico     = len(scores_df[
+total      = len(scores_df)
+en_critica = len(scores_df[scores_df.nivel_riesgo.isin(["critico", "alto"])])
+n_critico  = len(scores_df[scores_df.nivel_riesgo == "critico"])
+ob_critico = len(scores_df[
     (scores_df.meses_activo <= 6) & (scores_df.nivel_riesgo.isin(["critico", "alto"]))
 ])
-_sup_color = "kc" if _sup_con_muchos_nuevos > 0 else "ki"
 
-st.markdown(f"""
-<div class="kpi-row">
-  <div class="kpi-card">
-    <div class="kpi-value">{total}</div>
-    <div class="kpi-label">Vendedores activos</div>
-    <div class="kpi-sub">Actualizando mensualmente</div>
-  </div>
-  <div class="kpi-card kc">
-    <div class="kpi-value" style="color:#E24B4A">{en_critica}</div>
-    <div class="kpi-label">Vendedores en riesgo elevado</div>
-    <div class="kpi-sub">Score ≥ 6 (alto o crítico) — ver zonas históricas en 📈 Historial</div>
-  </div>
-  <div class="kpi-card ka">
-    <div class="kpi-value">{perm_egreso_prom:.1f} m</div>
-    <div class="kpi-label">Permanencia promedio al egreso</div>
-    <div class="kpi-sub">Solo últimos 12 meses · puede variar si hay pocos casos · mediana histórica (más robusta) está en Historial</div>
-  </div>
-  <div class="kpi-card ki">
-    <div class="kpi-value" style="color:#4A90D9">{ob_critico}</div>
-    <div class="kpi-label">Onboarding en riesgo elevado</div>
-    <div class="kpi-sub">Score ≥ 6 en sus primeros 6 meses</div>
-  </div>
-  <div class="kpi-card {_sup_color}">
-    <div class="kpi-value">{_n_supervisores}</div>
-    <div class="kpi-label">Supervisores activos</div>
-    <div class="kpi-sub">{_avg_por_sup:.1f} vendedores/supervisor · {_sup_con_muchos_nuevos} con 3+ onboardings activos</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+col_hero, col_stats = st.columns([1, 2.2])
+with col_hero:
+    hero_sub = (
+        f"{n_critico} críticos (reunión esta semana) · "
+        f"{en_critica - n_critico} en seguimiento activo"
+    )
+    st.markdown(hero_kpi("Vendedores en riesgo elevado", en_critica, hero_sub, red=True),
+                unsafe_allow_html=True)
+with col_stats:
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        st.markdown(stat_kpi("Vendedores activos", fmt_num(total)), unsafe_allow_html=True)
+    with s2:
+        st.markdown(stat_kpi("Permanencia prom. al egreso", fmt_meses(round(perm_egreso_prom, 1))),
+                    unsafe_allow_html=True)
+    with s3:
+        st.markdown(stat_kpi("Onboarding en riesgo", fmt_num(ob_critico)), unsafe_allow_html=True)
+    with s4:
+        st.markdown(stat_kpi("Supervisores activos", fmt_num(_n_supervisores)), unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+# ── Banner de acción del día ───────────────────────────────────────────────────
+if n_critico > 0:
+    _banner_tono = "red"
+    _banner_emoji = "🔴"
+    _banner_titulo = (
+        f"{n_critico} vendedor{'es necesitan' if n_critico != 1 else ' necesita'} "
+        f"reunión esta semana"
+    )
+    _banner_sub = (
+        f"Score crítico (≥8). Pasá a la tabla para ver señales y zona de cada uno."
+    )
+elif en_critica > 0:
+    _banner_tono = "orange"
+    _banner_emoji = "🟠"
+    _banner_titulo = (
+        f"{en_critica} vendedor{'es requieren' if en_critica != 1 else ' requiere'} "
+        f"seguimiento activo"
+    )
+    _banner_sub = "Score ≥ 6. Revisá las señales de cada uno antes del cierre de semana."
+else:
+    _banner_tono = "green"
+    _banner_emoji = "✅"
+    _banner_titulo = "Sin vendedores en riesgo elevado esta semana"
+    _banner_sub = "Todos los vendedores activos tienen score menor a 6."
+st.markdown(banner(_banner_emoji, _banner_titulo, _banner_sub, _banner_tono),
+            unsafe_allow_html=True)
 
 # ── Filtro ─────────────────────────────────────────────────────────────────────
 st.markdown('<div class="sec-header">📋 Vendedores por score de riesgo de fuga</div>',
@@ -401,12 +426,13 @@ def _tabla_rows(subset):
         <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
-      <td><b>{r['pct_plan_3m']}%</b></td>
+      <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
       <td>{_spark(sparks.get(vid, []))}</td>
       <td>
         <div style="font-weight:600;font-size:13px;">{r['nombre_grupo']}</div>
         <div style="margin-top:3px;">{_bdg(zona_n, zona_l)}</div>
       </td>
+      <td>{accion_tag(nivel)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
     return rows
@@ -421,6 +447,7 @@ def _tabla_html(rows_html):
   <th title="Promedio de venta÷objetivo×100 de los últimos 3 meses">% Plan 3m</th>
   <th title="3 barras = % Plan de los últimos 3 meses (izq→der). Verde ≥90% · Naranja ≥70% · Rojo &lt;70%">Tendencia ⓘ</th>
   <th title="Rot. baja: &lt;30% se fue en &lt;6m · Rot. media: 30-45% · Rot. alta: &gt;45%">Zona ⓘ</th>
+  <th>Acción sugerida</th>
   <th title="Crítico 8-10: acción inmediata · Alto 6-7: seguimiento activo · Medio 4-5: monitoreo mensual · Bajo 1-3: seguimiento normal">Score ⓘ</th>
 </tr></thead>
 <tbody>{rows_html}</tbody>

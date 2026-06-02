@@ -295,6 +295,11 @@ cur.executemany("""
          fecha_ingreso, fecha_egreso, motivo_egreso, activo)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_vendedor) DO UPDATE SET
+        tipo          = excluded.tipo,
+        id_grupo      = excluded.id_grupo,
+        nombre_grupo  = excluded.nombre_grupo,
+        supervisor    = excluded.supervisor,
+        nombre        = excluded.nombre,
         fecha_ingreso = excluded.fecha_ingreso,
         fecha_egreso  = excluded.fecha_egreso,
         activo        = excluded.activo

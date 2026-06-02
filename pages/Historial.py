@@ -14,6 +14,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import get_connection
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct, fmt_meses
 
 # Grupos excluidos del análisis (grupos administrativos, catch-all, o sin actividad comercial real)
 GRUPOS_EXCLUIDOS = {"Grupo 999"}
@@ -24,6 +25,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+_v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
+st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""<style>
 [data-testid="stSidebar"]   { display: none; }
@@ -204,33 +208,43 @@ pct_menos6   = (df_bajas["permanencia_meses"] < 6).mean()  * 100
 pct_menos12  = (df_bajas["permanencia_meses"] < 12).mean() * 100
 n_en_critica = (df_activo["permanencia_meses"] < 6).sum()
 
-st.markdown(f"""<div class="kpi-row">
-  <div class="kpi-card kb">
-    <div class="kpi-value">{total_hist}</div>
-    <div class="kpi-label">Vendedores en historial total</div>
-    <div class="kpi-sub">{len(df_activo)} activos · {total_bajas} con baja</div>
-  </div>
-  <div class="kpi-card ko">
-    <div class="kpi-value">{perm_bajas:.0f} m</div>
-    <div class="kpi-label">Permanencia mediana — dados de baja</div>
-    <div class="kpi-sub">Toda la historia · la mitad se fue antes, la mitad después · no se distorsiona por casos extremos · era 18m hace 10 años</div>
-  </div>
-  <div class="kpi-card kr">
-    <div class="kpi-value">{pct_menos6:.0f}%</div>
-    <div class="kpi-label">Se fueron en menos de 6 meses</div>
-    <div class="kpi-sub">No sobrevivió la ventana crítica de onboarding</div>
-  </div>
-  <div class="kpi-card kr" style="border-left-color:#C0392B;">
-    <div class="kpi-value" style="color:#C0392B;">{pct_menos12:.0f}%</div>
-    <div class="kpi-label">Se fueron en menos de 12 meses</div>
-    <div class="kpi-sub">No completó ni un año — incluye los &lt;6m anteriores</div>
-  </div>
-  <div class="kpi-card kg">
-    <div class="kpi-value">{n_en_critica}</div>
-    <div class="kpi-label">Activos en ventana crítica hoy</div>
-    <div class="kpi-sub">Llevan menos de 6 meses — en riesgo activo ahora mismo</div>
-  </div>
-</div>""", unsafe_allow_html=True)
+col_hero, col_stats = st.columns([1, 2.2])
+with col_hero:
+    st.markdown(hero_kpi("Se fueron en menos de 6 meses", fmt_pct(pct_menos6),
+                         "No sobrevivieron la ventana crítica de onboarding", red=True),
+                unsafe_allow_html=True)
+with col_stats:
+    _s1, _s2, _s3, _s4 = st.columns(4)
+    with _s1:
+        st.markdown(stat_kpi("Historial total", fmt_num(total_hist)), unsafe_allow_html=True)
+    with _s2:
+        st.markdown(stat_kpi("Permanencia mediana bajas", fmt_meses(round(perm_bajas, 1))),
+                    unsafe_allow_html=True)
+    with _s3:
+        st.markdown(stat_kpi("Se fueron en < 12m", fmt_pct(pct_menos12)),
+                    unsafe_allow_html=True)
+    with _s4:
+        st.markdown(stat_kpi("Activos en ventana crítica", fmt_num(n_en_critica)),
+                    unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+# Banner
+if pct_menos6 >= 50:
+    st.markdown(banner("🔴",
+        f"{fmt_pct(pct_menos6)} se fue antes del mes 7",
+        "Más de la mitad no superó la ventana crítica de onboarding. El problema es estructural.", "red"),
+        unsafe_allow_html=True)
+elif pct_menos6 >= 30:
+    st.markdown(banner("🟠",
+        f"{fmt_pct(pct_menos6)} se fue antes del mes 7",
+        "Rotación alta en la ventana de onboarding — revisá las zonas con mayor exposición.", "orange"),
+        unsafe_allow_html=True)
+else:
+    st.markdown(banner("✅",
+        f"{fmt_pct(pct_menos6)} se fue antes del mes 7",
+        "Rotación por debajo del promedio histórico en la ventana crítica.", "green"),
+        unsafe_allow_html=True)
 
 
 # ── Gráfico 1: Tendencia de permanencia (últimos 10 años, solo dados de baja) ──

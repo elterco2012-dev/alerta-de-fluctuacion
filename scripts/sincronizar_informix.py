@@ -314,10 +314,12 @@ _sbas_date_field = None
 # redat/lsdat/aufdat: nombres reales en este Informix (confirmado por explorar_sbas_columnas.py)
 # redat = Rechnungsdatum (fecha de factura) — el más preciso para "días con venta"
 # Los demás se mantienen como fallback por si cambia la estructura.
+# NO usar FIRST: en este Informix da error -201. Validamos la columna con
+# WHERE 1=0 (no trae filas pero falla si la columna no existe).
 for _campo in ("redat", "lsdat", "aufdat", "budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
     try:
-        icur.execute(f"SELECT FIRST 1 {_campo} FROM sbas WHERE firma = {FIRMA}")
-        icur.fetchone()
+        icur.execute(f"SELECT {_campo} FROM sbas WHERE firma = {FIRMA} AND 1=0")
+        icur.fetchall()
         _sbas_date_field = _campo
         break
     except Exception:

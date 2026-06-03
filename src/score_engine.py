@@ -20,24 +20,36 @@ import os
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
 
-def get_connection() -> sqlite3.Connection:
+def get_connection():
     """
-    SIMULADO: conecta a SQLite local.
+    Conecta a la fuente de datos activa.
 
-    LUNES - reemplazar por:
-    ─────────────────────────────────────────────────────────
-    import pyodbc
-    conn_str = (
-        "DRIVER={IBM INFORMIX ODBC DRIVER};"
-        "SERVER=<servidor>;"
-        "DATABASE=<base>;"
-        "HOST=<host>;"
-        "UID=<usuario>;"
-        "PWD=<password>;"
-    )
-    return pyodbc.connect(conn_str)
-    ─────────────────────────────────────────────────────────
+    Si las variables de entorno INFORMIX_SERVER / INFORMIX_DATABASE / INFORMIX_HOST /
+    INFORMIX_UID / INFORMIX_PWD están configuradas (en .env o el entorno del sistema),
+    conecta a Informix via pyodbc (requiere Python 32-bit con ODBC driver instalado).
+    Si no están configuradas, usa SQLite local (data/wurth.db).
+
+    Para activar Informix: copiá .env.example → .env y completá las variables.
     """
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+    except ImportError:
+        pass
+
+    server = os.getenv("INFORMIX_SERVER", "").strip()
+    if server:
+        import pyodbc
+        conn_str = (
+            f"DRIVER={{IBM INFORMIX ODBC DRIVER}};"
+            f"SERVER={server};"
+            f"DATABASE={os.getenv('INFORMIX_DATABASE', '')};"
+            f"HOST={os.getenv('INFORMIX_HOST', '')};"
+            f"UID={os.getenv('INFORMIX_UID', '')};"
+            f"PWD={os.getenv('INFORMIX_PWD', '')};"
+        )
+        return pyodbc.connect(conn_str)
+
     return sqlite3.connect(DB_PATH)
 
 

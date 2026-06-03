@@ -110,10 +110,20 @@
 
 /* ---- tablas: aire + hover (#2 densidad la maneja Streamlit/df config) ----- */
 .wz-table{width:100%;border-collapse:collapse;font-family:var(--font);}
-.wz-table th{padding:0 14px 10px;text-align:left;font-size:11px;font-weight:700;
-  color:var(--ink-400);text-transform:uppercase;letter-spacing:.04em;
+.wz-table th{background:var(--table-head-bg);padding:10px 12px;text-align:left;
+  font-size:12px;font-weight:600;color:var(--ink-500);
   border-bottom:2px solid var(--line-strong);}
-.wz-table td{padding:14px;border-bottom:1px solid var(--line-faint);
+.wz-table td{padding:11px 12px;border-bottom:1px solid var(--line-faint);
   vertical-align:middle;font-size:13px;color:var(--ink-700);}
-.wz-table.compacto td{padding:7px 14px;font-size:12.5px;}
+.wz-table.compacto td{padding:7px 12px;font-size:12.5px;}
 .wz-table tr:hover td{background:var(--row-hover);}
+
+/* ---- celda de nombre de vendedor ----------------------------------------- */
+.wz-vn{font-weight:700;color:var(--ink-900);font-size:13px;}
+.wz-vn a{color:inherit;text-decoration:none;}
+.wz-vn a:hover{text-decoration:underline;color:var(--blue-accent);}
+.wz-vsb{color:var(--ink-250);font-size:11px;margin-top:2px;}
+
+/* ---- spark bars (tendencia %) -------------------------------------------- */
+.wz-spark{display:inline-flex;align-items:flex-end;gap:3px;height:24px;}
+.wz-sb{width:9px;border-radius:2px 2px 0 0;}

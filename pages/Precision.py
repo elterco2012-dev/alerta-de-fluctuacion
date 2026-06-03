@@ -66,6 +66,7 @@ st.markdown("""
   <div style="font-size:20px; font-weight:800; color:#1a1a2e;">🎯 Precisión del modelo — Wurth Argentina</div>
   <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
     <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;">🏠 Inicio</a>
+    <a href="/Aprendizaje"    target="_self" style="color:#4A90D9;text-decoration:none;">🧠 Aprendizaje</a>
     <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
     <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;">📝 Intervenciones</a>
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>

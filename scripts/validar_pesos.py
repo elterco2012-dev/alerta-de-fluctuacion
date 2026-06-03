@@ -232,7 +232,11 @@ def main():
     print(f"  Detección out-of-sample:  {d_r_a:.1f}% -> {d_r_p:.1f}%  ({ganancia_oos:+.1f} pts)")
     print(f"  Falsa alarma:             {fa_a:.1f}% -> {fa_p:.1f}%  ({costo_fa:+.1f} pts)")
     print()
-    if ganancia_oos <= 0.1:
+    if PESOS_PROPUESTO == PESOS_ACTUAL:
+        print("  (PESOS_PROPUESTO == PESOS_ACTUAL: no hay cambio de pesos que probar.")
+        print("   El script corre como monitoreo. Para evaluar un cambio nuevo,")
+        print("   editá PESOS_PROPUESTO arriba. Usá el barrido de abajo para calibrar.)")
+    elif ganancia_oos <= 0.1:
         print("  VEREDICTO: los pesos propuestos NO mejoran la detección de los")
         print("  egresados que el análisis no usó. Probablemente sea sobreajuste.")
         print("  -> NO conviene cambiar los pesos.")
@@ -269,7 +273,7 @@ def main():
         marca = ""
         if sep > mejor_sep:
             mejor_sep, mejor_ref = sep, ref
-        actual = "  <- actual (10)" if ref == 10 else ""
+        actual = f"  <- actual ({int(RIESGO_REFERENCIA)})" if ref == int(RIESGO_REFERENCIA) else ""
         print(f"  {ref:>5} {det_oos:>8.1f}% {det_tot:>9.1f}% {fa:>11.1f}% {sep:>10.1f}{actual}")
 
     # Recomendación: mayor separación, y además falsa alarma 'manejable' (<=40%)

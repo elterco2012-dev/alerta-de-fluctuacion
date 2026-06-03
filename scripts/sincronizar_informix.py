@@ -38,7 +38,7 @@ except ImportError:
     sys.exit(1)
 
 DSN_INFORMIX = "MSPA"
-DSN_REACTOR  = "Wurth Reactor Produccion"  # works_days_log (días hábiles) vive acá, no en Informix
+DSN_REACTOR  = "Wurth Reactor Produccion"  # work_days_log (días hábiles) vive acá, no en Informix
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 FIRMA        = 1
 
@@ -352,49 +352,21 @@ if _sbas_date_field:
 else:
     print("AVISO: no se encontró campo de fecha en sbas — dias_venta_cero quedará en 0")
 
-# ── [3b4/4] Días hábiles por mes (works_days_log, en Reactor MySQL) ──────────
-# works_days_log NO está en Informix (da -206). Vive en Reactor CRM (MySQL).
-# Abrimos una conexión aparte solo para leer los días hábiles. Si Reactor no
-# está disponible, se cae al default de 20 días/mes (no es bloqueante).
-print("[3b4/4] Días hábiles (works_days_log @ Reactor)...", end=" ", flush=True)
+# ── [3b4/4] Días hábiles por mes (work_days_log, en Reactor MySQL) ───────────
+# work_days_log NO está en Informix (da -206). Vive en Reactor CRM (MySQL).
+# Tiene una fila por día hábil (excluye fines de semana y feriados), columna de
+# fecha = real_date. Abrimos una conexión aparte solo para leerla. Si Reactor
+# no está disponible, se cae al default de 20 días/mes (no es bloqueante).
+print("[3b4/4] Días hábiles (work_days_log @ Reactor)...", end=" ", flush=True)
 dias_habiles = {}  # (anio, mes) → int
 try:
     rcon = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
     rcur = rcon.cursor()
-    # Detectar la columna de fecha con SELECT * LIMIT 1 → leer cursor.description
-    # (más robusto que adivinar el nombre; datetime.date en Python = tipo DATE en MySQL)
-    _wdl_field = None
-    try:
-        rcur.execute("SELECT * FROM works_days_log LIMIT 1")
-        rcur.fetchall()
-        import datetime as _dt
-        for col_desc in rcur.description:
-            col_name = col_desc[0]
-            # Verificar tipo probando un valor real
-            rcur.execute(f"SELECT {col_name} FROM works_days_log LIMIT 1")
-            val = rcur.fetchone()
-            if val and isinstance(val[0], (_dt.date, _dt.datetime)):
-                _wdl_field = col_name
-                break
-    except Exception as _e:
-        raise RuntimeError(f"no se pudo inspeccionar works_days_log ({_e})")
-    if _wdl_field is None:
-        # fallback: probar candidatos comunes por si el tipo no matcheó
-        for _c in ("fecha", "date", "day", "dia", "work_day", "fecha_dia", "created", "log_date"):
-            try:
-                rcur.execute(f"SELECT {_c} FROM works_days_log LIMIT 0")
-                rcur.fetchall()
-                _wdl_field = _c
-                break
-            except Exception:
-                continue
-    if _wdl_field is None:
-        raise RuntimeError("no se encontró columna de fecha en works_days_log")
-    rcur.execute(f"""
-        SELECT YEAR({_wdl_field}), MONTH({_wdl_field}), COUNT(*)
-        FROM works_days_log
-        WHERE {_wdl_field} >= ?
-        GROUP BY YEAR({_wdl_field}), MONTH({_wdl_field})
+    rcur.execute("""
+        SELECT YEAR(real_date), MONTH(real_date), COUNT(*)
+        FROM work_days_log
+        WHERE real_date >= ?
+        GROUP BY YEAR(real_date), MONTH(real_date)
     """, fecha_desde_str)
     for row in rcur.fetchall():
         try:
@@ -402,9 +374,9 @@ try:
         except (TypeError, ValueError):
             continue
     rcon.close()
-    print(f"OK — campo '{_wdl_field}', {len(dias_habiles)} meses cargados")
+    print(f"OK — {len(dias_habiles)} meses cargados")
 except Exception as e:
-    print(f"AVISO: no se pudo leer works_days_log de Reactor ({e}) — se usará 20 días/mes por defecto")
+    print(f"AVISO: no se pudo leer work_days_log de Reactor ({e}) — se usará 20 días/mes por defecto")
 
 icon.close()
 
@@ -581,7 +553,7 @@ for k in sorted(todas_keys_vm):
     pct_plan           = round(venta_total / plan * 100, 1) if plan > 0 else 0.0
     clientes_nuevos    = nuevos_data.get(k, 0)
 
-    # dias_venta_cero: días hábiles sin ninguna factura (fuente: sbas.budat + works_days_log)
+    # dias_venta_cero: días hábiles sin ninguna factura (fuente: sbas.redat + work_days_log @ Reactor)
     dcv             = dias_con_venta.get(k, None)
     dh              = dias_habiles.get((anio, mes), 20)
     dias_venta_cero = max(0, dh - dcv) if dcv is not None else 0

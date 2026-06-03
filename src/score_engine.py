@@ -20,24 +20,36 @@ import os
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
 
-def get_connection() -> sqlite3.Connection:
+def get_connection():
     """
-    SIMULADO: conecta a SQLite local.
+    Conecta a la fuente de datos activa.
 
-    LUNES - reemplazar por:
-    ─────────────────────────────────────────────────────────
-    import pyodbc
-    conn_str = (
-        "DRIVER={IBM INFORMIX ODBC DRIVER};"
-        "SERVER=<servidor>;"
-        "DATABASE=<base>;"
-        "HOST=<host>;"
-        "UID=<usuario>;"
-        "PWD=<password>;"
-    )
-    return pyodbc.connect(conn_str)
-    ─────────────────────────────────────────────────────────
+    Si las variables de entorno INFORMIX_SERVER / INFORMIX_DATABASE / INFORMIX_HOST /
+    INFORMIX_UID / INFORMIX_PWD están configuradas (en .env o el entorno del sistema),
+    conecta a Informix via pyodbc (requiere Python 32-bit con ODBC driver instalado).
+    Si no están configuradas, usa SQLite local (data/wurth.db).
+
+    Para activar Informix: copiá .env.example → .env y completá las variables.
     """
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+    except ImportError:
+        pass
+
+    server = os.getenv("INFORMIX_SERVER", "").strip()
+    if server:
+        import pyodbc
+        conn_str = (
+            f"DRIVER={{IBM INFORMIX ODBC DRIVER}};"
+            f"SERVER={server};"
+            f"DATABASE={os.getenv('INFORMIX_DATABASE', '')};"
+            f"HOST={os.getenv('INFORMIX_HOST', '')};"
+            f"UID={os.getenv('INFORMIX_UID', '')};"
+            f"PWD={os.getenv('INFORMIX_PWD', '')};"
+        )
+        return pyodbc.connect(conn_str)
+
     return sqlite3.connect(DB_PATH)
 
 
@@ -67,94 +79,166 @@ class ScoreVendedor:
     grupo_riesgo_historico: Optional[float] = None
 
 
-def calcular_scores(meses_tendencia: int = 3) -> pd.DataFrame:
+def calcular_scores(meses_tendencia: int = 3,
+                    hasta_anio: int = None,
+                    hasta_mes: int = None) -> pd.DataFrame:
     """
     Retorna DataFrame con score de riesgo de todos los vendedores activos.
     meses_tendencia: cuántos meses hacia atrás mirar (mínimo 2, recomendado 3).
+
+    hasta_anio / hasta_mes: si se especifican, simula el score como si fuera
+    el fin de ese mes. Incluye vendedores que estaban activos en esa fecha
+    (aunque hoy ya se hayan ido). Útil para backfill histórico.
     """
+    import datetime, calendar
     con = get_connection()
 
-    # ── 1. Vendedores activos (excluye supervisores) ───────────────────────
-    # Un supervisor tiene su nombre en la columna supervisor de otros vendedores;
-    # no vende ni cobra, por lo que no debe aparecer en el scoring.
-    vendedores = pd.read_sql("""
-        SELECT v.id_vendedor,
-               COALESCE(v.nombre, 'ID ' || v.id_vendedor) as nombre,
-               v.tipo, v.nombre_grupo, v.supervisor,
-               v.fecha_ingreso, g.riesgo_base
-        FROM vendedores v
-        JOIN grupos g ON v.id_grupo = g.id_grupo
-        WHERE v.activo = 1
-          AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
-          AND v.id_vendedor != 9800
-          AND v.nombre NOT IN (
-              SELECT DISTINCT supervisor FROM vendedores
-              WHERE supervisor IS NOT NULL AND supervisor != ''
-          )
-    """, con)
+    if hasta_anio and hasta_mes:
+        ultimo_dia   = calendar.monthrange(hasta_anio, hasta_mes)[1]
+        fecha_corte  = datetime.date(hasta_anio, hasta_mes, ultimo_dia)
+        periodo_num  = hasta_anio * 100 + hasta_mes
+        fc_str       = fecha_corte.isoformat()
+        today        = pd.Timestamp(fecha_corte)
 
-    # ── 2. Últimos N meses de ventas por vendedor activo ───────────────────
-    ventas = pd.read_sql(f"""
-        SELECT vm.*
-        FROM ventas_mensual vm
-        JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
-        WHERE v.activo = 1
-        ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
-    """, con)
-
-    # ── 3. Actividad Reactor (llamadas / visitas) — tabla puede no existir ─
-    try:
-        actividad = pd.read_sql("""
-            SELECT am.*
-            FROM actividad_mensual am
-            JOIN vendedores v ON am.id_vendedor = v.id_vendedor
-            WHERE v.activo = 1
-            ORDER BY am.id_vendedor, am.anio DESC, am.mes DESC
+        vendedores = pd.read_sql(f"""
+            SELECT v.id_vendedor,
+                   COALESCE(v.nombre, 'ID ' || v.id_vendedor) as nombre,
+                   v.tipo, v.nombre_grupo, v.supervisor,
+                   v.fecha_ingreso, g.riesgo_base
+            FROM vendedores v
+            JOIN grupos g ON v.id_grupo = g.id_grupo
+            WHERE v.fecha_ingreso IS NOT NULL
+              AND v.fecha_ingreso <= '{fc_str}'
+              AND (v.fecha_egreso IS NULL
+                   OR v.fecha_egreso > '{fc_str}'
+                   OR v.fecha_egreso = v.fecha_ingreso)
+              AND v.id_vendedor != 9800
+              AND v.nombre NOT IN (
+                  SELECT DISTINCT supervisor FROM vendedores
+                  WHERE supervisor IS NOT NULL AND supervisor != ''
+              )
         """, con)
-    except Exception:
-        actividad = pd.DataFrame()
 
-    # ── 4. Ausencias (Reactor) ─────────────────────────────────────────────
-    try:
-        ausencias = pd.read_sql("""
-            SELECT au.*
-            FROM ausencias_mensual au
-            JOIN vendedores v ON au.id_vendedor = v.id_vendedor
-            WHERE v.activo = 1
-            ORDER BY au.id_vendedor, au.anio DESC, au.mes DESC
+        ventas = pd.read_sql(f"""
+            SELECT vm.*
+            FROM ventas_mensual vm
+            WHERE (vm.anio * 100 + vm.mes) <= {periodo_num}
+            ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
         """, con)
-    except Exception:
-        ausencias = pd.DataFrame()
 
-    # ── 5. Balanza de clientes (Informix vía ETL) ─────────────────────────
-    try:
-        balanza = pd.read_sql("""
-            SELECT bc.*
-            FROM balanza_clientes bc
-            JOIN vendedores v ON bc.id_vendedor = v.id_vendedor
-            WHERE v.activo = 1
-            ORDER BY bc.id_vendedor, bc.anio DESC, bc.mes DESC
-        """, con)
-    except Exception:
-        balanza = pd.DataFrame()
+        try:
+            actividad = pd.read_sql(f"""
+                SELECT am.*
+                FROM actividad_mensual am
+                WHERE (am.anio * 100 + am.mes) <= {periodo_num}
+                ORDER BY am.id_vendedor, am.anio DESC, am.mes DESC
+            """, con)
+        except Exception:
+            actividad = pd.DataFrame()
 
-    # ── 6. Acompañamiento del supervisor (Reactor) ─────────────────────────
-    try:
-        acompanamiento = pd.read_sql("""
-            SELECT ac.*
-            FROM acompanamiento_mensual ac
-            JOIN vendedores v ON ac.id_vendedor = v.id_vendedor
+        try:
+            ausencias = pd.read_sql(f"""
+                SELECT au.*
+                FROM ausencias_mensual au
+                WHERE (au.anio * 100 + au.mes) <= {periodo_num}
+                ORDER BY au.id_vendedor, au.anio DESC, au.mes DESC
+            """, con)
+        except Exception:
+            ausencias = pd.DataFrame()
+
+        try:
+            balanza = pd.read_sql(f"""
+                SELECT bc.*
+                FROM balanza_clientes bc
+                WHERE (bc.anio * 100 + bc.mes) <= {periodo_num}
+                ORDER BY bc.id_vendedor, bc.anio DESC, bc.mes DESC
+            """, con)
+        except Exception:
+            balanza = pd.DataFrame()
+
+        try:
+            acompanamiento = pd.read_sql(f"""
+                SELECT ac.*
+                FROM acompanamiento_mensual ac
+                WHERE (ac.anio * 100 + ac.mes) <= {periodo_num}
+                ORDER BY ac.id_vendedor, ac.anio DESC, ac.mes DESC
+            """, con)
+        except Exception:
+            acompanamiento = pd.DataFrame()
+
+    else:
+        today = pd.Timestamp(datetime.date.today())
+
+        vendedores = pd.read_sql("""
+            SELECT v.id_vendedor,
+                   COALESCE(v.nombre, 'ID ' || v.id_vendedor) as nombre,
+                   v.tipo, v.nombre_grupo, v.supervisor,
+                   v.fecha_ingreso, g.riesgo_base
+            FROM vendedores v
+            JOIN grupos g ON v.id_grupo = g.id_grupo
             WHERE v.activo = 1
-            ORDER BY ac.id_vendedor, ac.anio DESC, ac.mes DESC
+              AND (v.fecha_egreso IS NULL OR v.fecha_egreso != v.fecha_ingreso)
+              AND v.id_vendedor != 9800
+              AND v.nombre NOT IN (
+                  SELECT DISTINCT supervisor FROM vendedores
+                  WHERE supervisor IS NOT NULL AND supervisor != ''
+              )
         """, con)
-    except Exception:
-        acompanamiento = pd.DataFrame()
+
+        ventas = pd.read_sql("""
+            SELECT vm.*
+            FROM ventas_mensual vm
+            JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
+            WHERE v.activo = 1
+            ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
+        """, con)
+
+        try:
+            actividad = pd.read_sql("""
+                SELECT am.*
+                FROM actividad_mensual am
+                JOIN vendedores v ON am.id_vendedor = v.id_vendedor
+                WHERE v.activo = 1
+                ORDER BY am.id_vendedor, am.anio DESC, am.mes DESC
+            """, con)
+        except Exception:
+            actividad = pd.DataFrame()
+
+        try:
+            ausencias = pd.read_sql("""
+                SELECT au.*
+                FROM ausencias_mensual au
+                JOIN vendedores v ON au.id_vendedor = v.id_vendedor
+                WHERE v.activo = 1
+                ORDER BY au.id_vendedor, au.anio DESC, au.mes DESC
+            """, con)
+        except Exception:
+            ausencias = pd.DataFrame()
+
+        try:
+            balanza = pd.read_sql("""
+                SELECT bc.*
+                FROM balanza_clientes bc
+                JOIN vendedores v ON bc.id_vendedor = v.id_vendedor
+                WHERE v.activo = 1
+                ORDER BY bc.id_vendedor, bc.anio DESC, bc.mes DESC
+            """, con)
+        except Exception:
+            balanza = pd.DataFrame()
+
+        try:
+            acompanamiento = pd.read_sql("""
+                SELECT ac.*
+                FROM acompanamiento_mensual ac
+                JOIN vendedores v ON ac.id_vendedor = v.id_vendedor
+                WHERE v.activo = 1
+                ORDER BY ac.id_vendedor, ac.anio DESC, ac.mes DESC
+            """, con)
+        except Exception:
+            acompanamiento = pd.DataFrame()
 
     con.close()
 
-    # Fecha de referencia: usar la fecha actual
-    import datetime
-    today = pd.Timestamp(datetime.date.today())
     vendedores["fecha_ingreso"] = pd.to_datetime(vendedores["fecha_ingreso"])
     vendedores["meses_activo"] = (
         (today - vendedores["fecha_ingreso"]).dt.days / 30

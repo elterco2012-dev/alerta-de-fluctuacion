@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
 from snippets_v3 import (
     banner, hero_kpi, stat_kpi, accion_tag, score_circle as wz_score_circle,
-    badge as wz_badge, fmt_num, fmt_meses,
+    badge as wz_badge, fmt_num, fmt_meses, score_delta, fresh,
 )
 
 def _fmt_antiguedad(meses):
@@ -43,59 +43,8 @@ st.markdown("""<style>
 .block-container { padding: 2.5rem 2.5rem 3rem !important; max-width: 100% !important; }
 header { display: none; }
 
-.kpi-row { display: flex; gap: 14px; margin-bottom: 28px; }
-.kpi-card {
-    background: white; border-radius: 12px; padding: 18px 22px;
-    flex: 1; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-    border-left: 4px solid #e0e0e0;
-}
-.kpi-card.kc { border-left-color: #E24B4A; }
-.kpi-card.ka { border-left-color: #EF9F27; }
-.kpi-card.ki { border-left-color: #4A90D9; }
-.kpi-value { font-size: 30px; font-weight: 800; color: #1a1a2e; line-height: 1.1; }
-.kpi-label { font-size: 13px; font-weight: 700; color: #333; margin-top: 6px; }
-.kpi-sub   { font-size: 11px; color: #999; margin-top: 3px; }
-
-.sec-header {
-    font-size: 15px; font-weight: 700; color: #1a1a2e;
-    margin: 8px 0 14px; display: flex; align-items: center; gap: 6px;
-}
-
-.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
-        font-size: 11px; font-weight: 600; margin: 1px 2px; white-space: nowrap; }
-.pill-red    { background: #FDECEA; color: #B71C1C; }
-.pill-orange { background: #FFF3E0; color: #E65100; }
-.pill-yellow { background: #FFFDE7; color: #F57F17; }
-
-.sc { display: inline-flex; align-items: center; justify-content: center;
-      width: 36px; height: 36px; border-radius: 50%; font-weight: 800; font-size: 15px; }
-.sc-critico { background: #FDECEA; color: #B71C1C; border: 2px solid #E24B4A; }
-.sc-alto    { background: #FFF3E0; color: #E65100; border: 2px solid #EF9F27; }
-.sc-medio   { background: #E3F2FD; color: #1565C0; border: 2px solid #4A90D9; }
-.sc-bajo    { background: #F1F8E9; color: #2E7D32; border: 2px solid #639922; }
-
-.bdg { display: inline-block; padding: 2px 8px; border-radius: 4px;
-       font-size: 11px; font-weight: 600; }
-.bdg-critico { background: #FDECEA; color: #B71C1C; }
-.bdg-alto    { background: #FFF3E0; color: #E65100; }
-.bdg-medio   { background: #E3F2FD; color: #1565C0; }
-.bdg-bajo    { background: #F1F8E9; color: #2E7D32; }
-
-.spark { display: inline-flex; align-items: flex-end; gap: 3px; height: 24px; }
-.sb { width: 9px; border-radius: 2px 2px 0 0; }
-
-.vt { width: 100%; border-collapse: collapse; }
-.vt th { background: #f8f9fa; padding: 10px 12px; text-align: left;
-         font-size: 12px; font-weight: 600; color: #666;
-         border-bottom: 2px solid #e9ecef; }
-.vt td { padding: 11px 12px; border-bottom: 1px solid #f2f2f2;
-         vertical-align: middle; font-size: 13px; }
-.vt tr:hover td { background: #fafafa; }
-.vn  { font-weight: 700; color: #1a1a2e; font-size: 13px; }
-.vsb { color: #aaa; font-size: 11px; margin-top: 2px; }
-
-.card { background: white; border-radius: 12px; padding: 20px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.sec-header { font-size: 15px; font-weight: 700; color: #1a1a2e;
+    margin: 8px 0 14px; display: flex; align-items: center; gap: 6px; }
 
 .zc { display: flex; justify-content: space-between; align-items: center;
       padding: 13px 0; border-bottom: 1px solid #f2f2f2; }
@@ -184,12 +133,12 @@ def _pills(tags):
         entry = SEÑAL_TAGS.get(d, (d, "yellow", d))
         label, color = entry[0], entry[1]
         tooltip = entry[2] if len(entry) > 2 else d
-        parts.append(f'<span class="pill pill-{color}" title="{tooltip}">{label}</span>')
+        parts.append(f'<span class="wz-pill {color}" title="{tooltip}">{label}</span>')
     return "".join(parts)
 
 def _score_circle(score, nivel):
     tip = _NIVEL_TOOLTIP.get(nivel, "")
-    return f'<div class="sc sc-{nivel}" title="{tip}">{int(score)}</div>'
+    return f'<span class="wz-score {nivel}" title="{tip}">{int(score)}</span>'
 
 def _spark(vals):
     if not vals:
@@ -199,13 +148,13 @@ def _spark(vals):
     for v in vals:
         h = max(3, int(v / cap * 22))
         c = "#639922" if v >= 90 else ("#EF9F27" if v >= 70 else "#E24B4A")
-        bars.append(f'<div class="sb" style="height:{h}px;background:{c};"></div>')
-    return f'<div class="spark">{"".join(bars)}</div>'
+        bars.append(f'<div class="wz-sb" style="height:{h}px;background:{c};"></div>')
+    return f'<div class="wz-spark">{"".join(bars)}</div>'
 
 def _bdg(nivel, label=None):
     labels = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "bajo": "Bajo"}
     tip = _ZONA_TOOLTIP.get(nivel, "")
-    return f'<span class="bdg bdg-{nivel}" title="{tip}">{label or labels[nivel]}</span>'
+    return f'<span class="wz-badge {nivel}" title="{tip}">{label or labels[nivel]}</span>'
 
 def _zona_nivel(riesgo_base):
     if riesgo_base > 0.60: return "critico"
@@ -220,12 +169,28 @@ def _zona_label(riesgo_base):
 # ── Carga de datos ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cargar_datos():
+    from datetime import date as _date, datetime as _dt
+    _ts = _dt.now().strftime("%d/%m/%Y %H:%M")
     scores   = calcular_scores(meses_tendencia=3)
     grupos   = resumen_grupos()
     sparks   = obtener_sparklines(meses=3)
 
     con = get_connection()
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
+
+    # Score del mes anterior para calcular Δ
+    _hoy = _date.today()
+    _pm  = _hoy.month - 1 or 12
+    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    _periodo_prev = f"{_py}-{_pm:02d}"
+    try:
+        _prev = pd.read_sql(
+            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_periodo_prev}'",
+            con,
+        )
+        delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
+    except Exception:
+        delta_map = {}
     ventanas = pd.read_sql("""
         SELECT
             MAX(1, CAST((julianday(fecha_egreso) - julianday(fecha_ingreso)) / 30.44 + 1 AS INTEGER)) as mes_numero,
@@ -276,9 +241,9 @@ def cargar_datos():
         grupos = grupos.drop(columns=["rb"], errors="ignore")
 
     con.close()
-    return scores, grupos, sparks, ventanas, perm_egreso
+    return scores, grupos, sparks, ventanas, perm_egreso, delta_map, _ts
 
-scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom = cargar_datos()
+scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom, delta_map, _ts_datos = cargar_datos()
 
 # ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
 _sup_stats = (
@@ -295,11 +260,14 @@ _avg_por_sup          = _sup_stats["n_vendedores"].mean() if _n_supervisores > 0
 _sup_con_muchos_nuevos = int((_sup_stats["n_onboarding"] >= 3).sum())
 
 # ── Encabezado + Navegación ────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <div style="display:flex; justify-content:space-between; align-items:center;
             margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">
-    Wurth Argentina &mdash; Alertas de Rotación
+  <div>
+    <div style="font-size:20px; font-weight:800; color:#1a1a2e;">
+      Wurth Argentina &mdash; Alertas de Rotación
+    </div>
+    <div style="margin-top:4px;">{fresh(_ts_datos)}</div>
   </div>
   <div style="font-size:13px; display:flex; gap:20px;">
     <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
@@ -307,6 +275,7 @@ st.markdown("""
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
     <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;">📞 Actividad</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;">🎯 Precisión</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -412,18 +381,22 @@ else:
     df_extra = df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
-def _tabla_rows(subset):
+def _tabla_rows(subset, delta_map=None):
+    if delta_map is None:
+        delta_map = {}
     rows = ""
     for _, r in subset.iterrows():
         vid    = int(r["id_vendedor"])
         nivel  = r["nivel_riesgo"]
         zona_n = _zona_nivel(r["grupo_riesgo_base"])
         zona_l = _zona_label(r["grupo_riesgo_base"])
+        prev   = delta_map.get(vid)
+        delta  = round(r["score"] - prev, 1) if prev is not None else None
         rows += f"""
     <tr>
       <td>
-        <div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-        <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
+        <div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+        <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
@@ -433,14 +406,15 @@ def _tabla_rows(subset):
         <div style="margin-top:3px;">{_bdg(zona_n, zona_l)}</div>
       </td>
       <td>{accion_tag(nivel)}</td>
+      <td>{score_delta(delta)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
     return rows
 
 def _tabla_html(rows_html):
     return f"""
-<div class="card" style="margin-bottom:6px;overflow-x:auto;">
-<table class="vt">
+<div class="wz-card" style="margin-bottom:6px;overflow-x:auto;">
+<table class="wz-table">
 <thead><tr>
   <th>Vendedor</th>
   <th>Señales detectadas <span style="font-weight:400;color:#bbb;font-size:10px;">— pasá el mouse sobre cada señal para ver la explicación</span></th>
@@ -448,17 +422,18 @@ def _tabla_html(rows_html):
   <th title="3 barras = % Plan de los últimos 3 meses (izq→der). Verde ≥90% · Naranja ≥70% · Rojo &lt;70%">Tendencia ⓘ</th>
   <th title="Rot. baja: &lt;30% se fue en &lt;6m · Rot. media: 30-45% · Rot. alta: &gt;45%">Zona ⓘ</th>
   <th>Acción sugerida</th>
+  <th title="Variación vs el mes anterior (▲ subió = empeoró, ▼ bajó = mejoró). Vacío si no hay historial guardado.">Δ mes ⓘ</th>
   <th title="Crítico 8-10: acción inmediata · Alto 6-7: seguimiento activo · Medio 4-5: monitoreo mensual · Bajo 1-3: seguimiento normal">Score ⓘ</th>
 </tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
 </div>"""
 
-st.markdown(_tabla_html(_tabla_rows(df_show)), unsafe_allow_html=True)
+st.markdown(_tabla_html(_tabla_rows(df_show, delta_map)), unsafe_allow_html=True)
 
 if not df_extra.empty:
     with st.expander(f"Ver {len(df_extra)} vendedores más"):
-        st.markdown(_tabla_html(_tabla_rows(df_extra)), unsafe_allow_html=True)
+        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map)), unsafe_allow_html=True)
 
 if busqueda_sc:
     st.caption(f"{len(df_show)} vendedores encontrados.")
@@ -541,10 +516,10 @@ with col1:
 
     top5_zonas = zonas_fil.head(5)
     resto_zonas = zonas_fil.iloc[5:]
-    st.markdown(f'<div class="card">{_zona_cards_html(top5_zonas)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="wz-card">{_zona_cards_html(top5_zonas)}</div>', unsafe_allow_html=True)
     if not resto_zonas.empty:
         with st.expander(f"Ver {len(resto_zonas)} grupos más"):
-            st.markdown(f'<div class="card">{_zona_cards_html(resto_zonas)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="wz-card">{_zona_cards_html(resto_zonas)}</div>', unsafe_allow_html=True)
 
 with col2:
     st.markdown('<div class="sec-header">⏱️ Ventanas críticas de permanencia</div>',
@@ -641,7 +616,7 @@ if not onb.empty:
     resto_onb = onb_show.iloc[5:]
 
     st.markdown(f"""
-    <div class="card">
+    <div class="wz-card">
     <table class="ot">
     <thead><tr>
       <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
@@ -654,7 +629,7 @@ if not onb.empty:
     if not resto_onb.empty:
         with st.expander(f"Ver {len(resto_onb)} vendedores más en onboarding"):
             st.markdown(f"""
-    <div class="card">
+    <div class="wz-card">
     <table class="ot">
     <thead><tr>
       <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>

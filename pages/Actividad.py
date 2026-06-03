@@ -12,7 +12,7 @@ import os, sys
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from snippets_v3 import banner, fmt_num
+from snippets_v3 import banner, fmt_num, hero_kpi, stat_kpi, fmt_pct
 
 TARGET_TELEVENTAS   = 80   # llamadas planificadas por empresa / día
 TARGET_VIAJANTES    = 15   # visitas planificadas por empresa / día
@@ -40,6 +40,7 @@ st.markdown("""
     <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;">📝 Intervenciones</a>
     <a href="/Historial"     target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;">🎯 Precisión</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -100,7 +101,7 @@ def _pct(num, den):
     return round(num / den * 100) if den > 0 else 0
 
 
-# ── Banner ─────────────────────────────────────────────────────────────────────
+# ── KPIs y Banner ──────────────────────────────────────────────────────────────
 tel_plan_tot = df_tel["planificadas_llamadas"].sum()
 tel_ejec_tot = df_tel["llamadas"].sum()
 via_plan_tot = df_via["planificadas_visitas"].sum()
@@ -108,6 +109,30 @@ via_ejec_tot = df_via["visitas"].sum()
 tel_cumpl    = _pct(tel_ejec_tot, tel_plan_tot)
 via_cumpl    = _pct(via_ejec_tot, via_plan_tot)
 min_cumpl    = min(tel_cumpl, via_cumpl) if tel_plan_tot > 0 and via_plan_tot > 0 else (tel_cumpl or via_cumpl)
+
+col_hero, col_stats = st.columns([1, 2.2])
+with col_hero:
+    st.markdown(hero_kpi(
+        "Cumplimiento del plan",
+        fmt_pct(min_cumpl),
+        f"Peor entre Televentas y Viajantes — período {periodo_sel}",
+        red=(min_cumpl < 50),
+    ), unsafe_allow_html=True)
+with col_stats:
+    _s1, _s2, _s3, _s4 = st.columns(4)
+    with _s1:
+        st.markdown(stat_kpi("Televentas activos", fmt_num(df_tel["id_vendedor"].nunique())),
+                    unsafe_allow_html=True)
+    with _s2:
+        st.markdown(stat_kpi("Viajantes activos", fmt_num(df_via["id_vendedor"].nunique())),
+                    unsafe_allow_html=True)
+    with _s3:
+        st.markdown(stat_kpi("Cumpl. Televentas", fmt_pct(tel_cumpl)), unsafe_allow_html=True)
+    with _s4:
+        st.markdown(stat_kpi("Cumpl. Viajantes", fmt_pct(via_cumpl)), unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
 if min_cumpl < 50:
     st.markdown(banner("📞",
         f"Cumplimiento bajo: {fmt_num(min_cumpl)}% del plan de actividad",
@@ -124,8 +149,7 @@ else:
         f"Televentas {fmt_num(tel_cumpl)}% · Viajantes {fmt_num(via_cumpl)}% — período {periodo_sel}",
         "green"), unsafe_allow_html=True)
 
-# ── KPIs globales del período ─────────────────────────────────────────────────
-st.markdown("### Resumen del período")
+# ── Resumen del período ───────────────────────────────────────────────────────
 
 # Televentas
 tel_vendedores    = df_tel["id_vendedor"].nunique()

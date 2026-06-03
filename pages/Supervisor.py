@@ -11,7 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
-from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses
+from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses, score_delta, fresh
 
 def _fmt_antiguedad(meses):
     if meses < 12:
@@ -41,53 +41,8 @@ st.markdown("""<style>
 .block-container { padding: 2.5rem 2.5rem 4rem !important; max-width: 100% !important; }
 header { display: none; }
 
-.kpi-row { display: flex; gap: 14px; margin-bottom: 24px; }
-.kpi-card { background: white; border-radius: 12px; padding: 18px 22px;
-    flex: 1; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #e0e0e0; }
-.kpi-card.kc { border-left-color: #E24B4A; }
-.kpi-card.ka { border-left-color: #EF9F27; }
-.kpi-card.ki { border-left-color: #4A90D9; }
-.kpi-value { font-size: 30px; font-weight: 800; color: #1a1a2e; line-height: 1.1; }
-.kpi-label { font-size: 13px; font-weight: 700; color: #333; margin-top: 6px; }
-.kpi-sub   { font-size: 11px; color: #999; margin-top: 3px; }
-
-.pill { display: inline-block; padding: 2px 8px; border-radius: 10px;
-        font-size: 11px; font-weight: 600; margin: 1px 2px; white-space: nowrap; }
-.pill-red    { background: #FDECEA; color: #B71C1C; }
-.pill-orange { background: #FFF3E0; color: #E65100; }
-.pill-yellow { background: #FFFDE7; color: #F57F17; }
-
-.sc { display: inline-flex; align-items: center; justify-content: center;
-      width: 36px; height: 36px; border-radius: 50%; font-weight: 800; font-size: 15px; }
-.sc-critico { background: #FDECEA; color: #B71C1C; border: 2px solid #E24B4A; }
-.sc-alto    { background: #FFF3E0; color: #E65100; border: 2px solid #EF9F27; }
-.sc-medio   { background: #E3F2FD; color: #1565C0; border: 2px solid #4A90D9; }
-.sc-bajo    { background: #F1F8E9; color: #2E7D32; border: 2px solid #639922; }
-
-.bdg { display: inline-block; padding: 2px 8px; border-radius: 4px;
-       font-size: 11px; font-weight: 600; }
-.bdg-critico { background: #FDECEA; color: #B71C1C; }
-.bdg-alto    { background: #FFF3E0; color: #E65100; }
-.bdg-medio   { background: #E3F2FD; color: #1565C0; }
-.bdg-bajo    { background: #F1F8E9; color: #2E7D32; }
-
-.spark { display: inline-flex; align-items: flex-end; gap: 3px; height: 24px; }
-.sb { width: 9px; border-radius: 2px 2px 0 0; }
-
-.vt { width: 100%; border-collapse: collapse; }
-.vt th { background: #f8f9fa; padding: 10px 12px; text-align: left;
-         font-size: 12px; font-weight: 600; color: #666; border-bottom: 2px solid #e9ecef; }
-.vt td { padding: 11px 12px; border-bottom: 1px solid #f2f2f2;
-         vertical-align: middle; font-size: 13px; }
-.vt tr:hover td { background: #fafafa; }
-.vn  { font-weight: 700; color: #1a1a2e; font-size: 13px; }
-.vsb { color: #aaa; font-size: 11px; margin-top: 2px; }
-
 .sec-header { font-size: 15px; font-weight: 700; color: #1a1a2e;
     margin: 8px 0 14px; display: flex; align-items: center; gap: 6px; }
-
-.card { background: white; border-radius: 12px; padding: 20px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 
 .sup-card { background: white; border-radius: 12px; padding: 18px 20px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 4px;
@@ -123,13 +78,13 @@ def _pills(tags):
     if not tags:
         return '<span style="color:#ccc;font-size:12px;">Sin alertas</span>'
     return "".join(
-        f'<span class="pill pill-{SEÑAL_TAGS.get(d,(d,"yellow"))[1]}">'
+        f'<span class="wz-pill {SEÑAL_TAGS.get(d,(d,"yellow"))[1]}">'
         f'{SEÑAL_TAGS.get(d,(d,"yellow"))[0]}</span>'
         for d in tags
     )
 
 def _score_circle(score, nivel):
-    return f'<div class="sc sc-{nivel}">{int(score)}</div>'
+    return f'<span class="wz-score {nivel}">{int(score)}</span>'
 
 def _spark(vals):
     if not vals: return "—"
@@ -138,12 +93,12 @@ def _spark(vals):
     for v in vals:
         h = max(3, int(v / cap * 22))
         c = "#639922" if v >= 90 else ("#EF9F27" if v >= 70 else "#E24B4A")
-        bars.append(f'<div class="sb" style="height:{h}px;background:{c};"></div>')
-    return f'<div class="spark">{"".join(bars)}</div>'
+        bars.append(f'<div class="wz-sb" style="height:{h}px;background:{c};"></div>')
+    return f'<div class="wz-spark">{"".join(bars)}</div>'
 
 def _bdg(nivel, label=None):
     labels = {"critico":"Crítico","alto":"Alto","medio":"Medio","bajo":"Bajo"}
-    return f'<span class="bdg bdg-{nivel}">{label or labels[nivel]}</span>'
+    return f'<span class="wz-badge {nivel}">{label or labels[nivel]}</span>'
 
 def _zona_nivel(rb):
     if rb > 0.60: return "critico"
@@ -161,16 +116,32 @@ def _card_class(nivel):
 # ── Datos ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cargar_datos():
+    from datetime import date as _date
     scores = calcular_scores(meses_tendencia=3)
     grupos = resumen_grupos()
     sparks = obtener_sparklines(meses=3)
     con    = get_connection()
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
+
+    from datetime import datetime as _dt
+    _ts = _dt.now().strftime("%d/%m/%Y %H:%M")
+    _hoy = _date.today()
+    _pm  = _hoy.month - 1 or 12
+    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    try:
+        _prev = pd.read_sql(
+            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_py}-{_pm:02d}'",
+            con,
+        )
+        delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
+    except Exception:
+        delta_map = {}
+
     con.close()
     grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
-    return scores, grupos, sparks
+    return scores, grupos, sparks, delta_map, _ts
 
-scores_df, grupos_df, sparks = cargar_datos()
+scores_df, grupos_df, sparks, delta_map, _ts_datos = cargar_datos()
 
 # ── Router ─────────────────────────────────────────────────────────────────────
 supervisor_sel = st.query_params.get("supervisor", None)
@@ -189,6 +160,7 @@ if not supervisor_sel:
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
     <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -271,7 +243,7 @@ with nav_b:
     if st.button("← Todas las zonas"):
         st.query_params.clear()
         st.rerun()
-st.markdown("""
+st.markdown(f"""
 <div style="display:flex; justify-content:space-between; align-items:center;
             margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #eee;">
   <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
@@ -280,7 +252,9 @@ st.markdown("""
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
     <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
   </div>
+  {fresh(_ts_datos)}
 </div>
 """, unsafe_allow_html=True)
 
@@ -344,23 +318,28 @@ st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</di
             unsafe_allow_html=True)
 rows = ""
 for _, r in df_sup.iterrows():
-    vid = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
+    vid   = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
+    prev  = delta_map.get(vid)
+    delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
-      <td><div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-          <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
+      <td><div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+          <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
       <td>{_spark(sparks.get(vid,[]))}</td>
       <td>{accion_tag(nivel)}</td>
+      <td>{score_delta(delta)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
 
 st.markdown(f"""
-<div class="card" style="margin-bottom:6px;overflow-x:auto;">
-<table class="vt">
+<div class="wz-card" style="margin-bottom:6px;overflow-x:auto;">
+<table class="wz-table">
 <thead><tr>
   <th>Vendedor</th><th>Señales detectadas</th>
-  <th>% Plan 3m</th><th>Tendencia</th><th>Acción sugerida</th><th>Score</th>
+  <th>% Plan 3m</th><th>Tendencia</th><th>Acción sugerida</th>
+  <th title="Variación vs el mes anterior (▲ subió = empeoró, ▼ bajó = mejoró)">Δ mes ⓘ</th>
+  <th>Score</th>
 </tr></thead>
 <tbody>{rows}</tbody>
 </table></div>""", unsafe_allow_html=True)
@@ -381,7 +360,7 @@ if not onb.empty:
           <td>{_fmt_antiguedad(r['meses_activo'])}</td><td><b>{r['pct_plan_3m']}%</b></td>
           <td>{_bdg(nivel)}</td></tr>"""
     st.markdown(f"""
-    <div class="card"><table class="ot">
+    <div class="wz-card"><table class="ot">
     <thead><tr><th>Vendedor</th><th>Tipo</th><th>Mes</th><th>% Plan</th><th>Riesgo</th></tr></thead>
     <tbody>{ob_rows}</tbody></table></div>""", unsafe_allow_html=True)
 

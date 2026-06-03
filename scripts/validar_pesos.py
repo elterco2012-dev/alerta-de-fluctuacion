@@ -42,16 +42,16 @@ from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-RIESGO_REFERENCIA = 10.0
+RIESGO_REFERENCIA = 14.0   # coincide con score_engine.py (calibrado por backtest)
 UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
 
 # ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────
 PESOS_ACTUAL = {
     "% Plan cayendo 3 meses seguidos":                              2.5,
     "% Plan < 80% promedio últimos meses":                         2.0,
-    "Días sin venta > 3 en promedio":                              1.5,
+    "Días sin venta > 3 en promedio":                              2.5,
     "< 60% de cartera activa":                                     1.5,
-    "Cobranza real < 90% de teórica":                              1.0,
+    "Cobranza real < 90% de teórica":                              2.0,
     "En ventana crítica mes 1-3":                                  1.5,
     "En ventana crítica mes 4-6":                                  1.0,
     "Grupo con alta rotación histórica":                           1.5,
@@ -64,12 +64,14 @@ PESOS_ACTUAL = {
     "Supervisor no acompañó en ventana crítica 1-6":               1.0,
 }
 
-# ── Pesos PROPUESTOS por Aprendizaje (solo señales con evidencia y base sólida)
-# Días venta cero: lift 2,7x, presente en 71% de los que se fueron → 1.5 -> 2.5
-# Cobranza baja:   lift 2,5x, presente en 97% de los que se fueron → 1.0 -> 2.0
+# ── Pesos PROPUESTOS ──────────────────────────────────────────────────────────
+# Las subidas de días venta cero (1.5->2.5) y cobranza (1.0->2.0) YA se aplicaron
+# a producción (score_engine.py) tras validarse acá. PESOS_PROPUESTO arranca
+# igual a PESOS_ACTUAL; para probar un cambio NUEVO, modificá una línea abajo y
+# volvé a correr el script (sigue sirviendo como banco de pruebas + monitoreo).
 PESOS_PROPUESTO = dict(PESOS_ACTUAL)
-PESOS_PROPUESTO["Días sin venta > 3 en promedio"] = 2.5
-PESOS_PROPUESTO["Cobranza real < 90% de teórica"] = 2.0
+# Ejemplo de cambio a probar (descomentar y ajustar):
+# PESOS_PROPUESTO["Sin clientes nuevos últimos 2 meses"] = 1.5
 
 
 def periodo_a_num(periodo):

@@ -133,14 +133,22 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | señal | peso | umbral |
 |---|---|---|
 | % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 |
+| Días venta cero altos | 2.5 | promedio > 3 días |
 | % Plan promedio < 80% | 2.0 | media < 80 |
-| Días venta cero altos | 1.5 | promedio > 3 días |
+| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 |
 | Cartera activa baja | 1.5 | < 60% activos |
 | Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.60 |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 |
 | En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 |
-| Cobranza real < 90% teórica | 1.0 | pct_cobranza < 90 |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
+
+> **Pesos recalibrados (backtest):** "Días venta cero" subió 1.5→2.5 y "Cobranza
+> real" subió 1.0→2.0. Ambas son las señales con más evidencia predictiva en el
+> análisis leavers-vs-stayers (días cero: lift 2,7× presente en 71% de egresados;
+> cobranza: lift 2,5× presente en 97%). El cambio se validó con holdout temporal
+> (`scripts/validar_pesos.py`): subió la detección out-of-sample de egresados de
+> 70,5% a 79,5%, más de lo que subió la falsa alarma. Ver más abajo la calibración
+> de `RIESGO_REFERENCIA` que acompaña este cambio.
 
 > **Nota:** además de estas 9 señales originales hay 6 más implementadas en
 > `score_engine.py` (llamadas/visitas bajas, ausencias tempranas, balanza
@@ -148,20 +156,33 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 10.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 14.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 10` representa un vendedor en deterioro claro (ej: plan
-cayendo + plan<80% + cobranza + ventana crítica + días cero ≈ 8.5-10 puntos).
+`RIESGO_REFERENCIA = 14` representa un vendedor en deterioro claro (ej: plan
+cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 + ventana crítica 1.5 + días cero 2.5
++ algo más ≈ 12-14 puntos).
 
-**Por qué NO se divide por la suma de todos los pesos (~21.5):** eso exigía
-activar el 56% de las 15 señales a la vez para llegar a score 6, algo que
+**Por qué NO se divide por la suma de todos los pesos (~23.5):** eso exigía
+activar >50% de las 15 señales a la vez para llegar a score 6, algo que
 ningún vendedor real hace. Resultado: todos los egresados quedaban con score
 < 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
 referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
+
+**Por qué 14 y no 10 (recalibración por backtest):** con `RIESGO_REFERENCIA=10`
+el modelo marcaba con score ≥ 6 al **69% de los vendedores activos** — una falsa
+alarma tan alta que el supervisor no puede priorizar. El barrido de calibración
+en `scripts/validar_pesos.py` (curva detección-vs-falsa-alarma sobre datos
+históricos) mostró que `REF=14` baja la falsa alarma a ~42% manteniendo ~62% de
+detección out-of-sample de egresados. Es el punto de **máxima separación**
+(detección − falsa alarma ≈ 20,6), junto con REF=13. Se eligió 14 por priorizar
+menos ruido para el supervisor. Nota honesta: una falsa alarma del 42% sigue
+siendo alta, pero refleja que la población realmente tiene mucho deterioro
+(permanencia 3-5 meses, grupos quemados), no que el modelo exagere. Por eso el
+nivel **crítico (≥8)** es el corte operativo de "reunión esta semana", no el ≥6.
 
 ### Niveles de riesgo
 - 8-10 → **crítico** → acción inmediata del supervisor

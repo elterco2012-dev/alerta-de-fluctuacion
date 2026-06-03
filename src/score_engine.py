@@ -21,12 +21,18 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
 # Riesgo total de referencia para normalizar el score a 1-10.
 # Representa un vendedor en deterioro claro: combinación realista de señales
-# fuertes (ej: plan cayendo 2.5 + plan<80% 2.0 + cobranza 1.0 + ventana crítica
-# 1.5 + días cero 1.5 ≈ 8.5-10 puntos).
-# NO se divide por la suma de TODOS los pesos (~21.5): eso exigía activar el 56%
+# fuertes (ej: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 + ventana crítica
+# 1.5 + días cero 2.5 ≈ 10.5 puntos).
+# NO se divide por la suma de TODOS los pesos (~23.5): eso exigía activar >50%
 # de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
 # hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
-RIESGO_REFERENCIA = 10.0
+#
+# Calibrado en 14.0 (antes 10.0) por backtest con holdout temporal
+# (scripts/validar_pesos.py): con REF=10 la falsa alarma en activos era 69%
+# (inservible para priorizar). REF=14 baja la falsa alarma a ~42% manteniendo
+# 62% de detección out-of-sample de egresados (máxima separación detección vs
+# falsa alarma, ~20.6). Si se ajusta, re-correr el backfill y actualizar CLAUDE.md.
+RIESGO_REFERENCIA = 14.0
 
 
 def get_connection():
@@ -271,9 +277,9 @@ def calcular_scores(meses_tendencia: int = 3,
         señales = [
             Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
-            Señal("dias_cero_alto",        peso=1.5, descripcion="Días sin venta > 3 en promedio"),
+            Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
             Señal("clientes_activos_baja", peso=1.5, descripcion="< 60% de cartera activa"),
-            Señal("cobranza_baja",         peso=1.0, descripcion="Cobranza real < 90% de teórica"),
+            Señal("cobranza_baja",         peso=2.0, descripcion="Cobranza real < 90% de teórica"),
             Señal("ventana_critica_13",    peso=1.5, descripcion="En ventana crítica mes 1-3"),
             Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
             Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),

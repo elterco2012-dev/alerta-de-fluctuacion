@@ -14,6 +14,7 @@ Ejecutar con Python 32 bits (ODBC):
 """
 
 import sys
+from datetime import date
 
 try:
     import pyodbc
@@ -23,6 +24,7 @@ except ImportError:
 
 DSN_INFORMIX = "MSPA"
 FIRMA        = 1
+anio_desde   = date.today().year  # año en curso, para traer una fila reciente
 
 print("=" * 68)
 print("EXPLORACIÓN — columnas reales de la tabla sbas")

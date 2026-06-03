@@ -13,6 +13,7 @@ import pandas as pd
 import sqlite3
 import json
 import os, sys
+import html as _html
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -31,7 +32,7 @@ st.set_page_config(
 )
 
 _v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
-st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{open(_v3_css, encoding='utf-8').read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""<style>
 [data-testid="stSidebar"] { display: none; }
@@ -375,19 +376,19 @@ def _señales_pills(lista):
     if not lista:
         return '<span style="color:#ccc;font-size:11px;">Sin señales</span>'
     pill_colors = {
-        "% Plan cayendo 3 meses seguidos":       ("caída 3m",    "#FDECEA","#B71C1C"),
-        "% Plan < 80% promedio últimos meses":    ("plan<80%",    "#FFF3E0","#E65100"),
-        "Días sin venta > 3 en promedio":         ("días cero↑",  "#FDECEA","#B71C1C"),
-        "< 60% de cartera activa":                ("inactivos↑",  "#FFF3E0","#E65100"),
+        "% Plan cayendo 3 meses seguidos":       ("caída 3m",     "#FDECEA","#B71C1C"),
+        "% Plan < 80% promedio últimos meses":    ("plan &lt;80%", "#FFF3E0","#E65100"),
+        "Días sin venta > 3 en promedio":         ("días cero↑",   "#FDECEA","#B71C1C"),
+        "< 60% de cartera activa":                ("inactivos↑",   "#FFF3E0","#E65100"),
         "Cobranza real < 90% de teórica":         ("cobranza baja","#FFF3E0","#E65100"),
-        "En ventana crítica mes 1-3":             ("inducción",   "#FDECEA","#B71C1C"),
-        "En ventana crítica mes 4-6":             ("mes 4-6",     "#FFF3E0","#E65100"),
-        "Grupo con alta rotación histórica":      ("zona quemada","#FFF3E0","#E65100"),
-        "Sin clientes nuevos últimos 2 meses":    ("cl. L:0",     "#FFFDE7","#F57F17"),
+        "En ventana crítica mes 1-3":             ("inducción",    "#FDECEA","#B71C1C"),
+        "En ventana crítica mes 4-6":             ("mes 4-6",      "#FFF3E0","#E65100"),
+        "Grupo con alta rotación histórica":      ("zona quemada", "#FFF3E0","#E65100"),
+        "Sin clientes nuevos últimos 2 meses":    ("cl. L:0",      "#FFFDE7","#F57F17"),
     }
     parts = []
     for s in lista:
-        lbl, bg, tx = pill_colors.get(s, (s[:12], "#f0f0f0", "#666"))
+        lbl, bg, tx = pill_colors.get(s, (_html.escape(s[:12]), "#f0f0f0", "#666"))
         parts.append(f'<span style="background:{bg};color:{tx};padding:1px 6px;'
                      f'border-radius:8px;font-size:10px;font-weight:600;margin:1px 2px;'
                      f'display:inline-block;white-space:nowrap;">{lbl}</span>')
@@ -401,17 +402,23 @@ def _tabla(subset, mostrar_tag):
         tag = ('<span class="tag-det">✅ Detectado</span>' if r["detectado"]
                else '<span class="tag-miss">❌ No detectado</span>')
         score_str = (f'<b style="font-size:15px">{r["score_previo"]}</b> '
-                     f'{_nivel_badge(r["nivel_previo"])}')  if pd.notna(r.get("score_previo")) else "—"
+                     f'{_nivel_badge(r["nivel_previo"])}') if pd.notna(r.get("score_previo")) else "—"
+        nombre        = _html.escape(str(r['nombre'] or ''))
+        tipo          = _html.escape(str(r['tipo'] or ''))
+        nombre_grupo  = _html.escape(str(r['nombre_grupo'] or '—'))
+        periodo_egreso= _html.escape(str(r['periodo_egreso'] or '—'))
+        motivo_egreso = _html.escape(str(r['motivo_egreso'] or '—'))
+        periodo_score = _html.escape(str(r.get('periodo_score') or '—'))
         rows += f"""<tr>
           <td>
-            <div style="font-weight:700;font-size:12px;">{r['nombre']}</div>
-            <div style="color:#aaa;font-size:11px;">{r['tipo']} · ID {int(r['id_vendedor'])}</div>
+            <div style="font-weight:700;font-size:12px;">{nombre}</div>
+            <div style="color:#aaa;font-size:11px;">{tipo} · ID {int(r['id_vendedor'])}</div>
           </td>
-          <td style="font-size:12px;">{r['nombre_grupo']}</td>
-          <td style="font-size:12px;color:#666;">{r['periodo_egreso']}</td>
-          <td style="font-size:12px;color:#888;">{r['motivo_egreso']}</td>
+          <td style="font-size:12px;">{nombre_grupo}</td>
+          <td style="font-size:12px;color:#666;">{periodo_egreso}</td>
+          <td style="font-size:12px;color:#888;">{motivo_egreso}</td>
           <td>{score_str}</td>
-          <td style="font-size:11px;color:#777;">{r.get('periodo_score','—') or '—'}</td>
+          <td style="font-size:11px;color:#777;">{periodo_score}</td>
           <td>{_señales_pills(r['señales'])}</td>
           {'<td>' + tag + '</td>' if mostrar_tag else ''}
         </tr>"""

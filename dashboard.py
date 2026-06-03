@@ -36,7 +36,7 @@ st.set_page_config(
 
 # ── CSS ────────────────────────────────────────────────────────────────────────
 _v3_css_path = os.path.join(os.path.dirname(__file__), "assets", "dashboard-v3.css")
-st.markdown(f"<style>{open(_v3_css_path).read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{open(_v3_css_path, encoding='utf-8').read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""<style>
 [data-testid="stSidebar"] { display: none; }

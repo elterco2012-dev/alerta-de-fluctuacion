@@ -137,7 +137,7 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | % Plan promedio < 80% | 2.0 | media < 80 |
 | Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 |
 | Cartera activa baja | 1.5 | < 60% activos |
-| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.60 |
+| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 |
 | En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
@@ -194,6 +194,16 @@ plan → `plan > 0`; cobranza → `cobranza_teorica > 0`; cartera → `total_cli
 Si no hay ningún mes con base, la señal queda apagada (dato desconocido ≠ riesgo).
 Días venta cero ya era conservador (faltante = 0 = no enciende). Al cambiar esto,
 re-correr siempre el backfill.
+
+**Señal "grupo quemado" rescatada (umbral 0.60 → 0.40):** la hipótesis central
+del proyecto (grupos de alta rotación producen fugas) tenía la señal muerta: el
+umbral pedía `riesgo_base > 0.60` pero el grupo más quemado tiene 0.51, así que
+nunca disparaba. El diagnóstico (`scripts/diagnostico_grupos_quemados.py`) mostró
+que a `> 0.40` los egresados están 2,1× más seguido en grupos quemados que los
+activos (11% vs 5%). Es señal estructural de alerta temprana: marca a vendedores
+nuevos en grupos históricamente malos antes de que muestren deterioro individual.
+Caveat honesto: los egresados alimentan el riesgo_base de su grupo, lo que infla
+algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularidad.
 
 ### Niveles de riesgo
 - 8-10 → **crítico** → acción inmediata del supervisor

@@ -365,7 +365,12 @@ def calcular_scores(meses_tendencia: int = 3,
             riesgo_total += señales[6].peso
 
         # Señal 8: grupo con rotación alta histórica
-        if v["riesgo_base"] > 0.60:
+        # Umbral 0.40 (antes 0.60): el grupo MÁS quemado tiene riesgo_base 0.51,
+        # así que con 0.60 la señal nunca disparaba (estaba muerta). El
+        # diagnóstico (scripts/diagnostico_grupos_quemados.py) mostró que a 0.40
+        # los egresados están 2.1x más seguido en grupos quemados que los activos
+        # (la hipótesis central del proyecto). Ver CLAUDE.md.
+        if v["riesgo_base"] > 0.40:
             señales[7].activa = True
             riesgo_total += señales[7].peso
 

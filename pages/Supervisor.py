@@ -11,7 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
-from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses
+from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses, score_delta
 
 def _fmt_antiguedad(meses):
     if meses < 12:
@@ -161,16 +161,30 @@ def _card_class(nivel):
 # ── Datos ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cargar_datos():
+    from datetime import date as _date
     scores = calcular_scores(meses_tendencia=3)
     grupos = resumen_grupos()
     sparks = obtener_sparklines(meses=3)
     con    = get_connection()
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
+
+    _hoy = _date.today()
+    _pm  = _hoy.month - 1 or 12
+    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    try:
+        _prev = pd.read_sql(
+            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_py}-{_pm:02d}'",
+            con,
+        )
+        delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
+    except Exception:
+        delta_map = {}
+
     con.close()
     grupos = grupos.merge(grupos_risk, on="nombre_grupo", how="left")
-    return scores, grupos, sparks
+    return scores, grupos, sparks, delta_map
 
-scores_df, grupos_df, sparks = cargar_datos()
+scores_df, grupos_df, sparks, delta_map = cargar_datos()
 
 # ── Router ─────────────────────────────────────────────────────────────────────
 supervisor_sel = st.query_params.get("supervisor", None)
@@ -189,6 +203,7 @@ if not supervisor_sel:
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
     <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -280,6 +295,7 @@ st.markdown("""
     <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
     <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
     <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
+    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -344,7 +360,9 @@ st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</di
             unsafe_allow_html=True)
 rows = ""
 for _, r in df_sup.iterrows():
-    vid = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
+    vid   = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
+    prev  = delta_map.get(vid)
+    delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
       <td><div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
           <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
@@ -352,6 +370,7 @@ for _, r in df_sup.iterrows():
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
       <td>{_spark(sparks.get(vid,[]))}</td>
       <td>{accion_tag(nivel)}</td>
+      <td>{score_delta(delta)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
 
@@ -360,7 +379,9 @@ st.markdown(f"""
 <table class="vt">
 <thead><tr>
   <th>Vendedor</th><th>Señales detectadas</th>
-  <th>% Plan 3m</th><th>Tendencia</th><th>Acción sugerida</th><th>Score</th>
+  <th>% Plan 3m</th><th>Tendencia</th><th>Acción sugerida</th>
+  <th title="Variación vs el mes anterior (▲ subió = empeoró, ▼ bajó = mejoró)">Δ mes ⓘ</th>
+  <th>Score</th>
 </tr></thead>
 <tbody>{rows}</tbody>
 </table></div>""", unsafe_allow_html=True)

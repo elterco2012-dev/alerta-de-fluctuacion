@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
 from snippets_v3 import (
     banner, hero_kpi, stat_kpi, accion_tag, score_circle as wz_score_circle,
-    badge as wz_badge, fmt_num, fmt_meses,
+    badge as wz_badge, fmt_num, fmt_meses, score_delta,
 )
 
 def _fmt_antiguedad(meses):
@@ -220,12 +220,27 @@ def _zona_label(riesgo_base):
 # ── Carga de datos ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cargar_datos():
+    from datetime import date as _date
     scores   = calcular_scores(meses_tendencia=3)
     grupos   = resumen_grupos()
     sparks   = obtener_sparklines(meses=3)
 
     con = get_connection()
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
+
+    # Score del mes anterior para calcular Δ
+    _hoy = _date.today()
+    _pm  = _hoy.month - 1 or 12
+    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    _periodo_prev = f"{_py}-{_pm:02d}"
+    try:
+        _prev = pd.read_sql(
+            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_periodo_prev}'",
+            con,
+        )
+        delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
+    except Exception:
+        delta_map = {}
     ventanas = pd.read_sql("""
         SELECT
             MAX(1, CAST((julianday(fecha_egreso) - julianday(fecha_ingreso)) / 30.44 + 1 AS INTEGER)) as mes_numero,
@@ -276,9 +291,9 @@ def cargar_datos():
         grupos = grupos.drop(columns=["rb"], errors="ignore")
 
     con.close()
-    return scores, grupos, sparks, ventanas, perm_egreso
+    return scores, grupos, sparks, ventanas, perm_egreso, delta_map
 
-scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom = cargar_datos()
+scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom, delta_map = cargar_datos()
 
 # ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
 _sup_stats = (
@@ -413,13 +428,17 @@ else:
     df_extra = df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
-def _tabla_rows(subset):
+def _tabla_rows(subset, delta_map=None):
+    if delta_map is None:
+        delta_map = {}
     rows = ""
     for _, r in subset.iterrows():
         vid    = int(r["id_vendedor"])
         nivel  = r["nivel_riesgo"]
         zona_n = _zona_nivel(r["grupo_riesgo_base"])
         zona_l = _zona_label(r["grupo_riesgo_base"])
+        prev   = delta_map.get(vid)
+        delta  = round(r["score"] - prev, 1) if prev is not None else None
         rows += f"""
     <tr>
       <td>
@@ -434,6 +453,7 @@ def _tabla_rows(subset):
         <div style="margin-top:3px;">{_bdg(zona_n, zona_l)}</div>
       </td>
       <td>{accion_tag(nivel)}</td>
+      <td>{score_delta(delta)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
     return rows
@@ -449,17 +469,18 @@ def _tabla_html(rows_html):
   <th title="3 barras = % Plan de los últimos 3 meses (izq→der). Verde ≥90% · Naranja ≥70% · Rojo &lt;70%">Tendencia ⓘ</th>
   <th title="Rot. baja: &lt;30% se fue en &lt;6m · Rot. media: 30-45% · Rot. alta: &gt;45%">Zona ⓘ</th>
   <th>Acción sugerida</th>
+  <th title="Variación vs el mes anterior (▲ subió = empeoró, ▼ bajó = mejoró). Vacío si no hay historial guardado.">Δ mes ⓘ</th>
   <th title="Crítico 8-10: acción inmediata · Alto 6-7: seguimiento activo · Medio 4-5: monitoreo mensual · Bajo 1-3: seguimiento normal">Score ⓘ</th>
 </tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
 </div>"""
 
-st.markdown(_tabla_html(_tabla_rows(df_show)), unsafe_allow_html=True)
+st.markdown(_tabla_html(_tabla_rows(df_show, delta_map)), unsafe_allow_html=True)
 
 if not df_extra.empty:
     with st.expander(f"Ver {len(df_extra)} vendedores más"):
-        st.markdown(_tabla_html(_tabla_rows(df_extra)), unsafe_allow_html=True)
+        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map)), unsafe_allow_html=True)
 
 if busqueda_sc:
     st.caption(f"{len(df_show)} vendedores encontrados.")

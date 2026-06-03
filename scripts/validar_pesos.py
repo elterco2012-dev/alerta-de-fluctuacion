@@ -189,10 +189,15 @@ def main():
         det = [d for d in det if d is not None]
         return (sum(det) / len(det) * 100 if det else 0.0), len(det)
 
-    def tasa_falsa_alarma(pesos, ref=RIESGO_REFERENCIA):
-        fa = [activo_falsa_alarma(v, pesos, ref) for v in activos]
+    def tasa_falsa_alarma(pesos, ref=RIESGO_REFERENCIA, umbral=UMBRAL_RIESGO):
+        fa = [activo_falsa_alarma(v, pesos, ref, umbral) for v in activos]
         fa = [f for f in fa if f is not None]
         return (sum(fa) / len(fa) * 100 if fa else 0.0), len(fa)
+
+    def tasa_deteccion_u(grupo, pesos, ref, umbral):
+        det = [egresado_detectado(v, pesos, ref, umbral) for v in grupo]
+        det = [d for d in det if d is not None]
+        return (sum(det) / len(det) * 100 if det else 0.0)
 
     print(f"\nEgresados evaluables: {len(egr_evaluables)}  "
           f"(viejos: {len(egr_viejos)}, recientes: {len(egr_recientes)})")
@@ -298,6 +303,34 @@ def main():
     print("\n  CÓMO DECIDIR: elegí el REF más alto que todavía detecte a una")
     print("  proporción aceptable de egresados. Más arriba = menos ruido para el")
     print("  supervisor, pero más egresados que se escapan sin alerta.")
+    print("=" * 70)
+
+    # ── Barrido del nivel CRÍTICO (>=8), que es la alerta accionable ─────────
+    # El barrido de arriba usa el umbral >=6. Pero el supervisor actúa sobre
+    # >=8 ('reunión esta semana'). Acá vemos, por cada REF, cómo se comporta esa
+    # alerta accionable. Buscamos un REF donde >=8 detecte a una porción real de
+    # egresados con poca falsa alarma (que cada reunión convocada valga la pena).
+    print("\n" + "=" * 70)
+    print("BARRIDO DEL NIVEL CRÍTICO (>=8, 'reunión esta semana')")
+    print("=" * 70)
+    print("  A REF alto, score>=8 es casi inalcanzable -> la alerta no dispara.")
+    print("  A REF bajo, dispara más pero con más falsa alarma.\n")
+    print(f"  {'REF':>5} {'Det>=8':>8} {'F.alarma>=8':>12} {'Separación':>11}")
+    print("  " + "-" * 40)
+    mejor_ref8, mejor_sep8 = None, -999
+    for ref in referencias:
+        det8 = tasa_deteccion_u(set(egr_evaluables), PESOS_PROPUESTO, ref, 8.0)
+        fa8, _ = tasa_falsa_alarma(PESOS_PROPUESTO, ref, 8.0)
+        sep8 = det8 - fa8
+        if sep8 > mejor_sep8:
+            mejor_sep8, mejor_ref8 = sep8, ref
+        actual = f"  <- actual ({int(RIESGO_REFERENCIA)})" if ref == int(RIESGO_REFERENCIA) else ""
+        print(f"  {ref:>5} {det8:>7.1f}% {fa8:>11.1f}% {sep8:>10.1f}{actual}")
+    print("  " + "-" * 40)
+    print(f"\n  Mejor separación del nivel crítico (>=8): REF = {mejor_ref8}")
+    print("  Si incluso ahí la detección >=8 es muy baja, significa que el nivel")
+    print("  'crítico' no puede ser la única alerta accionable: conviene actuar")
+    print("  sobre el TOP del ranking de score, no sobre un umbral fijo.")
     print("=" * 70)
 
     # ── Niveles de alerta operativos (a la REF de producción) ────────────────

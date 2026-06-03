@@ -29,7 +29,7 @@ Columnas en actividad_mensual:
 
 Opciones:
     --dry-run      Muestra totales sin escribir en SQLite
-    --full         Procesa toda la historia (por defecto: últimos 6 meses)
+    --full         Procesa toda la historia (por defecto: últimos 18 meses)
     --diagnostico  Solo muestra conteos por tabla y año/mes
 """
 
@@ -51,12 +51,14 @@ DB_PATH     = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run",     action="store_true", help="Mostrar sin guardar")
-parser.add_argument("--full",        action="store_true", help="Toda la historia")
+parser.add_argument("--full",        action="store_true", help="Toda la historia (por defecto: últimos 18 meses)")
 parser.add_argument("--diagnostico", action="store_true", help="Solo explorar estructura")
 args = parser.parse_args()
 
 DRY_RUN     = args.dry_run
-MESES_ATRAS = 99 if args.full else 6
+# 18 meses por defecto para cubrir la actividad previa al egreso de los
+# egresados de los últimos 18 meses (alineado con sincronizar_informix.py).
+MESES_ATRAS = 99 if args.full else 18
 
 print("=" * 65)
 print("SINCRONIZACIÓN Reactor CRM → SQLite  (llamadas + visitas)")
@@ -91,23 +93,36 @@ try:
     _lcon = _sqlite3.connect(DB_PATH)
     _lcur = _lcon.cursor()
 
+    # Incluye activos + egresados de los últimos 18 meses, para que la pantalla
+    # de Aprendizaje (egresados vs activos) tenga datos de actividad de ambos
+    # grupos. Sin esto, las señales de Reactor salen 0% para los que se fueron
+    # por falta de dato, no por conducta real.
+    VIGENTES = """
+        (
+            activo = 1
+            OR (activo = 0
+                AND fecha_egreso IS NOT NULL
+                AND fecha_egreso >= date('now', '-18 months'))
+        )
+    """
+
     _lcur.execute(f"""
         SELECT id_vendedor FROM vendedores
-        WHERE activo = 1 AND tipo = 'Televentas'
+        WHERE {VIGENTES} AND tipo = 'Televentas'
         {EXCLUIR_SUPERVISORES}
     """)
     IDS_TELEVENTAS = [str(r[0]) for r in _lcur.fetchall()]
 
     _lcur.execute(f"""
         SELECT id_vendedor FROM vendedores
-        WHERE activo = 1 AND tipo = 'Viajante'
+        WHERE {VIGENTES} AND tipo = 'Viajante'
         {EXCLUIR_SUPERVISORES}
     """)
     IDS_VIAJANTES = [str(r[0]) for r in _lcur.fetchall()]
 
     _lcon.close()
-    print(f"  Televentas activos (sin supervisores): {len(IDS_TELEVENTAS)}")
-    print(f"  Viajantes activos  (sin supervisores): {len(IDS_VIAJANTES)}")
+    print(f"  Televentas (activos + egresados 18m, sin supervisores): {len(IDS_TELEVENTAS)}")
+    print(f"  Viajantes  (activos + egresados 18m, sin supervisores): {len(IDS_VIAJANTES)}")
 
 except Exception as e:
     print(f"\nAVISO: no se pudo leer vendedores de SQLite ({e})")

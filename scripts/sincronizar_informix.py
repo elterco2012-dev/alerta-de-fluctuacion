@@ -76,10 +76,22 @@ EXCLUIR_SUPERVISORES = """
 try:
     _lcon = sqlite3.connect(DB_PATH)
     _lcur = _lcon.cursor()
-    _lcur.execute(f"SELECT id_vendedor FROM vendedores WHERE activo = 1 {EXCLUIR_SUPERVISORES}")
+    # Activos + egresados recientes (últimos 18 meses). Los egresados se incluyen
+    # para que la pantalla de Precisión pueda medir si el modelo los hubiera
+    # detectado: sin sus ventas en ventas_mensual no hay score histórico que cruzar.
+    _lcur.execute(f"""
+        SELECT id_vendedor FROM vendedores
+        WHERE (
+                activo = 1
+                OR (activo = 0
+                    AND fecha_egreso IS NOT NULL
+                    AND fecha_egreso >= date('now', '-18 months'))
+              )
+          {EXCLUIR_SUPERVISORES}
+    """)
     IDS_ACTIVOS = [str(r[0]) for r in _lcur.fetchall()]
     _lcon.close()
-    print(f"  Vendedores activos (sin supervisores): {len(IDS_ACTIVOS)}")
+    print(f"  Vendedores a sincronizar (activos + egresados 18m, sin supervisores): {len(IDS_ACTIVOS)}")
 except Exception as e:
     print(f"\nAVISO: no se pudo leer vendedores ({e})")
     IDS_ACTIVOS = []

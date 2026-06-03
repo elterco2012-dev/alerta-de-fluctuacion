@@ -11,7 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
-from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses, score_delta, fresh
+from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses, score_delta, fresh, page_header
 
 def _fmt_antiguedad(meses):
     if meses < 12:
@@ -150,20 +150,8 @@ supervisor_sel = st.query_params.get("supervisor", None)
 # LANDING
 # ══════════════════════════════════════════════════════════════════════════════
 if not supervisor_sel:
-    st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">👤 Por supervisor — Wurth Argentina</div>
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
-    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
+                unsafe_allow_html=True)
 
     resumen = scores_df.groupby("supervisor").agg(
         activos  =("id_vendedor", "count"),
@@ -243,20 +231,8 @@ with nav_b:
     if st.button("← Todas las zonas"):
         st.query_params.clear()
         st.rerun()
-st.markdown(f"""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #eee;">
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
-    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-  {fresh(_ts_datos)}
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header(f"👤 {supervisor_sel}", "/Supervisor", sub=fresh(_ts_datos)),
+            unsafe_allow_html=True)
 
 # Header
 st.markdown(f"""

@@ -205,11 +205,31 @@ nuevos en grupos históricamente malos antes de que muestren deterioro individua
 Caveat honesto: los egresados alimentan el riesgo_base de su grupo, lo que infla
 algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularidad.
 
-### Niveles de riesgo
-- 8-10 → **crítico** → acción inmediata del supervisor
-- 6-7  → **alto**    → seguimiento activo
-- 4-5  → **medio**   → monitoreo mensual
-- 1-3  → **bajo**    → seguimiento normal
+### Niveles de riesgo (etiquetas visuales, NO el disparador de acción)
+- 8-10 → **crítico**
+- 6-7  → **alto**
+- 4-5  → **medio**
+- 1-3  → **bajo**
+
+### Acción operativa: por RANKING, no por umbral fijo
+Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población el
+deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
+todos), así que **ningún umbral de score separa limpio a los que se van de los
+que se quedan**. La separación detección-vs-falsa-alarma es modesta en todo el
+rango, y el nivel crítico (≥8) a la calibración elegida (REF=16) casi no dispara.
+
+Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
+seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
+**"empezá por los de mayor score y bajá según tu capacidad"** (FOCO_SEMANA ≈ 20
+en la vista global; el top de cada zona en la vista por supervisor). Las tablas
+van ordenadas por score descendente. Los niveles crítico/alto quedan solo como
+indicador visual de color, no como corte accionable.
+
+Por qué REF=16 pese a que comprime el nivel crítico: para un uso por ranking, un
+REF alto mantiene los scores bien distribuidos (pocos empates arriba = mejor
+granularidad de orden). Bajar REF para "rescatar" el nivel crítico marcaría ~40%
+de los activos como críticos (inaccionable). Ver el barrido de niveles en
+`validar_pesos.py`.
 
 ---
 

@@ -298,13 +298,28 @@ ninguna base externa (reconstruyen todo desde `score_historico` / `ventas_mensua
 
 ---
 
-## Usuarios del sistema
+## Usuarios del sistema y acceso por rol
 
-1. **RRHH** → necesita vista agregada, tendencias, motivos históricos
-2. **Supervisor del vendedor** → necesita ver sus vendedores, señales concretas
-3. **Gerencia** → necesita KPIs, grupos problemáticos, costo estimado de rotación
+A la vista por supervisor (`pages/Supervisor.py`) entran cuatro tipos de usuario,
+con **alcance jerárquico** distinto. Lo resuelve `src/acceso.py`:
 
-El dashboard actual cubre los 3 casos. Las vistas por supervisor son el próximo feature.
+| Rol | Qué ve | Origen del dato |
+|---|---|---|
+| **Supervisor** | solo su propia zona (entra directo, sin landing) | tabla `grupos` (automático) |
+| **Director** | las zonas de los supervisores que tiene a cargo | config `DIRECTORES` en `acceso.py` |
+| **RRHH** | toda la empresa (vista agregada, tendencias, motivos) | config `STAFF` en `acceso.py` |
+| **Gerencia** | toda la empresa (KPIs, grupos problemáticos, costo) | config `STAFF` en `acceso.py` |
+
+**Sin login con contraseña:** el usuario se identifica eligiendo su nombre en un
+selector (se asume la pantalla detrás de un acceso corporativo). La identidad
+viaja en el query param `?usuario=`. El control de acceso es real: `acceso.puede_ver()`
+bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
+
+**Importante para completar con datos reales:** los **supervisores** se generan
+solos desde `grupos` (si Informix trae uno nuevo, aparece). Los **directores** y
+los usuarios de **RRHH/gerencia** NO están en la DB → editar los diccionarios
+`DIRECTORES` y `STAFF` en `src/acceso.py` (hoy tienen un ejemplo plausible
+GBA/Interior, reemplazar por la estructura organizacional real).
 
 ---
 
@@ -344,7 +359,9 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
 
 ## Próximos features planeados (en orden de prioridad)
 
-1. Vista filtrada por supervisor (cada supervisor ve solo sus vendedores)
+1. ~~Vista filtrada por supervisor~~ ✅ **hecho** — acceso por rol (supervisor /
+   director / RRHH / gerencia) en `pages/Supervisor.py` + `src/acceso.py`.
+   Pendiente: completar `DIRECTORES`/`STAFF` con la estructura real.
 2. Conexión real a Informix via pyodbc
 3. Alerta por email/Teams cuando un vendedor sube a nivel crítico
 4. Análisis de costo de rotación (costo estimado por baja)

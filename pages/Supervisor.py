@@ -148,17 +148,84 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, delta_map, _ts_datos = cargar_datos()
 
+# ── Control de acceso por rol ────────────────────────────────────────────────
+# Cada usuario ve un alcance distinto: el supervisor solo su zona, el director
+# las zonas de sus supervisores, RRHH/gerencia toda la empresa. Sin login con
+# clave: el usuario se elige en un selector (ver src/acceso.py). La identidad
+# viaja en el query param ?usuario= para sobrevivir a los reruns y deep-links.
+import acceso
+
+usuario = acceso.resolver(st.query_params.get("usuario", None))
+
+if usuario is None:
+    # Pantalla de identificación: elegir quién sos antes de ver nada.
+    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
+                unsafe_allow_html=True)
+    st.markdown("<div style='max-width:460px;margin-top:8px;'>", unsafe_allow_html=True)
+    st.markdown('<div class="sec-header">¿Quién está ingresando?</div>',
+                unsafe_allow_html=True)
+    st.caption("Cada usuario ve solo el alcance que le corresponde: un supervisor "
+               "su zona, un director sus supervisores, RRHH y gerencia toda la empresa.")
+    _users = acceso.listar_usuarios()
+    _opts  = {f"{u['etiqueta']}  ·  {acceso.ROL_LABEL[u['rol']]}": u["clave"]
+              for u in _users}
+    _sel = st.selectbox("Ingresá como…", list(_opts.keys()),
+                        index=None, placeholder="Elegí tu nombre / rol")
+    if st.button("Ingresar →", type="primary", disabled=_sel is None):
+        st.query_params["usuario"] = _opts[_sel]
+        st.query_params.pop("supervisor", None)
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+def _barra_usuario():
+    """Chip con el usuario activo y botón para cambiar de identidad."""
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        st.markdown(
+            f"<div style='font-size:12px;color:#888;margin-bottom:6px;'>Ingresaste como "
+            f"<b style='color:#1a1a2e;'>{usuario['etiqueta']}</b> "
+            f"· {acceso.ROL_LABEL[usuario['rol']]}</div>",
+            unsafe_allow_html=True)
+    with c2:
+        if st.button("Cambiar usuario", key="logout"):
+            st.query_params.clear()
+            st.rerun()
+
 # ── Router ─────────────────────────────────────────────────────────────────────
 supervisor_sel = st.query_params.get("supervisor", None)
+
+# Un supervisor no tiene "landing": entra directo a su única zona.
+if supervisor_sel is None and usuario["rol"] == "supervisor":
+    supervisor_sel = usuario["supervisores"][0]
+
+# Nadie puede ver una zona fuera de su alcance (deep-link manipulado, etc.).
+if supervisor_sel is not None and not acceso.puede_ver(usuario, supervisor_sel):
+    _barra_usuario()
+    st.error(f"No tenés permiso para ver la zona de **{supervisor_sel}**.")
+    if st.button("← Volver a mis zonas"):
+        st.query_params.pop("supervisor", None)
+        st.rerun()
+    st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LANDING
 # ══════════════════════════════════════════════════════════════════════════════
 if not supervisor_sel:
-    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
-                unsafe_allow_html=True)
+    _barra_usuario()
+    _titulo = ("👤 Mis supervisores — Wurth Argentina"
+               if usuario["rol"] == "director"
+               else "👤 Por supervisor — Wurth Argentina")
+    st.markdown(page_header(_titulo, "/Supervisor"), unsafe_allow_html=True)
 
-    resumen = scores_df.groupby("supervisor").agg(
+    # Acotar a las zonas que el usuario tiene permitido ver.
+    scores_scope = (scores_df if usuario["ve_todo"]
+                    else scores_df[scores_df["supervisor"].isin(usuario["supervisores"])])
+    if scores_scope.empty:
+        st.info("No hay vendedores activos en tu alcance.")
+        st.stop()
+
+    resumen = scores_scope.groupby("supervisor").agg(
         activos  =("id_vendedor", "count"),
         criticos =("nivel_riesgo", lambda x: (x=="critico").sum()),
         altos    =("nivel_riesgo", lambda x: (x=="alto").sum()),
@@ -219,7 +286,7 @@ df_sup = scores_df[scores_df["supervisor"] == supervisor_sel]
 if df_sup.empty:
     st.error(f"No se encontró el supervisor: **{supervisor_sel}**")
     if st.button("← Volver"):
-        st.query_params.clear()
+        st.query_params.pop("supervisor", None)
         st.rerun()
     st.stop()
 
@@ -230,12 +297,21 @@ nivel_zona   = _zona_nivel(rb)
 perm_zona    = grupo_info["permanencia_promedio_meses"].values[0] if not grupo_info.empty else None
 perm_general = grupos_df["permanencia_promedio_meses"].mean()
 
-# Navegación
+# Navegación. El supervisor no tiene landing (una sola zona): su botón es
+# "Cambiar usuario". El director/staff vuelve al listado de zonas conservando
+# su identidad.
+_barra_usuario()
 nav_b, _ = st.columns([1, 5])
 with nav_b:
-    if st.button("← Todas las zonas"):
-        st.query_params.clear()
-        st.rerun()
+    if usuario["rol"] == "supervisor":
+        if st.button("← Cambiar usuario"):
+            st.query_params.clear()
+            st.rerun()
+    else:
+        _volver = "← Mis supervisores" if usuario["rol"] == "director" else "← Todas las zonas"
+        if st.button(_volver):
+            st.query_params.pop("supervisor", None)
+            st.rerun()
 st.markdown(page_header(f"👤 {supervisor_sel}", "/Supervisor", sub=fresh(_ts_datos)),
             unsafe_allow_html=True)
 

@@ -231,6 +231,33 @@ granularidad de orden). Bajar REF para "rescatar" el nivel crítico marcaría ~4
 de los activos como críticos (inaccionable). Ver el barrido de niveles en
 `validar_pesos.py`.
 
+### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
+Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar
+ninguna base externa (reconstruyen todo desde `score_historico` / `ventas_mensual`):
+
+- **`scripts/validar_pesos.py`** — además del barrido de `RIESGO_REFERENCIA` y los
+  niveles operativos, tiene una **auditoría por señal**: para cada una de las 15
+  reporta su `lift` (frecuencia en egresados vs activos) y su **contribución
+  marginal a la separación** (cuánto cae la separación detección-vs-falsa-alarma
+  si se le pone peso 0). Sirve para decidir a qué señal débil bajarle el peso o
+  quitarla. *Caveat de lectura:* `lift` y contribución marginal pueden discrepar
+  — una señal presente en casi todos tiene `lift≈1` (no separa) pero gran impacto
+  en el score; mirar ambas columnas.
+
+- **`scripts/explorar_senales_nuevas.py`** — mide el `lift` con holdout temporal
+  de señales **candidatas nuevas** calculadas desde datos crudos (variabilidad
+  mes a mes del %plan, coef. de variación de venta, caída abrupta MoM, días cero
+  creciendo, cobranza empeorando, e interacción **tenure×grupo quemado**). Barre
+  umbrales para cada una. Una candidata vale la pena solo si su `lift` OOS supera
+  con holgura a las débiles actuales (visitas ~1.2, balanza ~1.4) → apuntar a
+  `lift ≥ 1.8-2.0`. **Flujo para adoptar una candidata:** (1) confirmar lift acá
+  → (2) implementarla como `Señal(...)` en `score_engine.py` → (3) re-correr
+  backfill → (4) validar el Δseparación en `validar_pesos.py` (no alcanza el lift:
+  hay que confirmar que sube la separación out-of-sample, sobre todo si se solapa
+  con señales existentes como tenure×grupo, que ya cuenta doble con "ventana
+  crítica" + "grupo quemado"). Recién entonces actualizar este archivo con el
+  peso elegido.
+
 ---
 
 ## Usuarios del sistema

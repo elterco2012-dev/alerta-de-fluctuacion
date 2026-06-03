@@ -157,24 +157,24 @@ def main():
 
     # ── Detección de un egresado bajo un set de pesos ────────────────────────
     # detectado = en ALGUNO de sus 3 meses previos tuvo score >= UMBRAL
-    def egresado_detectado(vid, pesos, ref=RIESGO_REFERENCIA):
+    def egresado_detectado(vid, pesos, ref=RIESGO_REFERENCIA, umbral=UMBRAL_RIESGO):
         if vid not in hist or vid not in egresados:
             return None  # sin datos para evaluar
         ventana = periodos_pre_egreso(egresados[vid])
         scores_ventana = [score_de(sen, pesos, ref) for (pnum, sen) in hist[vid] if pnum in ventana]
         if not scores_ventana:
             return None
-        return max(scores_ventana) >= UMBRAL_RIESGO
+        return max(scores_ventana) >= umbral
 
     # ── Falsa alarma de un activo bajo un set de pesos ───────────────────────
     # falsa alarma = en sus 3 períodos más recientes tuvo score >= UMBRAL
-    def activo_falsa_alarma(vid, pesos, ref=RIESGO_REFERENCIA):
+    def activo_falsa_alarma(vid, pesos, ref=RIESGO_REFERENCIA, umbral=UMBRAL_RIESGO):
         if vid not in hist:
             return None
         ult = sorted(hist[vid], key=lambda x: x[0])[-3:]
         if not ult:
             return None
-        return max(score_de(sen, pesos, ref) for (_, sen) in ult) >= UMBRAL_RIESGO
+        return max(score_de(sen, pesos, ref) for (_, sen) in ult) >= umbral
 
     # ── Holdout temporal: partir egresados por mediana de fecha de egreso ─────
     egr_evaluables = [vid for vid in egresados if egresado_detectado(vid, PESOS_ACTUAL) is not None]
@@ -298,6 +298,34 @@ def main():
     print("\n  CÓMO DECIDIR: elegí el REF más alto que todavía detecte a una")
     print("  proporción aceptable de egresados. Más arriba = menos ruido para el")
     print("  supervisor, pero más egresados que se escapan sin alerta.")
+    print("=" * 70)
+
+    # ── Niveles de alerta operativos (a la REF de producción) ────────────────
+    # El supervisor NO actúa sobre todo score >= 6. La acción real es:
+    #   score >= 8  -> crítico -> "reunión esta semana"
+    #   score >= 6  -> alto    -> "seguimiento activo"
+    # Medimos cada nivel por separado para saber cuán precisa es CADA alerta.
+    print("\n" + "=" * 70)
+    print(f"NIVELES DE ALERTA OPERATIVOS (REF de producción = {int(RIESGO_REFERENCIA)})")
+    print("=" * 70)
+    print("  Qué tan seguido cae cada grupo en cada nivel de alerta:\n")
+    print(f"  {'NIVEL':28} {'egresados (det.)':>17} {'activos (f.alarma)':>20}")
+    print("  " + "-" * 64)
+    for umbral, etiqueta in ((8.0, "crítico (>=8) reunión"),
+                             (6.0, "alto+crit (>=6) seguim.")):
+        det = [egresado_detectado(v, PESOS_ACTUAL, RIESGO_REFERENCIA, umbral)
+               for v in egr_evaluables]
+        det = [d for d in det if d is not None]
+        fa  = [activo_falsa_alarma(v, PESOS_ACTUAL, RIESGO_REFERENCIA, umbral)
+               for v in activos]
+        fa  = [f for f in fa if f is not None]
+        det_pct = sum(det) / len(det) * 100 if det else 0
+        fa_pct  = sum(fa) / len(fa) * 100 if fa else 0
+        print(f"  {etiqueta:28} {det_pct:>15.1f}% {fa_pct:>19.1f}%")
+    print("\n  CÓMO LEERLO: la fila 'crítico (>=8)' es la alerta sobre la que el")
+    print("  supervisor realmente actúa. Si su falsa alarma es baja, cada reunión")
+    print("  convocada está bien justificada (poca molestia). La fila '>=6' es el")
+    print("  seguimiento más amplio, tolera más ruido porque la acción es liviana.")
     print("=" * 70)
 
     con.close()

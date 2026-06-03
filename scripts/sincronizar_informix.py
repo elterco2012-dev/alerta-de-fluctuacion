@@ -361,16 +361,33 @@ dias_habiles = {}  # (anio, mes) → int
 try:
     rcon = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
     rcur = rcon.cursor()
-    # Detectar la columna de fecha (MySQL: LIMIT 0 valida sin traer filas).
+    # Detectar la columna de fecha con SELECT * LIMIT 1 → leer cursor.description
+    # (más robusto que adivinar el nombre; datetime.date en Python = tipo DATE en MySQL)
     _wdl_field = None
-    for _c in ("fecha", "date", "day", "dia", "work_day", "fecha_dia", "created", "log_date"):
-        try:
-            rcur.execute(f"SELECT {_c} FROM works_days_log LIMIT 0")
-            rcur.fetchall()
-            _wdl_field = _c
-            break
-        except Exception:
-            continue
+    try:
+        rcur.execute("SELECT * FROM works_days_log LIMIT 1")
+        rcur.fetchall()
+        import datetime as _dt
+        for col_desc in rcur.description:
+            col_name = col_desc[0]
+            # Verificar tipo probando un valor real
+            rcur.execute(f"SELECT {col_name} FROM works_days_log LIMIT 1")
+            val = rcur.fetchone()
+            if val and isinstance(val[0], (_dt.date, _dt.datetime)):
+                _wdl_field = col_name
+                break
+    except Exception as _e:
+        raise RuntimeError(f"no se pudo inspeccionar works_days_log ({_e})")
+    if _wdl_field is None:
+        # fallback: probar candidatos comunes por si el tipo no matcheó
+        for _c in ("fecha", "date", "day", "dia", "work_day", "fecha_dia", "created", "log_date"):
+            try:
+                rcur.execute(f"SELECT {_c} FROM works_days_log LIMIT 0")
+                rcur.fetchall()
+                _wdl_field = _c
+                break
+            except Exception:
+                continue
     if _wdl_field is None:
         raise RuntimeError("no se encontró columna de fecha en works_days_log")
     rcur.execute(f"""

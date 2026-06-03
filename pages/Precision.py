@@ -384,7 +384,13 @@ def _señales_pills(lista):
         "En ventana crítica mes 1-3":             ("inducción",    "#FDECEA","#B71C1C"),
         "En ventana crítica mes 4-6":             ("mes 4-6",      "#FFF3E0","#E65100"),
         "Grupo con alta rotación histórica":      ("zona quemada", "#FFF3E0","#E65100"),
-        "Sin clientes nuevos últimos 2 meses":    ("cl. L:0",      "#FFFDE7","#F57F17"),
+        "Sin clientes nuevos últimos 2 meses":    ("cl. nuevos:0", "#FFFDE7","#F57F17"),
+        "< 70% de llamadas planificadas gestionadas (Televentas)": ("llamadas↓",  "#FDECEA","#B71C1C"),
+        "< 70% de visitas planificadas realizadas (Viajante)":     ("visitas↓",   "#FDECEA","#B71C1C"),
+        "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑", "#FDECEA","#B71C1C"),
+        "Balanza clientes negativa 2+ meses consecutivos":         ("balanza neg.","#FFF3E0","#E65100"),
+        "Ticket promedio cae > 5% por mes":                        ("ticket↓",    "#FFF3E0","#E65100"),
+        "Supervisor no acompañó en ventana crítica 1-6":           ("sin acomp.", "#FFFDE7","#F57F17"),
     }
     parts = []
     for s in lista:

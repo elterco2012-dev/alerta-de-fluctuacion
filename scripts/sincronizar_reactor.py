@@ -5,8 +5,13 @@ ETL: lee llamadas (Televentas) y visitas (Viajantes) de Reactor CRM
 (MySQL, DSN="Wurth Reactor Produccion") y los guarda en actividad_mensual
 dentro de data/wurth.db (SQLite).
 
-Reactor usa Python 64 bits (MySQL ODBC no requiere 32 bits):
-    python scripts\\sincronizar_reactor.py
+IMPORTANTE — arquitectura ODBC:
+El DSN "Wurth Reactor Produccion" (y/o el driver MySQL ODBC) está instalado
+en 32 bits en este entorno. Hay que correrlo con el Python de 32 bits, igual
+que los scripts de Informix. Con Python 64 bits da el error:
+    IM014 — La arquitectura del DSN no coincide entre el controlador y la app
+
+    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\sincronizar_reactor.py --full
 
 Tablas de origen:
   customer_management   → gestiones realizadas (llamada hecha, sin importar resultado)

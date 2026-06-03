@@ -47,39 +47,38 @@ wurth-rotacion/
 ├── src/
 │   └── score_engine.py               ← motor de scoring (1-10 por vendedor)
 ├── scripts/
-│   └── generar_datos_simulados.py    ← genera SQLite de prueba
+│   ├── sincronizar_informix.py      ← ventas/legajo desde Informix (ERP, solo SELECT)
+│   ├── sincronizar_reactor.py       ← actividad/ausencias desde Reactor (CRM, solo SELECT)
+│   ├── sincronizar_sundb.py         ← cobranza desde SUN (SQL Server, solo SELECT)
+│   └── validar_pesos.py             ← banco de pruebas de pesos/señales (solo lee SQLite)
 └── data/
-    └── wurth.db                       ← SQLite simulada (NO commitear datos reales)
+    └── wurth.db                      ← SQLite local poblada por los sync (NO commitear)
 ```
 
 ---
 
 ## Conexión a base de datos — estado actual
 
-**HOY:** SQLite simulada en `data/wurth.db`
-**OBJETIVO:** Informix via pyodbc
+**Flujo de producción (ya activo):** los scripts `sincronizar_*.py` leen
+(SOLO SELECT) de las tres fuentes reales y vuelcan a `data/wurth.db`:
+- `sincronizar_informix.py` → ventas/legajo desde **Informix** (ERP, DSN MSPA)
+- `sincronizar_reactor.py`  → actividad/ausencias/acompañamiento desde **Reactor** (CRM, MySQL)
+- `sincronizar_sundb.py`    → cobranza desde **SUN** (SQL Server, DSN SUNDB)
 
-La función `get_connection()` en `src/score_engine.py` es el único lugar
-donde cambia la conexión. Está documentada con el string de conexión exacto
-para Informix. No toques la lógica de scoring cuando cambies la conexión.
+El dashboard y el motor de scoring leen siempre de `data/wurth.db` (no golpean
+las fuentes en cada recarga). Ya **no hay datos simulados**: el generador ficticio
+se eliminó del repo. `data/wurth.db` está en `.gitignore` (nunca se commitea).
 
-```python
-# String de conexión Informix (completar con datos reales el lunes)
-conn_str = (
-    "DRIVER={IBM INFORMIX ODBC DRIVER};"
-    "SERVER=<servidor>;"
-    "DATABASE=<base>;"
-    "HOST=<host>;"
-    "UID=<usuario>;"
-    "PWD=<password>;"
-)
-```
+`get_connection()` en `src/score_engine.py` lee SQLite por defecto, y puede
+conectar directo a Informix via pyodbc si se definen las variables de entorno
+INFORMIX_* en `.env` (no se usa en el flujo normal). No toques la lógica de
+scoring al cambiar la conexión.
 
 ---
 
 ## Tablas de la base de datos
 
-### SQLite simulada (estructura idéntica a lo que vendrá de Informix)
+### Estructura de `data/wurth.db` (poblada por los sync desde las fuentes reales)
 
 **vendedores**
 | campo | tipo | descripción |

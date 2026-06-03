@@ -491,7 +491,7 @@ lcur.execute("""
         PRIMARY KEY (id_vendedor, anio, mes)
     )
 """)
-# Si la tabla fue creada por el simulador sin PRIMARY KEY compuesto, agregar el índice único
+# Si la tabla existía con un esquema viejo sin PRIMARY KEY compuesto, agregar el índice único
 lcur.execute("""
     CREATE UNIQUE INDEX IF NOT EXISTS idx_vm_unique
     ON ventas_mensual (id_vendedor, anio, mes)

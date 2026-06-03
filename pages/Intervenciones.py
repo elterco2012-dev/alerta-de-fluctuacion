@@ -326,4 +326,4 @@ else:
         st.caption("Impacto = score_inicial − score_actual. Positivo = riesgo bajó = intervención efectiva.")
 
 st.markdown("<br>")
-st.caption("Wurth Argentina · Sistema de alertas de rotación · Datos simulados")
+st.caption("Wurth Argentina · Sistema de alertas de rotación")

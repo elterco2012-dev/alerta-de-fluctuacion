@@ -4,11 +4,13 @@
 ```
 wurth_rotacion/
 ├── data/
-│   └── wurth.db              ← SQLite simulada (reemplazar por Informix el lunes)
+│   └── wurth.db              ← SQLite local (poblada por los scripts de sync)
 ├── src/
 │   └── score_engine.py       ← Motor de scoring (score 1-10 por vendedor)
 ├── scripts/
-│   └── generar_datos_simulados.py
+│   ├── sincronizar_informix.py  ← trae ventas/legajo desde Informix (ERP)
+│   ├── sincronizar_reactor.py   ← trae actividad/ausencias desde Reactor (CRM)
+│   └── sincronizar_sundb.py     ← trae cobranza desde SUN (SQL Server)
 ├── dashboard.py              ← App Streamlit
 └── requirements.txt
 ```
@@ -16,7 +18,7 @@ wurth_rotacion/
 ## Cómo ejecutar
 ```bash
 pip install -r requirements.txt
-python scripts/generar_datos_simulados.py   # solo primera vez
+# poblar data/wurth.db desde las fuentes reales (ver scripts/sync_y_alertas.bat)
 streamlit run dashboard.py
 ```
 

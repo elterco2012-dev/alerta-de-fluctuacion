@@ -42,7 +42,7 @@ from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-RIESGO_REFERENCIA = 16.0   # coincide con score_engine.py (calibrado por backtest)
+RIESGO_REFERENCIA = 12.0   # coincide con score_engine.py (calibrado por backtest)
 UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
 
 # ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────
@@ -50,18 +50,25 @@ PESOS_ACTUAL = {
     "% Plan cayendo 3 meses seguidos":                              2.5,
     "% Plan < 80% promedio últimos meses":                         2.0,
     "Días sin venta > 3 en promedio":                              2.5,
-    "< 60% de cartera activa":                                     1.5,
-    "Cobranza real < 90% de teórica":                              2.0,
+    # Deshabilitada: Informix reasigna clientes al egreso → histórico queda en 0
+    # → dato faltante la apaga en egresados pero no en activos → lift 0.01, Δsep +13.4.
+    "< 60% de cartera activa":                                     0.0,
+    # Deshabilitada: lift 1.07 (cobranza baja generalizada ~48% egr vs ~46% act),
+    # Δsep +3.2 al sacarla. No diferencia; re-evaluar si el dato mejora.
+    "Cobranza real < 90% de teórica":                              0.0,
     "En ventana crítica mes 1-3":                                  1.5,
     "En ventana crítica mes 4-6":                                  1.0,
     "Grupo con alta rotación histórica":                           1.5,
     "Sin clientes nuevos últimos 2 meses":                         0.5,
-    "< 70% de llamadas planificadas gestionadas (Televentas)":     1.5,
-    "< 70% de visitas planificadas realizadas (Viajante)":         1.5,
+    # Deshabilitadas: egresados raramente tienen datos Reactor en sus últimos meses
+    # → señal dispara más en activos que en egresados → invertida (lift < 1, Δsep > 0).
+    "< 70% de llamadas planificadas gestionadas (Televentas)":     0.0,
+    "< 70% de visitas planificadas realizadas (Viajante)":         0.0,
     "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": 2.0,
     "Balanza clientes negativa 2+ meses consecutivos":             1.5,
     "Ticket promedio cae > 5% por mes":                            1.0,
     "Supervisor no acompañó en ventana crítica 1-6":               1.0,
+    # tenure × grupo probada y descartada (Δsep +1.7, doble conteo). No se agregó.
 }
 
 # ── Pesos PROPUESTOS ──────────────────────────────────────────────────────────
@@ -359,6 +366,90 @@ def main():
     print("  supervisor realmente actúa. Si su falsa alarma es baja, cada reunión")
     print("  convocada está bien justificada (poca molestia). La fila '>=6' es el")
     print("  seguimiento más amplio, tolera más ruido porque la acción es liviana.")
+    print("=" * 70)
+
+    # ── AUDITORÍA POR SEÑAL — ¿cuáles aportan y cuáles son ruido? ─────────────
+    # Para cada señal calculamos dos cosas:
+    #   1) LIFT: cada cuánto está activa en egresados (ventana pre-egreso) vs en
+    #      activos (ventana reciente). lift > 1 = aparece más en los que se van.
+    #      lift ~1 = no distingue (la señal no separa). Es el mismo número que
+    #      muestra la pantalla de Aprendizaje, recalculado acá para auditar.
+    #   2) CONTRIBUCIÓN MARGINAL: cuánto cae la separación (detección_OOS -
+    #      falsa_alarma) si a esa señal le ponemos peso 0. Positivo = la señal
+    #      ayuda; ~0 o negativo = sacarla no empeora (o mejora). Es la prueba
+    #      definitiva de si vale la pena tenerla pesando en el score.
+    print("\n" + "=" * 70)
+    print("AUDITORÍA POR SEÑAL — lift y contribución marginal a la separación")
+    print("=" * 70)
+
+    # Frecuencia de cada señal en un grupo de vendedores dentro de su ventana.
+    def freq_senal_en(grupo, ventana_de):
+        # ventana_de(vid) -> set de periodos a mirar para ese vendedor
+        cont = {s: 0 for s in PESOS_ACTUAL}
+        total = 0
+        for vid in grupo:
+            if vid not in hist:
+                continue
+            ventana = ventana_de(vid)
+            filas = [sen for (pnum, sen) in hist[vid] if pnum in ventana]
+            if not filas:
+                continue
+            total += 1
+            # señal "activa para el vendedor" = activa en alguno de sus meses de ventana
+            activas = set()
+            for sen in filas:
+                activas.update(sen)
+            for s in PESOS_ACTUAL:
+                if s in activas:
+                    cont[s] += 1
+        return cont, total
+
+    def ventana_egr(vid):
+        return periodos_pre_egreso(egresados[vid])
+
+    def ventana_act(vid):
+        return {pnum for (pnum, _) in sorted(hist[vid], key=lambda x: x[0])[-3:]}
+
+    cont_egr, n_egr = freq_senal_en(egr_recientes, ventana_egr)   # OOS
+    cont_act, n_act = freq_senal_en(activos, ventana_act)
+
+    # Separación base con todos los pesos actuales (a REF de producción).
+    def separacion(pesos, ref=RIESGO_REFERENCIA):
+        det_oos, _ = tasa_deteccion(egr_recientes, pesos, ref)
+        fa, _      = tasa_falsa_alarma(pesos, ref)
+        return det_oos - fa
+
+    sep_base = separacion(PESOS_ACTUAL)
+
+    print(f"\n  Egresados OOS evaluados: {n_egr}   Activos evaluados: {n_act}")
+    print(f"  Separación base (todos los pesos, REF={int(RIESGO_REFERENCIA)}): {sep_base:.1f}\n")
+    print(f"  {'SEÑAL':44} {'peso':>5} {'%egr':>6} {'%act':>6} {'lift':>6} {'Δsep si=0':>10}")
+    print("  " + "-" * 80)
+
+    filas_audit = []
+    for s in PESOS_ACTUAL:
+        fe = cont_egr.get(s, 0) / n_egr * 100 if n_egr else 0
+        fa_ = cont_act.get(s, 0) / n_act * 100 if n_act else 0
+        lift = (fe / fa_) if fa_ > 0 else float("inf") if fe > 0 else 0.0
+        pesos_sin = dict(PESOS_ACTUAL); pesos_sin[s] = 0.0
+        delta_sep = separacion(pesos_sin) - sep_base   # negativo = sacarla empeora
+        filas_audit.append((s, PESOS_ACTUAL[s], fe, fa_, lift, delta_sep))
+
+    # Ordenar por lift descendente para ver arriba las que más separan.
+    filas_audit.sort(key=lambda r: (r[4] if r[4] != float("inf") else 999), reverse=True)
+    for s, peso, fe, fa_, lift, delta_sep in filas_audit:
+        lift_str = "  inf" if lift == float("inf") else f"{lift:5.2f}"
+        nombre = (s[:42] + "..") if len(s) > 44 else s
+        print(f"  {nombre:44} {peso:>5.1f} {fe:>5.1f}% {fa_:>5.1f}% {lift_str:>6} {delta_sep:>+9.1f}")
+
+    print("  " + "-" * 80)
+    print("  CÓMO LEERLO:")
+    print("   · lift ~1.0  -> la señal NO distingue egresados de activos (ruido).")
+    print("   · Δsep si=0  -> cambio en la separación al anular la señal.")
+    print("        negativo = la señal aporta (sacarla empeora el filtro)")
+    print("        ~0 / positivo = sacarla NO empeora (o mejora): candidata a")
+    print("        bajarle el peso o quitarla.")
+    print("   Señales con lift bajo Y Δsep>=0 son las que conviene podar primero.")
     print("=" * 70)
 
     con.close()

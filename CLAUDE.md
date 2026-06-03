@@ -47,39 +47,38 @@ wurth-rotacion/
 ├── src/
 │   └── score_engine.py               ← motor de scoring (1-10 por vendedor)
 ├── scripts/
-│   └── generar_datos_simulados.py    ← genera SQLite de prueba
+│   ├── sincronizar_informix.py      ← ventas/legajo desde Informix (ERP, solo SELECT)
+│   ├── sincronizar_reactor.py       ← actividad/ausencias desde Reactor (CRM, solo SELECT)
+│   ├── sincronizar_sundb.py         ← cobranza desde SUN (SQL Server, solo SELECT)
+│   └── validar_pesos.py             ← banco de pruebas de pesos/señales (solo lee SQLite)
 └── data/
-    └── wurth.db                       ← SQLite simulada (NO commitear datos reales)
+    └── wurth.db                      ← SQLite local poblada por los sync (NO commitear)
 ```
 
 ---
 
 ## Conexión a base de datos — estado actual
 
-**HOY:** SQLite simulada en `data/wurth.db`
-**OBJETIVO:** Informix via pyodbc
+**Flujo de producción (ya activo):** los scripts `sincronizar_*.py` leen
+(SOLO SELECT) de las tres fuentes reales y vuelcan a `data/wurth.db`:
+- `sincronizar_informix.py` → ventas/legajo desde **Informix** (ERP, DSN MSPA)
+- `sincronizar_reactor.py`  → actividad/ausencias/acompañamiento desde **Reactor** (CRM, MySQL)
+- `sincronizar_sundb.py`    → cobranza desde **SUN** (SQL Server, DSN SUNDB)
 
-La función `get_connection()` en `src/score_engine.py` es el único lugar
-donde cambia la conexión. Está documentada con el string de conexión exacto
-para Informix. No toques la lógica de scoring cuando cambies la conexión.
+El dashboard y el motor de scoring leen siempre de `data/wurth.db` (no golpean
+las fuentes en cada recarga). Ya **no hay datos simulados**: el generador ficticio
+se eliminó del repo. `data/wurth.db` está en `.gitignore` (nunca se commitea).
 
-```python
-# String de conexión Informix (completar con datos reales el lunes)
-conn_str = (
-    "DRIVER={IBM INFORMIX ODBC DRIVER};"
-    "SERVER=<servidor>;"
-    "DATABASE=<base>;"
-    "HOST=<host>;"
-    "UID=<usuario>;"
-    "PWD=<password>;"
-)
-```
+`get_connection()` en `src/score_engine.py` lee SQLite por defecto, y puede
+conectar directo a Informix via pyodbc si se definen las variables de entorno
+INFORMIX_* en `.env` (no se usa en el flujo normal). No toques la lógica de
+scoring al cambiar la conexión.
 
 ---
 
 ## Tablas de la base de datos
 
-### SQLite simulada (estructura idéntica a lo que vendrá de Informix)
+### Estructura de `data/wurth.db` (poblada por los sync desde las fuentes reales)
 
 **vendedores**
 | campo | tipo | descripción |
@@ -129,68 +128,105 @@ conn_str = (
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales
-| señal | peso | umbral |
-|---|---|---|
-| % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 |
-| Días venta cero altos | 2.5 | promedio > 3 días |
-| % Plan promedio < 80% | 2.0 | media < 80 |
-| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 |
-| Cartera activa baja | 1.5 | < 60% activos |
-| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 |
-| En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 |
-| En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 |
-| Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
+### Señales y pesos actuales (11 activas + 4 deshabilitadas)
+| señal | peso | umbral | estado |
+|---|---|---|---|
+| % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 | activa |
+| Días venta cero altos | 2.5 | promedio > 3 días | activa |
+| % Plan promedio < 80% | 2.0 | media < 80 | activa |
+| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
+| Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
+| En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
+| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
+| Balanza clientes negativa | 1.5 | 2+ meses + pérdida > 3 | activa |
+| En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 | activa |
+| Ticket promedio cayendo | 1.0 | pendiente > 5%/mes | activa |
+| Supervisor no acompañó | 1.0 | < 1 visita/mes en 1-6 | activa |
+| Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 | activa |
+| Cartera activa baja | ~~1.5~~ → **0** | — | **deshabilitada** |
+| Cobranza real < 90% teórica | ~~2.0~~ → **0** | — | **deshabilitada** |
+| Llamadas bajas (Televentas) | ~~1.5~~ → **0** | — | **deshabilitada** |
+| Visitas bajas (Viajante) | ~~1.5~~ → **0** | — | **deshabilitada** |
 
-> **Pesos recalibrados (backtest):** "Días venta cero" subió 1.5→2.5 y "Cobranza
-> real" subió 1.0→2.0. Ambas son las señales con más evidencia predictiva en el
-> análisis leavers-vs-stayers (días cero: lift 2,7× presente en 71% de egresados;
-> cobranza: lift 2,5× presente en 97%). El cambio se validó con holdout temporal
-> (`scripts/validar_pesos.py`): subió la detección out-of-sample de egresados de
-> 70,5% a 79,5%, más de lo que subió la falsa alarma. Ver más abajo la calibración
-> de `RIESGO_REFERENCIA` que acompaña este cambio.
+> **Señales deshabilitadas (peso=0):** las tres tienen un problema estructural de
+> cobertura de datos en egresados que las invierte (disparan más en activos que en
+> egresados, lift < 1, Δsep positivo al sacarlas):
+> - **Cartera activa baja:** Informix reasigna los clientes al egreso → el histórico
+>   del vendedor que se fue queda con `total_clientes=0` → el fix de dato faltante
+>   desactiva la señal correctamente para egresados, pero sigue activa para el 98%
+>   de los activos (lift 0.01, Δsep +13.4). No hay forma de reconstruir el historial
+>   de asignación de cartera: se deshabilita hasta tener snapshots históricos.
+> - **Llamadas/Visitas bajas:** los egresados raramente tienen datos de Reactor en
+>   sus últimos meses activos → la señal casi no dispara para ellos (lift 0.05/0.51).
+> - **Cobranza real < 90%:** lift 1.07 en datos reales — la cobranza baja está
+>   distribuida uniformemente en la empresa (~48% egresados vs ~46% activos), no
+>   concentrada en los que se van. Δsep +3.2 al sacarla: infla scores de todos por
+>   igual sin mejorar la separación. Re-evaluar si en el futuro el dato muestra un
+>   lift más claro (hoy la cobertura es 88.5% para egresados).
+>
+> Deshabilitarlas (no solo bajarles peso) fue el cambio de mayor impacto: la falsa
+> alarma cayó ~32% → 16% sin perder detección, y la separación detección-vs-falsa
+> alarma pasó de ~8 a ~24 a REF=16 (eso, a su vez, habilitó bajar la referencia a
+> 12; ver calibración abajo).
 
-> **Nota:** además de estas 9 señales originales hay 6 más implementadas en
-> `score_engine.py` (llamadas/visitas bajas, ausencias tempranas, balanza
-> negativa, ticket cayendo, supervisor no acompañó). Son 15 en total.
+> **Señal candidata probada y descartada — tenure×grupo:** se exploró la interacción
+> "vendedor nuevo (mes 1-6) en grupo quemado (rb>0.30)" con
+> `scripts/explorar_senales_nuevas.py` (lift aislado 2.04, prometedor). Se implementó
+> y backfilleó, pero la auditoría marginal en `validar_pesos.py` dio **Δsep +1.7**:
+> mete ruido en vez de señal porque ya está cubierta por "ventana crítica 1-3" +
+> "grupo quemado". Lección: un buen lift aislado NO garantiza aporte marginal si la
+> candidata se solapa con señales existentes. Por eso el flujo exige validar el
+> Δseparación post-backfill, no solo el lift. Se revirtió a peso 0 (no está en el motor).
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 16.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 12.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 16` representa un vendedor en deterioro claro (combinación
-de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 +
-días cero 2.5 + cartera 1.5 + ventana crítica ≈ 12-16 puntos).
+`RIESGO_REFERENCIA = 12` representa un vendedor en deterioro claro (combinación
+de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + días cero 2.5 +
+ventana crítica 1.5 + grupo quemado 1.5 ≈ 10 puntos, más cualquier señal adicional).
 
-**Por qué NO se divide por la suma de todos los pesos (~23.5):** eso exigía
-activar >50% de las 15 señales a la vez para llegar a score 6, algo que
-ningún vendedor real hace. Resultado: todos los egresados quedaban con score
-< 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
-referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
+**Por qué NO se divide por la suma de todos los pesos (~21):** eso exigía
+activar >50% de las señales a la vez para llegar a score 6, algo que ningún
+vendedor real hace. Resultado: todos los egresados quedaban con score < 6 y la
+pantalla de Precisión mostraba 0% detectado. La calibración por referencia fija
+arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-**Calibración por backtest (cómo se llegó a 16):** con `RIESGO_REFERENCIA=10`
-el modelo marcaba con score ≥ 6 al **69% de los activos** — falsa alarma
-inservible para priorizar. El barrido en `scripts/validar_pesos.py` (curva
-detección-vs-falsa-alarma con holdout temporal) define el punto óptimo.
+**Calibración por backtest (cómo se llegó a 12):** con `RIESGO_REFERENCIA=10`
+el modelo (con las señales rotas todavía activas) marcaba con score ≥ 6 al
+**69% de los activos** — falsa alarma inservible. El barrido en
+`scripts/validar_pesos.py` (curva detección-vs-falsa-alarma con holdout temporal)
+define el punto óptimo, y se movió en dos etapas:
   - Un primer ajuste a 14 usó datos de cobranza incompletos para egresados, que
     INFLABAN la detección (ver bug abajo): aparentaba 62% de detección.
-  - Con la cobranza ya sincronizada y el bug de dato faltante corregido, la curva
-    honesta ubica el óptimo en **REF=16**: ~40% de detección out-of-sample de
-    egresados con ~32% de falsa alarma (máxima separación ≈ 7,9).
-  - La separación real es modesta (~5-8, no los ~20 que sugería el dato inflado):
-    es alerta temprana sobre datos ruidosos de RRHH, no un oráculo. Detectar ~40%
-    de las fugas con 3 meses de anticipación sigue siendo valor real.
-  - El nivel **crítico (≥8)** es el corte operativo de "reunión esta semana".
+  - Con la cobranza sincronizada y el bug de dato faltante corregido, la curva
+    honesta ubicó el óptimo en **REF=16** (~40% detección OOS, ~32% falsa alarma,
+    separación ≈ 8). PERO ese 16 estaba inflado por las **tres señales rotas**
+    (cartera/llamadas/visitas) que encendían el score de casi todos los activos:
+    había que subir mucho la referencia para contener la falsa alarma.
+  - Al **deshabilitar esas señales**, la falsa alarma se desplomó (~32% → 16% a
+    REF=16) y la separación trepó a ~24. Eso dejó margen para BAJAR la referencia
+    y recuperar detección. El barrido honesto post-limpieza ubica el óptimo en
+    **REF=12**: ~62% de detección out-of-sample con ~31% de falsa alarma
+    (separación ≈ 32). A REF=12 el nivel **crítico (≥8)** vuelve a ser alcanzable
+    (dispara en ~23% de egresados vs ~10% de activos; a REF=16 era 2% vs 0,6%).
+  - La separación real sigue siendo modesta: es alerta temprana sobre datos
+    ruidosos de RRHH, no un oráculo. Detectar ~62% de las fugas con 3 meses de
+    anticipación es valor real.
+  - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
+    operativa sigue siendo por ranking; ver abajo).
 
 **Bug de dato faltante corregido (importante):** en `ventas_mensual` un dato
 ausente queda en 0. El motor tomaba ese 0 como valor real y encendía señales
 FALSAMENTE (cobranza ausente → pct 0 → "cobranza < 90"; plan ausente → pct 0 →
 "plan < 80%"). Ahora cada señal usa solo los meses con BASE del dato:
-plan → `plan > 0`; cobranza → `cobranza_teorica > 0`; cartera → `total_clientes > 0`.
+plan → `plan > 0`; cobranza → `cobranza_teorica > 0`.
+La señal de cartera (`total_clientes > 0`) fue deshabilitada (peso=0): Informix reasigna
+los clientes al egreso y el histórico queda sin datos → no es recuperable sin snapshots.
 Si no hay ningún mes con base, la señal queda apagada (dato desconocido ≠ riesgo).
 Días venta cero ya era conservador (faltante = 0 = no enciende). Al cambiar esto,
 re-correr siempre el backfill.
@@ -215,21 +251,50 @@ algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularida
 Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población el
 deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
 todos), así que **ningún umbral de score separa limpio a los que se van de los
-que se quedan**. La separación detección-vs-falsa-alarma es modesta en todo el
-rango, y el nivel crítico (≥8) a la calibración elegida (REF=16) casi no dispara.
+que se quedan**. La separación detección-vs-falsa-alarma mejoró bastante al
+deshabilitar las señales rotas y bajar a REF=12 (~32, antes ~8), pero sigue sin
+haber un corte que parta limpio: a REF=12 el nivel crítico (≥8) detecta ~23% de
+egresados pero también marca ~10% de activos.
 
 Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
 seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
 **"empezá por los de mayor score y bajá según tu capacidad"** (FOCO_SEMANA ≈ 20
 en la vista global; el top de cada zona en la vista por supervisor). Las tablas
-van ordenadas por score descendente. Los niveles crítico/alto quedan solo como
-indicador visual de color, no como corte accionable.
+van ordenadas por score descendente. Los niveles crítico/alto quedan como
+indicador visual de color y de urgencia, no como corte accionable rígido.
 
-Por qué REF=16 pese a que comprime el nivel crítico: para un uso por ranking, un
-REF alto mantiene los scores bien distribuidos (pocos empates arriba = mejor
-granularidad de orden). Bajar REF para "rescatar" el nivel crítico marcaría ~40%
-de los activos como críticos (inaccionable). Ver el barrido de niveles en
-`validar_pesos.py`.
+Por qué REF=12 (y no más alto): tras limpiar las señales rotas, REF=12 da la
+mejor separación del barrido honesto y mantiene los scores bien distribuidos
+para el ranking. Subir a 16 ya no hace falta para contener la falsa alarma (eso
+lo resolvió quitar la señal de cartera) y sólo apagaría el nivel crítico. Ver el
+barrido de niveles en `validar_pesos.py`.
+
+### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
+Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar
+ninguna base externa (reconstruyen todo desde `score_historico` / `ventas_mensual`):
+
+- **`scripts/validar_pesos.py`** — además del barrido de `RIESGO_REFERENCIA` y los
+  niveles operativos, tiene una **auditoría por señal**: para cada una de las 15
+  reporta su `lift` (frecuencia en egresados vs activos) y su **contribución
+  marginal a la separación** (cuánto cae la separación detección-vs-falsa-alarma
+  si se le pone peso 0). Sirve para decidir a qué señal débil bajarle el peso o
+  quitarla. *Caveat de lectura:* `lift` y contribución marginal pueden discrepar
+  — una señal presente en casi todos tiene `lift≈1` (no separa) pero gran impacto
+  en el score; mirar ambas columnas.
+
+- **`scripts/explorar_senales_nuevas.py`** — mide el `lift` con holdout temporal
+  de señales **candidatas nuevas** calculadas desde datos crudos (variabilidad
+  mes a mes del %plan, coef. de variación de venta, caída abrupta MoM, días cero
+  creciendo, cobranza empeorando, e interacción **tenure×grupo quemado**). Barre
+  umbrales para cada una. Una candidata vale la pena solo si su `lift` OOS supera
+  con holgura a las débiles actuales (visitas ~1.2, balanza ~1.4) → apuntar a
+  `lift ≥ 1.8-2.0`. **Flujo para adoptar una candidata:** (1) confirmar lift acá
+  → (2) implementarla como `Señal(...)` en `score_engine.py` → (3) re-correr
+  backfill → (4) validar el Δseparación en `validar_pesos.py` (no alcanza el lift:
+  hay que confirmar que sube la separación out-of-sample, sobre todo si se solapa
+  con señales existentes como tenure×grupo, que ya cuenta doble con "ventana
+  crítica" + "grupo quemado"). Recién entonces actualizar este archivo con el
+  peso elegido.
 
 ---
 

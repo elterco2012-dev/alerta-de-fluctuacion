@@ -26,7 +26,7 @@ st.set_page_config(
 )
 
 _v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
-st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>{open(_v3_css, encoding='utf-8').read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center;

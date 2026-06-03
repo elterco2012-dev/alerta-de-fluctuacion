@@ -37,52 +37,40 @@ except Exception as e:
     print(f"FALLÓ\nError: {e}")
     sys.exit(1)
 
-# ── 1. Columnas vía catálogo del sistema (nombre + tipo) ────────────────────
-print("\n[1] Columnas de sbas (catálogo syscolumns):")
-# coltype mod 256 da el tipo base en Informix; 7=date, 10=datetime son los que buscamos
-TIPOS = {
-    0: "CHAR", 1: "SMALLINT", 2: "INTEGER", 3: "FLOAT", 4: "SMALLFLOAT",
-    5: "DECIMAL", 6: "SERIAL", 7: "DATE", 8: "MONEY", 10: "DATETIME",
-    11: "BYTE", 12: "TEXT", 13: "VARCHAR", 14: "INTERVAL", 15: "NCHAR",
-    16: "NVARCHAR", 17: "INT8", 18: "SERIAL8", 19: "LVARCHAR",
-}
-columnas = []
+# ── Columnas + fila de ejemplo con un SELECT * normal (sin FIRST ni catálogo) ─
+# Usamos exactamente la forma que el sync ya prueba que funciona: un SELECT
+# sobre sbas con filtro firma. Leemos UNA fila con fetchone() (sin FIRST, que
+# en este Informix daba -201) y sacamos los nombres de columna de
+# cursor.description. Así vemos TODAS las columnas y sus valores reales.
+print("\n[1] Columnas reales de sbas + fila de ejemplo:")
 try:
-    cur.execute("""
-        SELECT c.colname, c.coltype, c.collength
-        FROM systables t
-        JOIN syscolumns c ON t.tabid = c.tabid
-        WHERE t.tabname = 'sbas'
-        ORDER BY c.colno
-    """)
-    for nombre, coltype, collength in cur.fetchall():
-        base = coltype % 256
-        tipo = TIPOS.get(base, f"tipo{base}")
-        es_fecha = " <<< CANDIDATO FECHA" if base in (7, 10) else ""
-        columnas.append(nombre)
-        print(f"    {nombre:20} {tipo:10}{es_fecha}")
-except Exception as e:
-    print(f"    AVISO: no se pudo leer syscolumns ({e})")
-
-# ── 2. Fila de ejemplo (FIRST 1) para ver valores reales ────────────────────
-print("\n[2] Una fila de ejemplo de sbas (valores reales):")
-try:
-    cur.execute(f"SELECT FIRST 1 * FROM sbas WHERE firma = {FIRMA}")
+    cur.execute(f"SELECT * FROM sbas WHERE firma = {FIRMA} AND bujahr >= {anio_desde}")
     row = cur.fetchone()
-    if row:
-        cols = [d[0] for d in cur.description]
-        for nombre, valor in zip(cols, row):
-            print(f"    {nombre:20} = {valor!r}")
+    cols = [d[0] for d in cur.description]
+    if row is None:
+        print("    (sin filas para firma=1 en el año en curso; muestro solo nombres)")
+        for nombre in cols:
+            print(f"    {nombre}")
     else:
-        print("    (sin filas para firma=1)")
+        print(f"    {'COLUMNA':22} {'TIPO PYTHON':14} VALOR EJEMPLO")
+        print("    " + "-" * 60)
+        for nombre, valor in zip(cols, row):
+            tipo = type(valor).__name__
+            marca = ""
+            # date/datetime de Python → candidato a campo de fecha por día
+            if tipo in ("date", "datetime"):
+                marca = "   <<< CANDIDATO FECHA"
+            print(f"    {nombre:22} {tipo:14} {valor!r}{marca}")
 except Exception as e:
-    print(f"    AVISO: no se pudo leer fila de ejemplo ({e})")
+    print(f"    AVISO: no se pudo leer sbas ({e})")
 
 print("\n" + "=" * 68)
 print("QUÉ BUSCAR:")
-print("  El campo marcado '<<< CANDIDATO FECHA' (tipo DATE/DATETIME) es el que")
-print("  hay que usar en sincronizar_informix.py para contar días con venta.")
-print("  Confirmá con la fila de ejemplo que tenga una fecha de factura real.")
+print("  - Si aparece alguna columna tipo date/datetime (marcada CANDIDATO),")
+print("    ESE es el campo de fecha por día que hay que usar para días con venta.")
+print("  - Si NO hay ninguna columna de fecha (solo bujahr/bumonat = año/mes),")
+print("    entonces sbas está agregada por mes y NO sirve para contar días sin")
+print("    venta. Habría que buscar otra tabla de facturas con fecha diaria.")
 print("=" * 68)
 
 cn.close()

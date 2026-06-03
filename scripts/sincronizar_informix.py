@@ -43,12 +43,20 @@ FIRMA        = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run",     action="store_true")
-parser.add_argument("--full",        action="store_true")
+parser.add_argument("--full",        action="store_true",
+                    help="Traer toda la historia disponible (~8 años)")
+parser.add_argument("--meses",       type=int, default=None,
+                    help="Cantidad de meses hacia atrás (default: 18)")
 parser.add_argument("--diagnostico", action="store_true")
 args = parser.parse_args()
 
-DRY_RUN     = args.dry_run
-MESES_ATRAS = 99 if args.full else 6
+DRY_RUN = args.dry_run
+if args.full:
+    MESES_ATRAS = 99
+elif args.meses:
+    MESES_ATRAS = args.meses
+else:
+    MESES_ATRAS = 18   # 18 meses para cubrir el backfill de Precisión
 
 print("=" * 65)
 print("SINCRONIZACIÓN Informix (MSPA) → SQLite  (balanza clientes)")

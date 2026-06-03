@@ -311,7 +311,10 @@ except Exception as e:
 print("[3b3/4] Días con venta (sbas)...", end=" ", flush=True)
 dias_con_venta = {}  # (vid, anio, mes) → int
 _sbas_date_field = None
-for _campo in ("budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
+# redat/lsdat/aufdat: nombres reales en este Informix (confirmado por explorar_sbas_columnas.py)
+# redat = Rechnungsdatum (fecha de factura) — el más preciso para "días con venta"
+# Los demás se mantienen como fallback por si cambia la estructura.
+for _campo in ("redat", "lsdat", "aufdat", "budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
     try:
         icur.execute(f"SELECT FIRST 1 {_campo} FROM sbas WHERE firma = {FIRMA}")
         icur.fetchone()

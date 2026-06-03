@@ -27,21 +27,20 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 # de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
 # hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
 #
-# Calibrado en 12.0 por backtest con holdout temporal (scripts/validar_pesos.py).
-# Historia: con REF=10 la falsa alarma en activos era 69% (inservible). Un ajuste
-# a 14 usó cobranza incompleta para egresados (inflaba la detección). Con la
-# cobranza sincronizada y el bug de dato faltante corregido, la curva honesta
-# dio REF=16. PERO ese 16 se calibró con TRES señales rotas todavía activas
-# (cartera/llamadas/visitas) que inflaban el score de casi todos los activos:
-# por eso hubo que subir tanto la referencia para contener la falsa alarma. Al
-# deshabilitar esas señales (ver abajo), los scores bajaron parejo y la falsa
-# alarma se desplomó (~32% -> 16% a REF=16), dejando margen para BAJAR la
-# referencia y recuperar detección. El barrido honesto ubica el óptimo en
-# REF=12: ~62% de detección out-of-sample con ~31% de falsa alarma (separación
-# ~32, vs ~24 a REF=16). Además el nivel crítico (>=8) vuelve a ser alcanzable.
+# Calibrado en 10.0 por backtest con holdout temporal (scripts/validar_pesos.py).
+# Historia: el primer REF=10 (con las señales rotas activas) daba 69% de falsa
+# alarma. Tras corregir el bug de dato faltante y sincronizar cobranza, la curva
+# honesta dio REF=16 — pero ese 16 estaba inflado por CUATRO señales que no
+# distinguen egresados de activos (cartera/llamadas/visitas, y luego cobranza:
+# lift ~1, disparan casi igual en ambos grupos). A medida que se fueron
+# deshabilitando, los scores bajaron parejo, la falsa alarma se desplomó y el
+# óptimo del barrido fue cayendo: 16 -> 12 -> 10. Con las 4 señales rotas fuera,
+# el barrido honesto ubica el óptimo en REF=10: ~62% de detección out-of-sample
+# con ~25% de falsa alarma (separación ~37, la mejor de todo el recorrido). El
+# nivel crítico (>=8) detecta ~41% de egresados con ~11% de falsa alarma.
 # La separación real sigue siendo modesta: es alerta temprana sobre datos
 # ruidosos de RRHH, no un oráculo. Si se ajusta, re-correr backfill y CLAUDE.md.
-RIESGO_REFERENCIA = 12.0
+RIESGO_REFERENCIA = 10.0
 
 
 def get_connection():

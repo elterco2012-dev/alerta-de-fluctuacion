@@ -180,40 +180,39 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 12.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 10.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 12` representa un vendedor en deterioro claro (combinación
+`RIESGO_REFERENCIA = 10` representa un vendedor en deterioro claro (combinación
 de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + días cero 2.5 +
-ventana crítica 1.5 + grupo quemado 1.5 ≈ 10 puntos, más cualquier señal adicional).
+ventana crítica 1.5 + grupo quemado 1.5 ≈ 10 puntos).
 
-**Por qué NO se divide por la suma de todos los pesos (~21):** eso exigía
+**Por qué NO se divide por la suma de todos los pesos (~18):** eso exigía
 activar >50% de las señales a la vez para llegar a score 6, algo que ningún
 vendedor real hace. Resultado: todos los egresados quedaban con score < 6 y la
 pantalla de Precisión mostraba 0% detectado. La calibración por referencia fija
 arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-**Calibración por backtest (cómo se llegó a 12):** con `RIESGO_REFERENCIA=10`
-el modelo (con las señales rotas todavía activas) marcaba con score ≥ 6 al
-**69% de los activos** — falsa alarma inservible. El barrido en
-`scripts/validar_pesos.py` (curva detección-vs-falsa-alarma con holdout temporal)
-define el punto óptimo, y se movió en dos etapas:
-  - Un primer ajuste a 14 usó datos de cobranza incompletos para egresados, que
-    INFLABAN la detección (ver bug abajo): aparentaba 62% de detección.
-  - Con la cobranza sincronizada y el bug de dato faltante corregido, la curva
-    honesta ubicó el óptimo en **REF=16** (~40% detección OOS, ~32% falsa alarma,
-    separación ≈ 8). PERO ese 16 estaba inflado por las **tres señales rotas**
-    (cartera/llamadas/visitas) que encendían el score de casi todos los activos:
-    había que subir mucho la referencia para contener la falsa alarma.
-  - Al **deshabilitar esas señales**, la falsa alarma se desplomó (~32% → 16% a
-    REF=16) y la separación trepó a ~24. Eso dejó margen para BAJAR la referencia
-    y recuperar detección. El barrido honesto post-limpieza ubica el óptimo en
-    **REF=12**: ~62% de detección out-of-sample con ~31% de falsa alarma
-    (separación ≈ 32). A REF=12 el nivel **crítico (≥8)** vuelve a ser alcanzable
-    (dispara en ~23% de egresados vs ~10% de activos; a REF=16 era 2% vs 0,6%).
+**Calibración por backtest (cómo se llegó a 10):** la referencia se movió a lo
+largo de toda la limpieza de señales. El barrido en `scripts/validar_pesos.py`
+(curva detección-vs-falsa-alarma con holdout temporal) define el punto óptimo en
+cada estado del modelo:
+  - Con las señales rotas activas, REF=10 daba **69% de falsa alarma** (inservible)
+    y un primer ajuste a 14 usó cobranza incompleta que inflaba la detección.
+  - Con la cobranza sincronizada y el bug de dato faltante corregido, el óptimo
+    honesto fue **REF=16** (~40% detección OOS, ~32% falsa alarma, separación ≈ 8).
+    Pero ese 16 estaba inflado por **cuatro señales que no separan** (cartera,
+    llamadas, visitas y cobranza: lift ~1, disparan casi igual en egresados y
+    activos): había que subir mucho la referencia para contener la falsa alarma.
+  - A medida que se deshabilitaron esas señales, los scores bajaron parejo, la
+    falsa alarma se desplomó y el óptimo del barrido fue cayendo: **16 → 12 → 10**.
+    Con las cuatro fuera, el barrido honesto ubica el óptimo en **REF=10**: ~62%
+    de detección out-of-sample con ~25% de falsa alarma (separación ≈ 37, la mejor
+    de todo el recorrido). A REF=10 el nivel **crítico (≥8)** detecta ~41% de
+    egresados vs ~11% de activos (a REF=16 era 2% vs 0,6%).
   - La separación real sigue siendo modesta: es alerta temprana sobre datos
     ruidosos de RRHH, no un oráculo. Detectar ~62% de las fugas con 3 meses de
     anticipación es valor real.
@@ -252,9 +251,9 @@ Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población
 deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
 todos), así que **ningún umbral de score separa limpio a los que se van de los
 que se quedan**. La separación detección-vs-falsa-alarma mejoró bastante al
-deshabilitar las señales rotas y bajar a REF=12 (~32, antes ~8), pero sigue sin
-haber un corte que parta limpio: a REF=12 el nivel crítico (≥8) detecta ~23% de
-egresados pero también marca ~10% de activos.
+deshabilitar las señales rotas y bajar a REF=10 (~37, antes ~8), pero sigue sin
+haber un corte que parta limpio: a REF=10 el nivel crítico (≥8) detecta ~41% de
+egresados pero también marca ~11% de activos.
 
 Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
 seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
@@ -263,11 +262,12 @@ en la vista global; el top de cada zona en la vista por supervisor). Las tablas
 van ordenadas por score descendente. Los niveles crítico/alto quedan como
 indicador visual de color y de urgencia, no como corte accionable rígido.
 
-Por qué REF=12 (y no más alto): tras limpiar las señales rotas, REF=12 da la
-mejor separación del barrido honesto y mantiene los scores bien distribuidos
-para el ranking. Subir a 16 ya no hace falta para contener la falsa alarma (eso
-lo resolvió quitar la señal de cartera) y sólo apagaría el nivel crítico. Ver el
-barrido de niveles en `validar_pesos.py`.
+Por qué REF=10 (y no más alto): tras deshabilitar las cuatro señales que no
+separan (cartera, llamadas, visitas, cobranza), REF=10 da la mejor separación
+del barrido honesto (~37) y mantiene los scores bien distribuidos para el
+ranking. Los REF altos (12-16) sólo hacían falta para contener la falsa alarma
+que metían esas señales rotas; sin ellas, subir el REF sólo apaga detección y el
+nivel crítico. Ver el barrido de niveles en `validar_pesos.py`.
 
 ### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
 Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar

@@ -271,13 +271,19 @@ ob_critico = len(scores_df[
     (scores_df.meses_activo <= 6) & (scores_df.nivel_riesgo.isin(["critico", "alto"]))
 ])
 
+# Foco de la semana: los de mayor score, priorizados por ranking (no por un
+# umbral fijo). En esta población el deterioro es generalizado, así que ningún
+# corte separa limpio: lo accionable es trabajar de mayor a menor riesgo.
+FOCO_SEMANA = 20
+foco_n = min(FOCO_SEMANA, en_critica) if en_critica else 0
+
 col_hero, col_stats = st.columns([1, 2.2])
 with col_hero:
     hero_sub = (
-        f"{n_critico} críticos (reunión esta semana) · "
-        f"{en_critica - n_critico} en seguimiento activo"
+        f"{en_critica} en la lista de riesgo (score ≥ 6). "
+        f"Empezá por los {foco_n} de mayor score y bajá según tu capacidad."
     )
-    st.markdown(hero_kpi("Vendedores en riesgo elevado", en_critica, hero_sub, red=True),
+    st.markdown(hero_kpi("Foco de la semana", foco_n, hero_sub, red=True),
                 unsafe_allow_html=True)
 with col_stats:
     s1, s2, s3, s4 = st.columns(4)
@@ -294,29 +300,26 @@ with col_stats:
 st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
 # ── Banner de acción del día ───────────────────────────────────────────────────
-if n_critico > 0:
+# Acción por RANKING, no por umbral: en esta población casi todos muestran algún
+# deterioro, así que no hay un corte que separe "se va" de "se queda". Lo que sí
+# tiene señal es el orden: los de mayor score se van más seguido. Por eso la guía
+# es "empezá por arriba", no "todos los que pasen de X".
+if en_critica > 0:
     _banner_tono = "red"
     _banner_emoji = "🔴"
     _banner_titulo = (
-        f"{n_critico} vendedor{'es necesitan' if n_critico != 1 else ' necesita'} "
-        f"reunión esta semana"
+        f"Empezá por los {foco_n} de mayor riesgo esta semana"
     )
     _banner_sub = (
-        f"Score crítico (≥8). Pasá a la tabla para ver señales y zona de cada uno."
+        "La tabla está ordenada de mayor a menor score. No hay un corte mágico: "
+        "trabajá de arriba hacia abajo según tu capacidad. Los niveles "
+        "(crítico/alto) son una guía visual, no el disparador."
     )
-elif en_critica > 0:
-    _banner_tono = "orange"
-    _banner_emoji = "🟠"
-    _banner_titulo = (
-        f"{en_critica} vendedor{'es requieren' if en_critica != 1 else ' requiere'} "
-        f"seguimiento activo"
-    )
-    _banner_sub = "Score ≥ 6. Revisá las señales de cada uno antes del cierre de semana."
 else:
     _banner_tono = "green"
     _banner_emoji = "✅"
     _banner_titulo = "Sin vendedores en riesgo elevado esta semana"
-    _banner_sub = "Todos los vendedores activos tienen score menor a 6."
+    _banner_sub = "Ningún vendedor activo supera score 6. Igual revisá el top de la tabla."
 st.markdown(banner(_banner_emoji, _banner_titulo, _banner_sub, _banner_tono),
             unsafe_allow_html=True)
 

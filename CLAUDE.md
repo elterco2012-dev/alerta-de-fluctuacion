@@ -133,14 +133,22 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | señal | peso | umbral |
 |---|---|---|
 | % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 |
+| Días venta cero altos | 2.5 | promedio > 3 días |
 | % Plan promedio < 80% | 2.0 | media < 80 |
-| Días venta cero altos | 1.5 | promedio > 3 días |
+| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 |
 | Cartera activa baja | 1.5 | < 60% activos |
-| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.60 |
+| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 |
 | En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 |
-| Cobranza real < 90% teórica | 1.0 | pct_cobranza < 90 |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
+
+> **Pesos recalibrados (backtest):** "Días venta cero" subió 1.5→2.5 y "Cobranza
+> real" subió 1.0→2.0. Ambas son las señales con más evidencia predictiva en el
+> análisis leavers-vs-stayers (días cero: lift 2,7× presente en 71% de egresados;
+> cobranza: lift 2,5× presente en 97%). El cambio se validó con holdout temporal
+> (`scripts/validar_pesos.py`): subió la detección out-of-sample de egresados de
+> 70,5% a 79,5%, más de lo que subió la falsa alarma. Ver más abajo la calibración
+> de `RIESGO_REFERENCIA` que acompaña este cambio.
 
 > **Nota:** además de estas 9 señales originales hay 6 más implementadas en
 > `score_engine.py` (llamadas/visitas bajas, ausencias tempranas, balanza
@@ -148,26 +156,80 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 10.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 16.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 10` representa un vendedor en deterioro claro (ej: plan
-cayendo + plan<80% + cobranza + ventana crítica + días cero ≈ 8.5-10 puntos).
+`RIESGO_REFERENCIA = 16` representa un vendedor en deterioro claro (combinación
+de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 +
+días cero 2.5 + cartera 1.5 + ventana crítica ≈ 12-16 puntos).
 
-**Por qué NO se divide por la suma de todos los pesos (~21.5):** eso exigía
-activar el 56% de las 15 señales a la vez para llegar a score 6, algo que
+**Por qué NO se divide por la suma de todos los pesos (~23.5):** eso exigía
+activar >50% de las 15 señales a la vez para llegar a score 6, algo que
 ningún vendedor real hace. Resultado: todos los egresados quedaban con score
 < 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
 referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-### Niveles de riesgo
-- 8-10 → **crítico** → acción inmediata del supervisor
-- 6-7  → **alto**    → seguimiento activo
-- 4-5  → **medio**   → monitoreo mensual
-- 1-3  → **bajo**    → seguimiento normal
+**Calibración por backtest (cómo se llegó a 16):** con `RIESGO_REFERENCIA=10`
+el modelo marcaba con score ≥ 6 al **69% de los activos** — falsa alarma
+inservible para priorizar. El barrido en `scripts/validar_pesos.py` (curva
+detección-vs-falsa-alarma con holdout temporal) define el punto óptimo.
+  - Un primer ajuste a 14 usó datos de cobranza incompletos para egresados, que
+    INFLABAN la detección (ver bug abajo): aparentaba 62% de detección.
+  - Con la cobranza ya sincronizada y el bug de dato faltante corregido, la curva
+    honesta ubica el óptimo en **REF=16**: ~40% de detección out-of-sample de
+    egresados con ~32% de falsa alarma (máxima separación ≈ 7,9).
+  - La separación real es modesta (~5-8, no los ~20 que sugería el dato inflado):
+    es alerta temprana sobre datos ruidosos de RRHH, no un oráculo. Detectar ~40%
+    de las fugas con 3 meses de anticipación sigue siendo valor real.
+  - El nivel **crítico (≥8)** es el corte operativo de "reunión esta semana".
+
+**Bug de dato faltante corregido (importante):** en `ventas_mensual` un dato
+ausente queda en 0. El motor tomaba ese 0 como valor real y encendía señales
+FALSAMENTE (cobranza ausente → pct 0 → "cobranza < 90"; plan ausente → pct 0 →
+"plan < 80%"). Ahora cada señal usa solo los meses con BASE del dato:
+plan → `plan > 0`; cobranza → `cobranza_teorica > 0`; cartera → `total_clientes > 0`.
+Si no hay ningún mes con base, la señal queda apagada (dato desconocido ≠ riesgo).
+Días venta cero ya era conservador (faltante = 0 = no enciende). Al cambiar esto,
+re-correr siempre el backfill.
+
+**Señal "grupo quemado" rescatada (umbral 0.60 → 0.40):** la hipótesis central
+del proyecto (grupos de alta rotación producen fugas) tenía la señal muerta: el
+umbral pedía `riesgo_base > 0.60` pero el grupo más quemado tiene 0.51, así que
+nunca disparaba. El diagnóstico (`scripts/diagnostico_grupos_quemados.py`) mostró
+que a `> 0.40` los egresados están 2,1× más seguido en grupos quemados que los
+activos (11% vs 5%). Es señal estructural de alerta temprana: marca a vendedores
+nuevos en grupos históricamente malos antes de que muestren deterioro individual.
+Caveat honesto: los egresados alimentan el riesgo_base de su grupo, lo que infla
+algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularidad.
+
+### Niveles de riesgo (etiquetas visuales, NO el disparador de acción)
+- 8-10 → **crítico**
+- 6-7  → **alto**
+- 4-5  → **medio**
+- 1-3  → **bajo**
+
+### Acción operativa: por RANKING, no por umbral fijo
+Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población el
+deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
+todos), así que **ningún umbral de score separa limpio a los que se van de los
+que se quedan**. La separación detección-vs-falsa-alarma es modesta en todo el
+rango, y el nivel crítico (≥8) a la calibración elegida (REF=16) casi no dispara.
+
+Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
+seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
+**"empezá por los de mayor score y bajá según tu capacidad"** (FOCO_SEMANA ≈ 20
+en la vista global; el top de cada zona en la vista por supervisor). Las tablas
+van ordenadas por score descendente. Los niveles crítico/alto quedan solo como
+indicador visual de color, no como corte accionable.
+
+Por qué REF=16 pese a que comprime el nivel crítico: para un uso por ranking, un
+REF alto mantiene los scores bien distribuidos (pocos empates arriba = mejor
+granularidad de orden). Bajar REF para "rescatar" el nivel crítico marcaría ~40%
+de los activos como críticos (inaccionable). Ver el barrido de niveles en
+`validar_pesos.py`.
 
 ---
 

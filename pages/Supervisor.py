@@ -276,18 +276,20 @@ with col_stats:
 
 st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-# Banner de acción
-if n_criticos > 0:
+# Banner de acción — por RANKING, no por umbral fijo (ver dashboard principal):
+# en esta población el deterioro es general, así que la guía es "empezá por el
+# de mayor score y bajá según tu capacidad", no "todos los que pasen de X".
+_n_riesgo = n_criticos + n_altos
+if _n_riesgo > 0:
     st.markdown(banner("🔴",
-        f"{n_criticos} vendedor{'es necesitan' if n_criticos!=1 else ' necesita'} reunión esta semana",
-        "Score crítico (≥8) en tu zona.", "red"), unsafe_allow_html=True)
-elif n_altos > 0:
-    st.markdown(banner("🟠",
-        f"{n_altos} vendedor{'es requieren' if n_altos!=1 else ' requiere'} seguimiento activo",
-        "Score ≥ 6 en tu zona.", "orange"), unsafe_allow_html=True)
+        "Empezá por tus vendedores de mayor score",
+        "La tabla está ordenada de mayor a menor riesgo. Trabajá de arriba hacia "
+        "abajo según tu capacidad; los niveles (crítico/alto) son guía visual, no "
+        "el disparador.", "red"), unsafe_allow_html=True)
 else:
     st.markdown(banner("✅", "Sin vendedores en riesgo elevado en tu zona",
-        "Todos tienen score menor a 6.", "green"), unsafe_allow_html=True)
+        "Igual conviene mirar el top de la tabla, ordenado por score.", "green"),
+        unsafe_allow_html=True)
 
 # Tabla
 st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</div>',

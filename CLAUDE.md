@@ -142,6 +142,27 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | Cobranza real < 90% teórica | 1.0 | pct_cobranza < 90 |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
 
+> **Nota:** además de estas 9 señales originales hay 6 más implementadas en
+> `score_engine.py` (llamadas/visitas bajas, ausencias tempranas, balanza
+> negativa, ticket cayendo, supervisor no acompañó). Son 15 en total.
+
+### Normalización del score (calibración)
+El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 10.0`:
+
+```python
+score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
+```
+
+`RIESGO_REFERENCIA = 10` representa un vendedor en deterioro claro (ej: plan
+cayendo + plan<80% + cobranza + ventana crítica + días cero ≈ 8.5-10 puntos).
+
+**Por qué NO se divide por la suma de todos los pesos (~21.5):** eso exigía
+activar el 56% de las 15 señales a la vez para llegar a score 6, algo que
+ningún vendedor real hace. Resultado: todos los egresados quedaban con score
+< 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
+referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
+
 ### Niveles de riesgo
 - 8-10 → **crítico** → acción inmediata del supervisor
 - 6-7  → **alto**    → seguimiento activo

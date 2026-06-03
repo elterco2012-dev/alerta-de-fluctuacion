@@ -43,12 +43,20 @@ FIRMA        = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run",     action="store_true")
-parser.add_argument("--full",        action="store_true")
+parser.add_argument("--full",        action="store_true",
+                    help="Traer toda la historia disponible (~8 años)")
+parser.add_argument("--meses",       type=int, default=None,
+                    help="Cantidad de meses hacia atrás (default: 18)")
 parser.add_argument("--diagnostico", action="store_true")
 args = parser.parse_args()
 
-DRY_RUN     = args.dry_run
-MESES_ATRAS = 99 if args.full else 6
+DRY_RUN = args.dry_run
+if args.full:
+    MESES_ATRAS = 99
+elif args.meses:
+    MESES_ATRAS = args.meses
+else:
+    MESES_ATRAS = 18   # 18 meses para cubrir el backfill de Precisión
 
 print("=" * 65)
 print("SINCRONIZACIÓN Informix (MSPA) → SQLite  (balanza clientes)")
@@ -76,10 +84,22 @@ EXCLUIR_SUPERVISORES = """
 try:
     _lcon = sqlite3.connect(DB_PATH)
     _lcur = _lcon.cursor()
-    _lcur.execute(f"SELECT id_vendedor FROM vendedores WHERE activo = 1 {EXCLUIR_SUPERVISORES}")
+    # Activos + egresados recientes (últimos 18 meses). Los egresados se incluyen
+    # para que la pantalla de Precisión pueda medir si el modelo los hubiera
+    # detectado: sin sus ventas en ventas_mensual no hay score histórico que cruzar.
+    _lcur.execute(f"""
+        SELECT id_vendedor FROM vendedores
+        WHERE (
+                activo = 1
+                OR (activo = 0
+                    AND fecha_egreso IS NOT NULL
+                    AND fecha_egreso >= date('now', '-18 months'))
+              )
+          {EXCLUIR_SUPERVISORES}
+    """)
     IDS_ACTIVOS = [str(r[0]) for r in _lcur.fetchall()]
     _lcon.close()
-    print(f"  Vendedores activos (sin supervisores): {len(IDS_ACTIVOS)}")
+    print(f"  Vendedores a sincronizar (activos + egresados 18m, sin supervisores): {len(IDS_ACTIVOS)}")
 except Exception as e:
     print(f"\nAVISO: no se pudo leer vendedores ({e})")
     IDS_ACTIVOS = []

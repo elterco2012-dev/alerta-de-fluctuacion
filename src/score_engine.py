@@ -19,6 +19,15 @@ import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
+# Riesgo total de referencia para normalizar el score a 1-10.
+# Representa un vendedor en deterioro claro: combinación realista de señales
+# fuertes (ej: plan cayendo 2.5 + plan<80% 2.0 + cobranza 1.0 + ventana crítica
+# 1.5 + días cero 1.5 ≈ 8.5-10 puntos).
+# NO se divide por la suma de TODOS los pesos (~21.5): eso exigía activar el 56%
+# de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
+# hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
+RIESGO_REFERENCIA = 10.0
+
 
 def get_connection():
     """
@@ -407,26 +416,11 @@ def calcular_scores(meses_tendencia: int = 3,
                 señales[14].activa = True
                 riesgo_total += señales[14].peso
 
-        # Normalizar a 1-10
-        # Señales excluyentes por tipo / disponibilidad de datos.
-        excluir = set()
-        if act_vid.empty:
-            excluir.update({"llamadas_bajas", "visitas_bajas"})
-        elif tipo_v == "Televentas":
-            excluir.add("visitas_bajas")
-        else:
-            excluir.add("llamadas_bajas")
-        if aus_vid.empty or not en_critica_13:
-            excluir.add("ausencias_tempranas")
-        if bal_vid.empty:
-            excluir.update({"balanza_negativa", "ticket_cayendo"})
-        if acomp_vid.empty or not en_critica_16:
-            excluir.add("acomp_bajo")
-
-        señales_aplicables = [s for s in señales if s.nombre not in excluir]
-
-        max_posible = sum(s.peso for s in señales_aplicables)
-        score_norm = 1 + (riesgo_total / max_posible) * 9
+        # Normalizar a 1-10 contra un riesgo de referencia realista.
+        # Las señales no aplicables por tipo/datos (visitas para Televentas,
+        # ventanas fuera de rango, etc.) simplemente no se activan, así que
+        # aportan 0 a riesgo_total: no hace falta excluirlas del denominador.
+        score_norm = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
         score_norm = round(min(10, max(1, score_norm)), 1)
 
         # Nivel

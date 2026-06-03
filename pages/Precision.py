@@ -384,7 +384,13 @@ def _señales_pills(lista):
         "En ventana crítica mes 1-3":             ("inducción",    "#FDECEA","#B71C1C"),
         "En ventana crítica mes 4-6":             ("mes 4-6",      "#FFF3E0","#E65100"),
         "Grupo con alta rotación histórica":      ("zona quemada", "#FFF3E0","#E65100"),
-        "Sin clientes nuevos últimos 2 meses":    ("cl. L:0",      "#FFFDE7","#F57F17"),
+        "Sin clientes nuevos últimos 2 meses":    ("cl. nuevos:0", "#FFFDE7","#F57F17"),
+        "< 70% de llamadas planificadas gestionadas (Televentas)": ("llamadas↓",  "#FDECEA","#B71C1C"),
+        "< 70% de visitas planificadas realizadas (Viajante)":     ("visitas↓",   "#FDECEA","#B71C1C"),
+        "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑", "#FDECEA","#B71C1C"),
+        "Balanza clientes negativa 2+ meses consecutivos":         ("balanza neg.","#FFF3E0","#E65100"),
+        "Ticket promedio cae > 5% por mes":                        ("ticket↓",    "#FFF3E0","#E65100"),
+        "Supervisor no acompañó en ventana crítica 1-6":           ("sin acomp.", "#FFFDE7","#F57F17"),
     }
     parts = []
     for s in lista:
@@ -409,30 +415,28 @@ def _tabla(subset, mostrar_tag):
         periodo_egreso= _html.escape(str(r['periodo_egreso'] or '—'))
         motivo_egreso = _html.escape(str(r['motivo_egreso'] or '—'))
         periodo_score = _html.escape(str(r.get('periodo_score') or '—'))
-        rows += f"""<tr>
-          <td>
-            <div style="font-weight:700;font-size:12px;">{nombre}</div>
-            <div style="color:#aaa;font-size:11px;">{tipo} · ID {int(r['id_vendedor'])}</div>
-          </td>
-          <td style="font-size:12px;">{nombre_grupo}</td>
-          <td style="font-size:12px;color:#666;">{periodo_egreso}</td>
-          <td style="font-size:12px;color:#888;">{motivo_egreso}</td>
-          <td>{score_str}</td>
-          <td style="font-size:11px;color:#777;">{periodo_score}</td>
-          <td>{_señales_pills(r['señales'])}</td>
-          {'<td>' + tag + '</td>' if mostrar_tag else ''}
-        </tr>"""
+        rows += (
+            "<tr>"
+            f'<td><div style="font-weight:700;font-size:12px;">{nombre}</div>'
+            f'<div style="color:#aaa;font-size:11px;">{tipo} · ID {int(r["id_vendedor"])}</div></td>'
+            f'<td style="font-size:12px;">{nombre_grupo}</td>'
+            f'<td style="font-size:12px;color:#666;">{periodo_egreso}</td>'
+            f'<td style="font-size:12px;color:#888;">{motivo_egreso}</td>'
+            f'<td>{score_str}</td>'
+            f'<td style="font-size:11px;color:#777;">{periodo_score}</td>'
+            f'<td>{_señales_pills(r["señales"])}</td>'
+            + (f'<td>{tag}</td>' if mostrar_tag else '')
+            + "</tr>"
+        )
     th_tag = "<th>Estado</th>" if mostrar_tag else ""
-    return f"""
-<div class="card" style="overflow-x:auto;">
-<table class="det-tbl">
-<thead><tr>
-  <th>Vendedor</th><th>Zona</th><th>Período egreso</th>
-  <th>Motivo</th><th>Score previo</th><th>Período score</th>
-  <th>Señales activas antes de irse</th>{th_tag}
-</tr></thead>
-<tbody>{rows}</tbody>
-</table></div>"""
+    return (
+        '<div class="card" style="overflow-x:auto;">'
+        '<table class="det-tbl"><thead><tr>'
+        '<th>Vendedor</th><th>Zona</th><th>Período egreso</th>'
+        '<th>Motivo</th><th>Score previo</th><th>Período score</th>'
+        f'<th>Señales activas antes de irse</th>{th_tag}'
+        f'</tr></thead><tbody>{rows}</tbody></table></div>'
+    )
 
 with tab_det:
     st.caption(f"Vendedores que el modelo hubiera marcado como riesgo alto o crítico "

@@ -11,6 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num
 from intervenciones import (
     TIPOS, registrar, obtener_todas, calcular_impacto,
     hay_datos_demo, cargar_demo,
@@ -22,6 +23,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+_v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
+st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""<style>
 [data-testid="stSidebar"]   { display: none; }
@@ -134,34 +138,45 @@ st.markdown("""
 todas = obtener_todas()
 if not todas.empty:
     con_impacto = calcular_impacto(todas, scores_df)
-    mejoraron = len(con_impacto[con_impacto["impacto"].fillna(0) > 0.4])
+    mejoraron  = len(con_impacto[con_impacto["impacto"].fillna(0) > 0.4])
     empeoraron = len(con_impacto[con_impacto["impacto"].fillna(0) < -0.4])
     total_int  = len(con_impacto)
     bajas      = len(con_impacto[con_impacto["estado"] == "Baja"])
 
-    st.markdown(f"""
-    <div class="kpi-row">
-      <div class="kpi-card">
-        <div class="kpi-value">{total_int}</div>
-        <div class="kpi-label">Intervenciones registradas</div>
-      </div>
-      <div class="kpi-card kg">
-        <div class="kpi-value" style="color:#2E7D32">{mejoraron}</div>
-        <div class="kpi-label">Con mejora de score</div>
-        <div class="kpi-sub">Score bajó ≥ 0.5 después</div>
-      </div>
-      <div class="kpi-card kc">
-        <div class="kpi-value" style="color:#E24B4A">{empeoraron}</div>
-        <div class="kpi-label">Sin mejora</div>
-        <div class="kpi-sub">Score igual o subió</div>
-      </div>
-      <div class="kpi-card ka">
-        <div class="kpi-value" style="color:#888">{bajas}</div>
-        <div class="kpi-label">Vendedor dio de baja</div>
-        <div class="kpi-sub">A pesar de la intervención</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Hero KPI + stats
+    col_hero, col_stats = st.columns([1, 2.2])
+    with col_hero:
+        _eff_pct = round(mejoraron / total_int * 100) if total_int > 0 else 0
+        st.markdown(hero_kpi("Con mejora de score", mejoraron,
+                             f"{_eff_pct}% de {total_int} intervenciones registradas",
+                             red=False),
+                    unsafe_allow_html=True)
+    with col_stats:
+        _s1, _s2, _s3 = st.columns(3)
+        with _s1:
+            st.markdown(stat_kpi("Total registradas", fmt_num(total_int)), unsafe_allow_html=True)
+        with _s2:
+            st.markdown(stat_kpi("Sin mejora / igual", fmt_num(empeoraron)), unsafe_allow_html=True)
+        with _s3:
+            st.markdown(stat_kpi("Vendedor dio baja", fmt_num(bajas)), unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+    # Banner
+    if mejoraron > 0:
+        st.markdown(banner("✅",
+            f"{mejoraron} intervención{'es con impacto positivo' if mejoraron!=1 else ' con impacto positivo'}",
+            f"Score bajó en {mejoraron} de {total_int} vendedores intervenidos.", "green"),
+            unsafe_allow_html=True)
+    elif total_int > 0:
+        st.markdown(banner("📋",
+            f"{total_int} intervención{'es registradas' if total_int!=1 else ' registrada'}",
+            "Aún sin datos de mejora suficientes para evaluar impacto.", "blue"),
+            unsafe_allow_html=True)
+else:
+    st.markdown(banner("📝", "Todavía no hay intervenciones registradas",
+        "Usá el formulario de abajo para documentar la primera acción.", "blue"),
+        unsafe_allow_html=True)
 
 st.divider()
 

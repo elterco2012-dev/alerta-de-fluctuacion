@@ -11,6 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
+from snippets_v3 import banner, hero_kpi, stat_kpi, accion_tag, fmt_num, fmt_meses
 
 def _fmt_antiguedad(meses):
     if meses < 12:
@@ -28,6 +29,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+_v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
+st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""<style>
 [data-testid="stSidebar"]   { display: none; }
@@ -300,36 +304,40 @@ n_activos  = len(df_sup)
 n_criticos = len(df_sup[df_sup.nivel_riesgo == "critico"])
 n_altos    = len(df_sup[df_sup.nivel_riesgo == "alto"])
 n_onb      = len(df_sup[df_sup.meses_activo <= 3])
-perm_str   = f"{perm_zona:.1f}m" if perm_zona and pd.notna(perm_zona) else "—"
+perm_str   = fmt_meses(round(perm_zona, 1)) if perm_zona and pd.notna(perm_zona) else "—"
 diff_perm  = (perm_zona - perm_general) if perm_zona and pd.notna(perm_zona) else None
-diff_str   = (f"{'↑' if diff_perm > 0 else '↓'} {abs(diff_perm):.1f}m vs promedio"
+diff_str   = (f"{'↑' if diff_perm > 0 else '↓'} {abs(diff_perm):.1f} m vs promedio"
               if diff_perm is not None else "")
-diff_color = "#2E7D32" if diff_perm and diff_perm > 0 else "#E24B4A"
 
-st.markdown(f"""
-<div class="kpi-row">
-  <div class="kpi-card">
-    <div class="kpi-value">{n_activos}</div>
-    <div class="kpi-label">Vendedores activos</div>
-    <div class="kpi-sub">En tu zona</div>
-  </div>
-  <div class="kpi-card kc">
-    <div class="kpi-value" style="color:#E24B4A">{n_criticos + n_altos}</div>
-    <div class="kpi-label">Requieren atención</div>
-    <div class="kpi-sub">{n_criticos} crítico{"s" if n_criticos!=1 else ""} · {n_altos} alto{"s" if n_altos!=1 else ""}</div>
-  </div>
-  <div class="kpi-card ka">
-    <div class="kpi-value">{perm_str}</div>
-    <div class="kpi-label">Permanencia prom. zona</div>
-    <div class="kpi-sub" style="color:{diff_color};">{diff_str}</div>
-  </div>
-  <div class="kpi-card ki">
-    <div class="kpi-value" style="color:#4A90D9">{n_onb}</div>
-    <div class="kpi-label">En onboarding</div>
-    <div class="kpi-sub">Primeros 3 meses</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+col_hero, col_stats = st.columns([1, 2.2])
+with col_hero:
+    _hero_sub = f"{n_criticos} crítico{'s' if n_criticos!=1 else ''} · {n_altos} alto{'s' if n_altos!=1 else ''}"
+    st.markdown(hero_kpi("Requieren atención", n_criticos + n_altos, _hero_sub,
+                         red=(n_criticos + n_altos) > 0),
+                unsafe_allow_html=True)
+with col_stats:
+    _s1, _s2, _s3 = st.columns(3)
+    with _s1:
+        st.markdown(stat_kpi("Vendedores activos", fmt_num(n_activos)), unsafe_allow_html=True)
+    with _s2:
+        st.markdown(stat_kpi("Permanencia prom. zona", perm_str), unsafe_allow_html=True)
+    with _s3:
+        st.markdown(stat_kpi("En onboarding (1-3m)", fmt_num(n_onb)), unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+# Banner de acción
+if n_criticos > 0:
+    st.markdown(banner("🔴",
+        f"{n_criticos} vendedor{'es necesitan' if n_criticos!=1 else ' necesita'} reunión esta semana",
+        "Score crítico (≥8) en tu zona.", "red"), unsafe_allow_html=True)
+elif n_altos > 0:
+    st.markdown(banner("🟠",
+        f"{n_altos} vendedor{'es requieren' if n_altos!=1 else ' requiere'} seguimiento activo",
+        "Score ≥ 6 en tu zona.", "orange"), unsafe_allow_html=True)
+else:
+    st.markdown(banner("✅", "Sin vendedores en riesgo elevado en tu zona",
+        "Todos tienen score menor a 6.", "green"), unsafe_allow_html=True)
 
 # Tabla
 st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</div>',
@@ -341,8 +349,9 @@ for _, r in df_sup.iterrows():
       <td><div class="vn">{r['nombre']} <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
           <div class="vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
-      <td><b>{r['pct_plan_3m']}%</b></td>
+      <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
       <td>{_spark(sparks.get(vid,[]))}</td>
+      <td>{accion_tag(nivel)}</td>
       <td>{_score_circle(r['score'], nivel)}</td>
     </tr>"""
 
@@ -351,7 +360,7 @@ st.markdown(f"""
 <table class="vt">
 <thead><tr>
   <th>Vendedor</th><th>Señales detectadas</th>
-  <th>% Plan 3m</th><th>Tendencia</th><th>Score</th>
+  <th>% Plan 3m</th><th>Tendencia</th><th>Acción sugerida</th><th>Score</th>
 </tr></thead>
 <tbody>{rows}</tbody>
 </table></div>""", unsafe_allow_html=True)

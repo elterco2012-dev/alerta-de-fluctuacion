@@ -20,6 +20,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_pesos_corto, fmt_num
 
 # ── Parámetros de costo (ajustables) ──────────────────────────────────────────
 SALARIO_INDUCCION   = 1_400_000   # Viajante/Ejecutivo mes 1-6
@@ -126,6 +127,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+_v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
+st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
+
 st.markdown("""<style>
 [data-testid="stSidebar"]   { display: none; }
 [data-testid="stHeader"]    { display: none; }
@@ -227,28 +231,43 @@ costo_criticos = df[df.nivel_riesgo == "critico"]["costo_total"].sum()
 costo_todos    = df[df.nivel_riesgo.isin(["critico", "alto"])]["costo_total"].sum()
 costo_promedio = df[df.nivel_riesgo.isin(["critico", "alto"])]["costo_total"].mean() if (n_criticos + n_altos) > 0 else 0
 
-st.markdown(f"""<div class="kpi-row">
-  <div class="kpi-card kr">
-    <div class="kpi-value">{_fmt_pesos(costo_criticos)}</div>
-    <div class="kpi-label">Exposición nivel crítico</div>
-    <div class="kpi-sub">{n_criticos} vendedores en riesgo inmediato</div>
-  </div>
-  <div class="kpi-card ko">
-    <div class="kpi-value">{_fmt_pesos(costo_todos)}</div>
-    <div class="kpi-label">Exposición total (crítico + alto)</div>
-    <div class="kpi-sub">{n_criticos + n_altos} vendedores en riesgo elevado</div>
-  </div>
-  <div class="kpi-card kb">
-    <div class="kpi-value">{_fmt_pesos(costo_promedio)}</div>
-    <div class="kpi-label">Costo promedio por baja</div>
-    <div class="kpi-sub">Directo + pérdida de cartera estimada</div>
-  </div>
-  <div class="kpi-card kg">
-    <div class="kpi-value">{len(df_fil)}</div>
-    <div class="kpi-label">Vendedores en vista actual</div>
-    <div class="kpi-sub">Costo total: {_fmt_pesos(df_fil['costo_total'].sum())}</div>
-  </div>
-</div>""", unsafe_allow_html=True)
+col_hero, col_stats = st.columns([1, 2.2])
+with col_hero:
+    st.markdown(hero_kpi("Exposición nivel crítico", fmt_pesos_corto(costo_criticos),
+                         f"{n_criticos} vendedor{'es' if n_criticos!=1 else ''} en riesgo inmediato",
+                         red=True),
+                unsafe_allow_html=True)
+with col_stats:
+    _s1, _s2, _s3 = st.columns(3)
+    with _s1:
+        st.markdown(stat_kpi("Exposición crítico + alto",
+                             fmt_pesos_corto(costo_todos)), unsafe_allow_html=True)
+    with _s2:
+        st.markdown(stat_kpi("Costo promedio por baja",
+                             fmt_pesos_corto(costo_promedio)), unsafe_allow_html=True)
+    with _s3:
+        st.markdown(stat_kpi("Vendedores en vista",
+                             f"{fmt_num(len(df_fil))} · {fmt_pesos_corto(df_fil['costo_total'].sum())}"),
+                    unsafe_allow_html=True)
+
+st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+# Banner
+if n_criticos > 0:
+    st.markdown(banner("💰",
+        f"Exposición inmediata: {fmt_pesos_corto(costo_criticos)}",
+        f"{n_criticos} vendedor{'es críticos' if n_criticos!=1 else ' crítico'} representan este costo si se van. "
+        "Cada reunión esta semana puede evitarlo.", "red"),
+        unsafe_allow_html=True)
+elif n_altos > 0:
+    st.markdown(banner("🟠",
+        f"Exposición total: {fmt_pesos_corto(costo_todos)}",
+        f"{n_altos} vendedor{'es en nivel alto' if n_altos!=1 else ' en nivel alto'} con seguimiento activo pueden reducir esta cifra.", "orange"),
+        unsafe_allow_html=True)
+else:
+    st.markdown(banner("✅", "Sin exposición crítica en este momento",
+        "No hay vendedores en nivel crítico o alto según el filtro actual.", "green"),
+        unsafe_allow_html=True)
 
 
 # ── Gráfico por grupo ──────────────────────────────────────────────────────────

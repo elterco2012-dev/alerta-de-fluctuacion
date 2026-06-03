@@ -8,9 +8,11 @@ Target oficial vs Plan real vs Ejecutado vs Cumplimiento.
 import streamlit as st
 import pandas as pd
 import sqlite3
-import os
+import os, sys
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+from snippets_v3 import banner, fmt_num
 
 TARGET_TELEVENTAS   = 80   # llamadas planificadas por empresa / día
 TARGET_VIAJANTES    = 15   # visitas planificadas por empresa / día
@@ -22,6 +24,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+_v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
+st.markdown(f"<style>{open(_v3_css).read()}</style>", unsafe_allow_html=True)
 
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center;
@@ -94,6 +99,30 @@ def _safe_mean(series):
 def _pct(num, den):
     return round(num / den * 100) if den > 0 else 0
 
+
+# ── Banner ─────────────────────────────────────────────────────────────────────
+tel_plan_tot = df_tel["planificadas_llamadas"].sum()
+tel_ejec_tot = df_tel["llamadas"].sum()
+via_plan_tot = df_via["planificadas_visitas"].sum()
+via_ejec_tot = df_via["visitas"].sum()
+tel_cumpl    = _pct(tel_ejec_tot, tel_plan_tot)
+via_cumpl    = _pct(via_ejec_tot, via_plan_tot)
+min_cumpl    = min(tel_cumpl, via_cumpl) if tel_plan_tot > 0 and via_plan_tot > 0 else (tel_cumpl or via_cumpl)
+if min_cumpl < 50:
+    st.markdown(banner("📞",
+        f"Cumplimiento bajo: {fmt_num(min_cumpl)}% del plan de actividad",
+        f"Televentas {fmt_num(tel_cumpl)}% · Viajantes {fmt_num(via_cumpl)}% — período {periodo_sel}",
+        "red"), unsafe_allow_html=True)
+elif min_cumpl < 75:
+    st.markdown(banner("🟠",
+        f"Actividad comercial {fmt_num(min_cumpl)}% del plan",
+        f"Televentas {fmt_num(tel_cumpl)}% · Viajantes {fmt_num(via_cumpl)}% — período {periodo_sel}",
+        "orange"), unsafe_allow_html=True)
+else:
+    st.markdown(banner("✅",
+        f"Actividad en plan: {fmt_num(min_cumpl)}%",
+        f"Televentas {fmt_num(tel_cumpl)}% · Viajantes {fmt_num(via_cumpl)}% — período {periodo_sel}",
+        "green"), unsafe_allow_html=True)
 
 # ── KPIs globales del período ─────────────────────────────────────────────────
 st.markdown("### Resumen del período")

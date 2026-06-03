@@ -197,11 +197,47 @@ n_leav, n_stay = len(leaver_sets), len(stayer_sets)
 
 if n_leav == 0 or n_stay == 0:
     st.warning(
-        f"No hay suficientes datos para comparar (leavers con datos: {n_leav}, "
-        f"stayers: {n_stay}). Asegurate de tener backfill suficiente y egresados "
+        f"No hay suficientes datos para comparar (egresados con datos: {n_leav}, "
+        f"activos: {n_stay}). Asegurate de tener backfill suficiente y egresados "
         f"con historial de ventas."
     )
     st.stop()
+
+# ── Cómo leer esta pantalla ────────────────────────────────────────────────────
+st.markdown("""
+<div class="card" style="margin-bottom:20px;border-left:4px solid #4A90D9;">
+<div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px;">
+  📖 Cómo leer esta pantalla — en dos oraciones
+</div>
+<p style="font-size:13px;color:#444;line-height:1.7;margin:0 0 10px;">
+  Comparamos <b>los que se fueron</b> vs. <b>los que se quedaron</b>:
+  si una señal aparece mucho más en los que se fueron que en los activos, es una señal útil.
+  Si aparece igual en los dos grupos, no sirve para predecir.
+</p>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:12px;">
+  <div style="background:#f0fff4;border-radius:8px;padding:10px 12px;">
+    <div style="font-size:12px;font-weight:800;color:#639922;margin-bottom:4px;">✅ Señal útil</div>
+    <div style="font-size:12px;color:#444;line-height:1.5;">Aparece mucho más en los que se fueron. Cuando se enciende, hay que prestar atención.</div>
+  </div>
+  <div style="background:#fffbf0;border-radius:8px;padding:10px 12px;">
+    <div style="font-size:12px;font-weight:800;color:#EF9F27;margin-bottom:4px;">🟡 Señal débil</div>
+    <div style="font-size:12px;color:#444;line-height:1.5;">Algo más frecuente en los que se fueron, pero la diferencia no es grande. Sirve como apoyo.</div>
+  </div>
+  <div style="background:#f8f8f8;border-radius:8px;padding:10px 12px;">
+    <div style="font-size:12px;font-weight:800;color:#aaa;margin-bottom:4px;">⬜ Ruido</div>
+    <div style="font-size:12px;color:#444;line-height:1.5;">Aparece igual en los que se fueron y en los activos. No predice nada útil.</div>
+  </div>
+  <div style="background:#fffdf0;border-radius:8px;padding:10px 12px;">
+    <div style="font-size:12px;font-weight:800;color:#888;margin-bottom:4px;">⚠️ Trampa estadística</div>
+    <div style="font-size:12px;color:#444;line-height:1.5;">Los que se van son más nuevos. Estas señales parecen útiles solo porque detectan "vendedor nuevo", no deterioro real.</div>
+  </div>
+</div>
+<p style="font-size:12px;color:#888;margin:12px 0 0;">
+  <b>El número "× veces"</b> es cuántas veces más frecuente es la señal en los que se fueron vs. los activos.
+  5× = si esta señal está encendida, es 5 veces más probable que se trate de alguien en riesgo real.
+</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Calcular lift por señal ────────────────────────────────────────────────────
 filas = []
@@ -228,33 +264,37 @@ mejor = res.iloc[0]
 col_hero, col_stats = st.columns([1, 2.2])
 with col_hero:
     st.markdown(hero_kpi(
-        "Señal que más discrimina",
+        "Señal más predictiva",
         mejor["corto"],
-        f"Aparece en {mejor['pct_leavers']}% de los que se fueron vs {mejor['pct_stayers']}% "
-        f"de los que se quedaron (lift {fmt_num(mejor['lift'],1)}×)",
+        f"{mejor['pct_leavers']}% de los que se fueron la tenían vs "
+        f"{mejor['pct_stayers']}% de los activos — {fmt_num(mejor['lift'],1)}× más frecuente",
     ), unsafe_allow_html=True)
 with col_stats:
     _s1, _s2, _s3, _s4 = st.columns(4)
     with _s1:
-        st.markdown(stat_kpi("Se fueron (con datos)", fmt_num(n_leav)), unsafe_allow_html=True)
+        st.markdown(stat_kpi("Vendedores que se fueron", fmt_num(n_leav)), unsafe_allow_html=True)
     with _s2:
-        st.markdown(stat_kpi("Se quedaron (control)", fmt_num(n_stay)), unsafe_allow_html=True)
+        st.markdown(stat_kpi("Activos (grupo de control)", fmt_num(n_stay)), unsafe_allow_html=True)
     with _s3:
-        utiles = int((res["lift"] >= 1.5).sum())
-        st.markdown(stat_kpi("Señales que discriminan", fmt_num(utiles)), unsafe_allow_html=True)
+        utiles = int(((res["lift"] >= 1.5) & (~res["tenure"])).sum())
+        st.markdown(stat_kpi("Señales útiles (sin trampas)", fmt_num(utiles)), unsafe_allow_html=True)
     with _s4:
-        ruido = int(((res["lift"] < 1.2) & (res["pct_leavers"] > 0)).sum())
-        st.markdown(stat_kpi("Señales tipo ruido", fmt_num(ruido)), unsafe_allow_html=True)
+        ruido = int(((res["lift"] < 1.2) & (~res["tenure"]) & (res["pct_leavers"] > 0)).sum())
+        st.markdown(stat_kpi("Señales que son ruido", fmt_num(ruido)), unsafe_allow_html=True)
 
 st.markdown(f"<div style='font-size:12px;color:#888;margin:6px 0 4px;'>"
-            f"Período de referencia: {anchor} · comparación: {tipo_sel}</div>",
+            f"Período analizado: {anchor} · filtro: {tipo_sel}</div>",
             unsafe_allow_html=True)
 
 # ── Gráfico comparativo ────────────────────────────────────────────────────────
-st.markdown('<div class="sec-header">📊 Prevalencia de cada señal: se fueron vs. se quedaron</div>',
+st.markdown('<div class="sec-header">📊 ¿Qué tan seguido tenía cada señal encendida antes de irse?</div>',
             unsafe_allow_html=True)
-st.caption("Barra roja = % de los que se fueron con la señal activa. Barra gris = % de los "
-           "que se quedaron. Cuanto más larga la roja respecto a la gris, más discrimina la señal.")
+st.caption(
+    "Cada señal tiene dos barras: 🟥 cuántos de los que SE FUERON la tenían encendida "
+    "· ⬜ cuántos de los que SE QUEDARON la tienen encendida. "
+    "Una señal útil tiene barra roja larga y gris corta. "
+    "Si las dos barras son del mismo tamaño, la señal no sirve para predecir."
+)
 
 bars = ""
 for _, r in res.iterrows():
@@ -279,23 +319,24 @@ for _, r in res.iterrows():
     )
 st.markdown(f'<div class="card">{bars}'
             '<div style="font-size:10px;color:#aaa;margin-top:10px;">'
-            '🟥 se fueron &nbsp; ⬜ se quedaron &nbsp;·&nbsp; ⚠️ = confundida con antigüedad '
-            '(los que se van son más nuevos, así que estas señales exageran su poder)</div></div>',
+            '🟥 se fueron &nbsp;·&nbsp; ⬜ se quedaron &nbsp;·&nbsp; '
+            '⚠️ = trampa estadística (vendedor nuevo, no deterioro)</div></div>',
             unsafe_allow_html=True)
 
 # ── Tabla detalle ──────────────────────────────────────────────────────────────
-st.markdown('<div class="sec-header">📋 Detalle y lectura por señal</div>', unsafe_allow_html=True)
+st.markdown('<div class="sec-header">📋 Tabla completa por señal</div>', unsafe_allow_html=True)
 
 def _lectura(r):
     if r["tenure"]:
-        return ('<span style="color:#888;">Confundida con antigüedad — interpretá con cuidado</span>')
+        return ('<span style="color:#888;">⚠️ Trampa — los que se van son más nuevos, '
+                'esta señal detecta eso, no deterioro real</span>')
     if r["lift"] >= 2:
-        return '<span style="color:#639922;font-weight:700;">Discrimina fuerte ✓</span>'
+        return '<span style="color:#639922;font-weight:700;">✅ Señal útil — cuando se enciende, prestar atención</span>'
     if r["lift"] >= 1.2:
-        return '<span style="color:#EF9F27;font-weight:700;">Discrimina algo</span>'
+        return '<span style="color:#EF9F27;font-weight:700;">🟡 Señal débil — sirve como apoyo</span>'
     if r["pct_leavers"] == 0 and r["pct_stayers"] == 0:
-        return '<span style="color:#ccc;">Sin casos en este corte</span>'
-    return '<span style="color:#aaa;">Ruido — no separa los grupos</span>'
+        return '<span style="color:#ccc;">Sin casos suficientes para analizar</span>'
+    return '<span style="color:#aaa;">⬜ Ruido — aparece igual en los dos grupos, no predice nada</span>'
 
 rows = ""
 for _, r in res.iterrows():
@@ -312,13 +353,15 @@ for _, r in res.iterrows():
     )
 st.markdown(
     '<div class="card" style="overflow-x:auto;"><table class="lift-tbl"><thead><tr>'
-    '<th>Señal</th><th>Peso actual</th><th>% se fueron</th><th>% se quedaron</th>'
-    '<th>Lift</th><th>Lectura</th></tr></thead>'
+    '<th>Señal</th><th>Peso actual</th>'
+    '<th>Se fueron (tenían esta señal)</th><th>Se quedaron (la tienen)</th>'
+    '<th>Cuántas veces más frecuente en los que se fueron</th><th>¿Vale la pena?</th>'
+    '</tr></thead>'
     f'<tbody>{rows}</tbody></table></div>',
     unsafe_allow_html=True)
 
 # ── Sugerencias de re-peso ─────────────────────────────────────────────────────
-st.markdown('<div class="sec-header">💡 Qué sugiere la evidencia (no aplicado automáticamente)</div>',
+st.markdown('<div class="sec-header">💡 Qué sugiere la evidencia sobre los pesos del score</div>',
             unsafe_allow_html=True)
 
 no_tenure = res[~res["tenure"]]
@@ -328,43 +371,50 @@ bajar = no_tenure[(no_tenure["lift"] < 1.2) & (no_tenure["peso"] >= 1.5) &
 
 sug = []
 for _, r in subir.iterrows():
-    sug.append(f'⬆️ <b>{_html.escape(r["corto"])}</b>: discrimina fuerte (lift '
-               f'{fmt_num(r["lift"],1)}×) pero pesa solo {fmt_num(r["peso"],1)}. '
-               f'Candidata a <b>subir peso</b>.')
+    sug.append(
+        f'⬆️ <b>{_html.escape(r["corto"])}</b>: aparece en el {r["pct_leavers"]}% de los que '
+        f'se fueron pero solo en el {r["pct_stayers"]}% de los activos '
+        f'({fmt_num(r["lift"],1)}× más frecuente en fugas). Hoy pesa solo {fmt_num(r["peso"],1)} '
+        f'— la evidencia sugiere que debería pesar más.'
+    )
 for _, r in bajar.iterrows():
-    sug.append(f'⬇️ <b>{_html.escape(r["corto"])}</b>: pesa {fmt_num(r["peso"],1)} pero '
-               f'casi no separa los grupos (lift {fmt_num(r["lift"],1)}×). '
-               f'Candidata a <b>bajar peso</b>.')
+    sug.append(
+        f'⬇️ <b>{_html.escape(r["corto"])}</b>: aparece casi igual en los que se fueron '
+        f'({r["pct_leavers"]}%) y en los activos ({r["pct_stayers"]}%). '
+        f'Hoy pesa {fmt_num(r["peso"],1)} pero no predice fugas — candidata a bajar peso.'
+    )
 
 if sug:
-    items = "".join(f'<li style="margin:8px 0;line-height:1.5;">{s}</li>' for s in sug)
-    st.markdown(f'<div class="card"><ul style="margin:0;padding-left:20px;font-size:13px;color:#444;">'
-                f'{items}</ul></div>', unsafe_allow_html=True)
+    items = "".join(f'<li style="margin:8px 0;line-height:1.6;">{s}</li>' for s in sug)
+    st.markdown(
+        '<div class="card">'
+        '<p style="font-size:13px;color:#555;margin:0 0 12px;">Estas son sugerencias basadas '
+        'en los datos históricos. <b>No se aplican solas</b> — requieren validación antes '
+        'de cambiar el score (ver nota abajo).</p>'
+        f'<ul style="margin:0;padding-left:20px;font-size:13px;color:#444;">{items}</ul>'
+        '</div>', unsafe_allow_html=True)
 else:
     st.info("Con los datos actuales no hay candidatos claros de re-peso. "
             "Con más meses de backfill esto se va a definir mejor.")
 
-with st.expander("⚠️ Cómo leer esto sin engañarse (importante)"):
+with st.expander("⚠️ Antes de cambiar pesos — leé esto"):
     st.markdown("""
-**El lift es evidencia, no prueba.** Antes de cambiar pesos, tené en cuenta:
+**Estas sugerencias son indicios, no certezas.** Tres cosas que podés estar viendo sin querer:
 
-- **Confusión con antigüedad (⚠️):** los que se van son, en promedio, más nuevos. Las
-  señales de ventana crítica y de inducción van a parecer muy discriminantes solo porque
-  los leavers son más jóvenes en la empresa, no porque la señal capture deterioro real.
-  Por eso están marcadas y excluidas de las sugerencias de re-peso.
+- **La trampa de la antigüedad:** los que se van son más nuevos en promedio. Las señales
+  marcadas con ⚠️ parecen útiles solo porque detectan "vendedor nuevo", no porque capturen
+  deterioro real. Por eso están excluidas de las sugerencias de arriba.
 
-- **Tamaño de muestra:** con pocos egresados con datos, un lift alto puede ser azar.
-  Mirá los conteos arriba antes de sacar conclusiones.
+- **Pocos casos:** con 172 egresados, un porcentaje alto puede ser solo 10-15 personas.
+  Mirá siempre los números absolutos antes de sacar conclusiones.
 
-- **El control se mide en un punto, los leavers antes de irse:** los stayers se evalúan
-  en el último período; los leavers en sus 3 meses previos al egreso. No es un experimento
-  perfecto, es la mejor aproximación con los datos que hay.
+- **Detección ≠ prevención:** que una señal aparezca mucho antes de que alguien se vaya
+  no significa que si "arreglamos" esa señal el vendedor se quede. La cobranza baja, por
+  ejemplo, puede ser consecuencia de que el vendedor ya decidió irse, no la causa.
 
-- **Correlación ≠ causa:** que una señal discrimine no significa que mejorarla evite la
-  fuga. Sirve para *detectar*, no necesariamente para *intervenir*.
-
-- **Validación real (próximo paso):** entrenar pesos con datos viejos y testear sobre
-  egresados recientes. Si predice ahí, es real; si no, era sobreajuste.
+**El paso siguiente correcto** es validar: tomar los pesos sugeridos, probarlos solo con
+datos viejos (por ejemplo 2022-2023) y ver si hubieran predicho mejor los egresos de
+2024. Si sí → tiene sentido cambiarlos. Si no → era sobreajuste.
 """)
 
 st.caption(

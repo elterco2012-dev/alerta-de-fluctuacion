@@ -1,0 +1,251 @@
+"""
+scripts/validar_pesos.py
+------------------------
+¿Los pesos sugeridos por la pantalla de Aprendizaje predicen MEJOR, o solo se
+ajustan a lo que ya pasó? Esta es la prueba honesta antes de cambiar el score.
+
+CÓMO FUNCIONA (sin tocar ninguna base externa, solo lee SQLite):
+  1. score_historico ya guarda, por vendedor/período, la LISTA de señales que
+     estaban activas. Cada señal tiene un peso. El score se reconstruye como:
+         riesgo = suma de pesos de las señales activas
+         score  = 1 + min(riesgo / RIESGO_REFERENCIA, 1) * 9
+     => podemos recalcular el score con CUALQUIER set de pesos sin re-correr el
+        motor ni consultar Informix/Reactor/SUN.
+
+  2. Comparamos dos sets de pesos:
+        ACTUAL    = los que usa hoy score_engine.py
+        PROPUESTO = ACTUAL con los cambios que sugiere Aprendizaje
+
+  3. HOLDOUT TEMPORAL: partimos a los egresados en dos mitades por fecha de
+     egreso (vieja / reciente). Los pesos se "inspiraron" mirando todo el
+     histórico, así que la prueba justa es si MEJORAN la detección en la mitad
+     RECIENTE (out-of-sample), no solo en la vieja.
+
+  4. Métricas por set de pesos:
+        DETECCIÓN (recall): % de egresados con score >= 6 en sus 3 meses
+                            previos al egreso. Más alto = mejor (los vemos
+                            antes de que se vayan).
+        FALSA ALARMA:       % de activos con score >= 6 en sus últimos 3 meses.
+                            Más alto = peor (molestamos a quien no se va).
+
+     Subir pesos SIEMPRE sube ambas. Lo que importa es si la detección sube
+     MÁS que la falsa alarma. Si no, es sobreajuste.
+
+Solo LECTURA sobre data/wurth.db. Corre con cualquier Python (no usa pandas):
+    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\validar_pesos.py
+"""
+
+import sqlite3
+import os
+import json
+from datetime import date
+
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
+
+RIESGO_REFERENCIA = 10.0
+UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
+
+# ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────
+PESOS_ACTUAL = {
+    "% Plan cayendo 3 meses seguidos":                              2.5,
+    "% Plan < 80% promedio últimos meses":                         2.0,
+    "Días sin venta > 3 en promedio":                              1.5,
+    "< 60% de cartera activa":                                     1.5,
+    "Cobranza real < 90% de teórica":                              1.0,
+    "En ventana crítica mes 1-3":                                  1.5,
+    "En ventana crítica mes 4-6":                                  1.0,
+    "Grupo con alta rotación histórica":                           1.5,
+    "Sin clientes nuevos últimos 2 meses":                         0.5,
+    "< 70% de llamadas planificadas gestionadas (Televentas)":     1.5,
+    "< 70% de visitas planificadas realizadas (Viajante)":         1.5,
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": 2.0,
+    "Balanza clientes negativa 2+ meses consecutivos":             1.5,
+    "Ticket promedio cae > 5% por mes":                            1.0,
+    "Supervisor no acompañó en ventana crítica 1-6":               1.0,
+}
+
+# ── Pesos PROPUESTOS por Aprendizaje (solo señales con evidencia y base sólida)
+# Días venta cero: lift 2,7x, presente en 71% de los que se fueron → 1.5 -> 2.5
+# Cobranza baja:   lift 2,5x, presente en 97% de los que se fueron → 1.0 -> 2.0
+PESOS_PROPUESTO = dict(PESOS_ACTUAL)
+PESOS_PROPUESTO["Días sin venta > 3 en promedio"] = 2.5
+PESOS_PROPUESTO["Cobranza real < 90% de teórica"] = 2.0
+
+
+def periodo_a_num(periodo):
+    """'2025-03' -> 202503"""
+    a, m = periodo.split("-")
+    return int(a) * 100 + int(m)
+
+
+def fecha_a_periodo_num(fecha_iso):
+    """'2025-03-15' -> 202503"""
+    a = int(fecha_iso[:4]); m = int(fecha_iso[5:7])
+    return a * 100 + m
+
+
+def score_de(senales, pesos):
+    """Reconstruye el score 1-10 a partir de la lista de señales activas."""
+    riesgo = sum(pesos.get(s, 0.0) for s in senales)
+    return 1 + min(riesgo / RIESGO_REFERENCIA, 1.0) * 9
+
+
+def main():
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+
+    # ── Cargar score_historico: por vendedor, lista de (periodo_num, señales) ─
+    cur.execute("SELECT periodo, id_vendedor, score, señales FROM score_historico")
+    hist = {}        # id_vendedor -> list[(periodo_num, [señales])]
+    score_guardado = {}  # (periodo_num, id_vendedor) -> score guardado (sanity check)
+    for periodo, vid, score, senales_json in cur.fetchall():
+        try:
+            senales = json.loads(senales_json) if senales_json else []
+        except Exception:
+            senales = []
+        pnum = periodo_a_num(periodo)
+        hist.setdefault(vid, []).append((pnum, senales))
+        score_guardado[(pnum, vid)] = score
+
+    # ── Sanity check: ¿mi reconstrucción con pesos ACTUALES = score guardado? ─
+    difs = []
+    senales_desconocidas = set()
+    for vid, filas in hist.items():
+        for pnum, senales in filas:
+            for s in senales:
+                if s not in PESOS_ACTUAL:
+                    senales_desconocidas.add(s)
+            recon = round(min(10, max(1, score_de(senales, PESOS_ACTUAL))), 1)
+            difs.append(abs(recon - score_guardado[(pnum, vid)]))
+    max_dif = max(difs) if difs else 0
+    print("=" * 70)
+    print("VALIDACIÓN DE PESOS — ¿predicen mejor o sobreajustan?")
+    print("=" * 70)
+    print(f"\n[chequeo] Reconstrucción del score con pesos actuales:")
+    print(f"          máxima diferencia vs score guardado = {max_dif:.2f}", end="")
+    print("  (debe ser ~0)" if max_dif < 0.15 else "  <-- OJO: no coincide, revisar pesos")
+    if senales_desconocidas:
+        print(f"          AVISO: señales sin peso mapeado: {senales_desconocidas}")
+
+    # ── Clasificar egresados (con fecha) y activos ───────────────────────────
+    cur.execute("""
+        SELECT id_vendedor, activo, fecha_egreso
+        FROM vendedores
+        WHERE id_vendedor != 9800
+    """)
+    egresados = {}   # vid -> periodo_num del egreso
+    activos   = set()
+    for vid, activo, fegr in cur.fetchall():
+        if activo == 0 and fegr:
+            egresados[vid] = fecha_a_periodo_num(str(fegr))
+        elif activo == 1:
+            activos.add(vid)
+
+    # ── Ventana pre-egreso: 3 períodos antes del egreso ──────────────────────
+    def periodos_pre_egreso(pnum_egreso, n=3):
+        outs = []
+        a, m = pnum_egreso // 100, pnum_egreso % 100
+        for _ in range(n):
+            m -= 1
+            if m == 0:
+                m = 12; a -= 1
+            outs.append(a * 100 + m)
+        return set(outs)
+
+    # ── Detección de un egresado bajo un set de pesos ────────────────────────
+    # detectado = en ALGUNO de sus 3 meses previos tuvo score >= UMBRAL
+    def egresado_detectado(vid, pesos):
+        if vid not in hist or vid not in egresados:
+            return None  # sin datos para evaluar
+        ventana = periodos_pre_egreso(egresados[vid])
+        scores_ventana = [score_de(sen, pesos) for (pnum, sen) in hist[vid] if pnum in ventana]
+        if not scores_ventana:
+            return None
+        return max(scores_ventana) >= UMBRAL_RIESGO
+
+    # ── Falsa alarma de un activo bajo un set de pesos ───────────────────────
+    # falsa alarma = en sus 3 períodos más recientes tuvo score >= UMBRAL
+    def activo_falsa_alarma(vid, pesos):
+        if vid not in hist:
+            return None
+        ult = sorted(hist[vid], key=lambda x: x[0])[-3:]
+        if not ult:
+            return None
+        return max(score_de(sen, pesos) for (_, sen) in ult) >= UMBRAL_RIESGO
+
+    # ── Holdout temporal: partir egresados por mediana de fecha de egreso ─────
+    egr_evaluables = [vid for vid in egresados if egresado_detectado(vid, PESOS_ACTUAL) is not None]
+    egr_evaluables.sort(key=lambda v: egresados[v])
+    mitad = len(egr_evaluables) // 2
+    egr_viejos    = set(egr_evaluables[:mitad])
+    egr_recientes = set(egr_evaluables[mitad:])
+    corte = egresados[egr_evaluables[mitad]] if egr_evaluables else 0
+
+    def tasa_deteccion(grupo, pesos):
+        det = [egresado_detectado(v, pesos) for v in grupo]
+        det = [d for d in det if d is not None]
+        return (sum(det) / len(det) * 100 if det else 0.0), len(det)
+
+    def tasa_falsa_alarma(pesos):
+        fa = [activo_falsa_alarma(v, pesos) for v in activos]
+        fa = [f for f in fa if f is not None]
+        return (sum(fa) / len(fa) * 100 if fa else 0.0), len(fa)
+
+    print(f"\nEgresados evaluables: {len(egr_evaluables)}  "
+          f"(viejos: {len(egr_viejos)}, recientes: {len(egr_recientes)})")
+    print(f"Activos evaluables:   {len(activos)}")
+    print(f"Corte temporal (holdout) en período: {corte//100}-{corte%100:02d}")
+
+    # ── Tabla comparativa ────────────────────────────────────────────────────
+    def fila(label, val_act, val_prop, n, mejor_alto=True):
+        delta = val_prop - val_act
+        flecha = "▲" if delta > 0.05 else ("▼" if delta < -0.05 else "=")
+        print(f"  {label:42} {val_act:6.1f}%  {val_prop:6.1f}%   {flecha} {delta:+5.1f}  (n={n})")
+
+    print("\n" + "-" * 70)
+    print(f"  {'MÉTRICA':42} {'ACTUAL':>7} {'PROPU.':>8}   {'CAMBIO':>8}")
+    print("-" * 70)
+    print("  DETECCIÓN de egresados (más alto = mejor):")
+    d_v_a, n_v = tasa_deteccion(egr_viejos, PESOS_ACTUAL)
+    d_v_p, _   = tasa_deteccion(egr_viejos, PESOS_PROPUESTO)
+    fila("  · mitad vieja (in-sample)", d_v_a, d_v_p, n_v)
+    d_r_a, n_r = tasa_deteccion(egr_recientes, PESOS_ACTUAL)
+    d_r_p, _   = tasa_deteccion(egr_recientes, PESOS_PROPUESTO)
+    fila("  · mitad reciente (OUT-OF-SAMPLE) ***", d_r_a, d_r_p, n_r)
+    d_t_a, n_t = tasa_deteccion(set(egr_evaluables), PESOS_ACTUAL)
+    d_t_p, _   = tasa_deteccion(set(egr_evaluables), PESOS_PROPUESTO)
+    fila("  · total", d_t_a, d_t_p, n_t)
+
+    print("\n  FALSA ALARMA en activos (más alto = peor):")
+    fa_a, n_fa = tasa_falsa_alarma(PESOS_ACTUAL)
+    fa_p, _    = tasa_falsa_alarma(PESOS_PROPUESTO)
+    fila("  · activos marcados score>=6", fa_a, fa_p, n_fa)
+
+    # ── Veredicto ─────────────────────────────────────────────────────────────
+    print("\n" + "=" * 70)
+    print("CÓMO LEERLO:")
+    ganancia_oos = d_r_p - d_r_a       # cuánto sube detección out-of-sample
+    costo_fa     = fa_p - fa_a         # cuánto sube falsa alarma
+    print(f"  Detección out-of-sample:  {d_r_a:.1f}% -> {d_r_p:.1f}%  ({ganancia_oos:+.1f} pts)")
+    print(f"  Falsa alarma:             {fa_a:.1f}% -> {fa_p:.1f}%  ({costo_fa:+.1f} pts)")
+    print()
+    if ganancia_oos <= 0.1:
+        print("  VEREDICTO: los pesos propuestos NO mejoran la detección de los")
+        print("  egresados que el análisis no usó. Probablemente sea sobreajuste.")
+        print("  -> NO conviene cambiar los pesos.")
+    elif ganancia_oos > costo_fa:
+        print("  VEREDICTO: la detección out-of-sample sube MÁS que la falsa alarma.")
+        print("  La evidencia respalda el cambio de pesos. Conviene aplicarlo y")
+        print("  monitorear la falsa alarma real en producción.")
+    else:
+        print("  VEREDICTO: la detección sube, pero la falsa alarma sube IGUAL o MÁS.")
+        print("  El cambio es discutible: ganás detección a costa de más ruido.")
+        print("  Decisión de negocio: ¿cuánto molesta una falsa alarma vs perder a")
+        print("  alguien sin verlo venir?")
+    print("=" * 70)
+
+    con.close()
+
+
+if __name__ == "__main__":
+    main()

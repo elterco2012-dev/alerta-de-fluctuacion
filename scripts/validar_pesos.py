@@ -84,10 +84,11 @@ def fecha_a_periodo_num(fecha_iso):
     return a * 100 + m
 
 
-def score_de(senales, pesos):
-    """Reconstruye el score 1-10 a partir de la lista de señales activas."""
+def score_de(senales, pesos, ref=RIESGO_REFERENCIA):
+    """Reconstruye el score 1-10 a partir de la lista de señales activas.
+    ref = RIESGO_REFERENCIA: subirlo baja todos los scores (calibración)."""
     riesgo = sum(pesos.get(s, 0.0) for s in senales)
-    return 1 + min(riesgo / RIESGO_REFERENCIA, 1.0) * 9
+    return 1 + min(riesgo / ref, 1.0) * 9
 
 
 def main():
@@ -154,24 +155,24 @@ def main():
 
     # ── Detección de un egresado bajo un set de pesos ────────────────────────
     # detectado = en ALGUNO de sus 3 meses previos tuvo score >= UMBRAL
-    def egresado_detectado(vid, pesos):
+    def egresado_detectado(vid, pesos, ref=RIESGO_REFERENCIA):
         if vid not in hist or vid not in egresados:
             return None  # sin datos para evaluar
         ventana = periodos_pre_egreso(egresados[vid])
-        scores_ventana = [score_de(sen, pesos) for (pnum, sen) in hist[vid] if pnum in ventana]
+        scores_ventana = [score_de(sen, pesos, ref) for (pnum, sen) in hist[vid] if pnum in ventana]
         if not scores_ventana:
             return None
         return max(scores_ventana) >= UMBRAL_RIESGO
 
     # ── Falsa alarma de un activo bajo un set de pesos ───────────────────────
     # falsa alarma = en sus 3 períodos más recientes tuvo score >= UMBRAL
-    def activo_falsa_alarma(vid, pesos):
+    def activo_falsa_alarma(vid, pesos, ref=RIESGO_REFERENCIA):
         if vid not in hist:
             return None
         ult = sorted(hist[vid], key=lambda x: x[0])[-3:]
         if not ult:
             return None
-        return max(score_de(sen, pesos) for (_, sen) in ult) >= UMBRAL_RIESGO
+        return max(score_de(sen, pesos, ref) for (_, sen) in ult) >= UMBRAL_RIESGO
 
     # ── Holdout temporal: partir egresados por mediana de fecha de egreso ─────
     egr_evaluables = [vid for vid in egresados if egresado_detectado(vid, PESOS_ACTUAL) is not None]
@@ -181,13 +182,13 @@ def main():
     egr_recientes = set(egr_evaluables[mitad:])
     corte = egresados[egr_evaluables[mitad]] if egr_evaluables else 0
 
-    def tasa_deteccion(grupo, pesos):
-        det = [egresado_detectado(v, pesos) for v in grupo]
+    def tasa_deteccion(grupo, pesos, ref=RIESGO_REFERENCIA):
+        det = [egresado_detectado(v, pesos, ref) for v in grupo]
         det = [d for d in det if d is not None]
         return (sum(det) / len(det) * 100 if det else 0.0), len(det)
 
-    def tasa_falsa_alarma(pesos):
-        fa = [activo_falsa_alarma(v, pesos) for v in activos]
+    def tasa_falsa_alarma(pesos, ref=RIESGO_REFERENCIA):
+        fa = [activo_falsa_alarma(v, pesos, ref) for v in activos]
         fa = [f for f in fa if f is not None]
         return (sum(fa) / len(fa) * 100 if fa else 0.0), len(fa)
 
@@ -242,6 +243,55 @@ def main():
         print("  El cambio es discutible: ganás detección a costa de más ruido.")
         print("  Decisión de negocio: ¿cuánto molesta una falsa alarma vs perder a")
         print("  alguien sin verlo venir?")
+    print("=" * 70)
+
+    # ── BARRIDO de RIESGO_REFERENCIA (curva detección vs falsa alarma) ───────
+    # Con los pesos PROPUESTOS, ¿qué pasa si subimos la referencia? Subirla baja
+    # todos los scores → menos gente cae en score>=6 → menos detección PERO
+    # menos falsa alarma. Buscamos el punto donde la falsa alarma se vuelve
+    # manejable sin perder demasiada detección de egresados.
+    print("\n" + "=" * 70)
+    print("BARRIDO DE CALIBRACIÓN — RIESGO_REFERENCIA (pesos PROPUESTOS)")
+    print("=" * 70)
+    print("  Subir la referencia = score más exigente = menos alertas.")
+    print("  'separación' = detección_OOS - falsa_alarma (más alto = mejor filtro)\n")
+    print(f"  {'REF':>5} {'Det.OOS':>9} {'Det.total':>10} {'FalsaAlarma':>12} {'Separación':>11}")
+    print("  " + "-" * 52)
+    mejor_ref, mejor_sep = None, -999
+    referencias = [8, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22]
+    for ref in referencias:
+        det_oos, _ = tasa_deteccion(egr_recientes, PESOS_PROPUESTO, ref)
+        det_tot, _ = tasa_deteccion(set(egr_evaluables), PESOS_PROPUESTO, ref)
+        fa, _      = tasa_falsa_alarma(PESOS_PROPUESTO, ref)
+        sep        = det_oos - fa
+        marca = ""
+        if sep > mejor_sep:
+            mejor_sep, mejor_ref = sep, ref
+        actual = "  <- actual (10)" if ref == 10 else ""
+        print(f"  {ref:>5} {det_oos:>8.1f}% {det_tot:>9.1f}% {fa:>11.1f}% {sep:>10.1f}{actual}")
+
+    # Recomendación: mayor separación, y además falsa alarma 'manejable' (<=40%)
+    print("  " + "-" * 52)
+    print(f"\n  Mejor SEPARACIÓN detección-falsa alarma: REF = {mejor_ref}")
+
+    # Buscar el primer REF donde falsa alarma <= 40% (objetivo manejable)
+    objetivo_fa = 40.0
+    ref_objetivo = None
+    for ref in referencias:
+        fa, _ = tasa_falsa_alarma(PESOS_PROPUESTO, ref)
+        if fa <= objetivo_fa:
+            ref_objetivo = ref
+            det_oos, _ = tasa_deteccion(egr_recientes, PESOS_PROPUESTO, ref)
+            det_tot, _ = tasa_deteccion(set(egr_evaluables), PESOS_PROPUESTO, ref)
+            break
+    if ref_objetivo:
+        print(f"  Para bajar la falsa alarma a <= {objetivo_fa:.0f}%: REF = {ref_objetivo}")
+        print(f"    -> ahí la detección OOS queda en {det_oos:.1f}% y total {det_tot:.1f}%")
+    else:
+        print(f"  Ningún REF probado baja la falsa alarma a <= {objetivo_fa:.0f}%.")
+    print("\n  CÓMO DECIDIR: elegí el REF más alto que todavía detecte a una")
+    print("  proporción aceptable de egresados. Más arriba = menos ruido para el")
+    print("  supervisor, pero más egresados que se escapan sin alerta.")
     print("=" * 70)
 
     con.close()

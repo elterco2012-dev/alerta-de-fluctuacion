@@ -49,6 +49,13 @@ parser.add_argument("--full",        action="store_true",
 parser.add_argument("--meses",       type=int, default=None,
                     help="Cantidad de meses hacia atrás (default: 18)")
 parser.add_argument("--diagnostico", action="store_true")
+parser.add_argument("--inspeccionar-f040", nargs="?",
+                    const="6453,5424,6038,9873,9500", default=None,
+                    metavar="IDS",
+                    help="Vuelca TODAS las columnas de f040 para los vertr indicados "
+                         "(coma-separados). Sin valor usa los 5 directores conocidos. "
+                         "Solo SELECT. Sirve para descubrir qué columna marca a un "
+                         "director/supervisor y cuál apunta al superior.")
 args = parser.parse_args()
 
 DRY_RUN = args.dry_run
@@ -116,6 +123,41 @@ try:
 except Exception as e:
     print(f"FALLÓ\nError: {e}")
     sys.exit(1)
+
+# ── Inspección de f040 (descubrir condición de director/supervisor) ───────────
+# Solo SELECT. Vuelca todas las columnas de f040 para los vertr indicados, para
+# ver qué campo distingue a un director (nivel/categoría/grupo) y cuál apunta al
+# superior — el dato que necesitamos para armar la jerarquía director→supervisor.
+if args.inspeccionar_f040 is not None:
+    try:
+        ids_insp = [int(x) for x in args.inspeccionar_f040.split(",") if x.strip()]
+    except ValueError:
+        print(f"\nIDs inválidos: {args.inspeccionar_f040!r}")
+        icon.close(); sys.exit(1)
+    in_clause = ",".join(str(i) for i in ids_insp)
+    print(f"\n--- INSPECCIÓN f040 (vertr IN {in_clause}) ---\n")
+    icur.execute(f"SELECT * FROM f040 WHERE firma = {FIRMA} AND vertr IN ({in_clause})")
+    cols = [d[0] for d in icur.description]
+    filas = icur.fetchall()
+    if not filas:
+        print("  (sin filas — ¿IDs de otra firma o inexistentes?)")
+    # Volcado vertical: una columna por línea, una sección por vertr. Más legible
+    # que una tabla ancha y deja ver de un vistazo qué valor cambia entre ellos.
+    for fila in filas:
+        d = dict(zip(cols, fila))
+        print(f"  ── vertr {d.get('vertr')} ──")
+        for c in cols:
+            v = d[c]
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue  # ocultar vacíos para resaltar lo que sí tiene valor
+            print(f"     {c:<14} = {v}")
+        print()
+    print(f"  Columnas de f040: {cols}")
+    print("\n  Buscá la columna cuyo valor sea común a los 5 directores y distinto")
+    print("  del resto (nivel/categoría/grupo). Y si hay una que apunta a otro")
+    print("  vertr, ese es el 'superior' → con eso armamos director→supervisor.")
+    icon.close()
+    sys.exit(0)
 
 # ── Diagnóstico ────────────────────────────────────────────────────────────────
 if args.diagnostico:

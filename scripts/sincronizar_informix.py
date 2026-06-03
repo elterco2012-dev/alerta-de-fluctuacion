@@ -38,6 +38,7 @@ except ImportError:
     sys.exit(1)
 
 DSN_INFORMIX = "MSPA"
+DSN_REACTOR  = "Wurth Reactor Produccion"  # works_days_log (días hábiles) vive acá, no en Informix
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 FIRMA        = 1
 
@@ -351,24 +352,42 @@ if _sbas_date_field:
 else:
     print("AVISO: no se encontró campo de fecha en sbas — dias_venta_cero quedará en 0")
 
-# ── [3b4/4] Días hábiles por mes (works_days_log) ────────────────────────────
-print("[3b4/4] Días hábiles (works_days_log)...", end=" ", flush=True)
+# ── [3b4/4] Días hábiles por mes (works_days_log, en Reactor MySQL) ──────────
+# works_days_log NO está en Informix (da -206). Vive en Reactor CRM (MySQL).
+# Abrimos una conexión aparte solo para leer los días hábiles. Si Reactor no
+# está disponible, se cae al default de 20 días/mes (no es bloqueante).
+print("[3b4/4] Días hábiles (works_days_log @ Reactor)...", end=" ", flush=True)
 dias_habiles = {}  # (anio, mes) → int
 try:
-    icur.execute("""
-        SELECT YEAR(fecha), MONTH(fecha), COUNT(fecha)
+    rcon = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
+    rcur = rcon.cursor()
+    # Detectar la columna de fecha (MySQL: LIMIT 0 valida sin traer filas).
+    _wdl_field = None
+    for _c in ("fecha", "date", "day", "dia", "work_day", "fecha_dia", "created", "log_date"):
+        try:
+            rcur.execute(f"SELECT {_c} FROM works_days_log LIMIT 0")
+            rcur.fetchall()
+            _wdl_field = _c
+            break
+        except Exception:
+            continue
+    if _wdl_field is None:
+        raise RuntimeError("no se encontró columna de fecha en works_days_log")
+    rcur.execute(f"""
+        SELECT YEAR({_wdl_field}), MONTH({_wdl_field}), COUNT(*)
         FROM works_days_log
-        WHERE fecha >= ?
-        GROUP BY 1, 2
-    """, fecha_desde_dt)
-    for row in icur.fetchall():
+        WHERE {_wdl_field} >= ?
+        GROUP BY YEAR({_wdl_field}), MONTH({_wdl_field})
+    """, fecha_desde_str)
+    for row in rcur.fetchall():
         try:
             dias_habiles[(int(row[0]), int(row[1]))] = int(row[2])
         except (TypeError, ValueError):
             continue
-    print(f"OK — {len(dias_habiles)} meses cargados")
+    rcon.close()
+    print(f"OK — campo '{_wdl_field}', {len(dias_habiles)} meses cargados")
 except Exception as e:
-    print(f"AVISO: no se pudo leer works_days_log ({e}) — se usará 20 días/mes por defecto")
+    print(f"AVISO: no se pudo leer works_days_log de Reactor ({e}) — se usará 20 días/mes por defecto")
 
 icon.close()
 

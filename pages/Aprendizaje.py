@@ -330,13 +330,18 @@ def _lectura(r):
     if r["tenure"]:
         return ('<span style="color:#888;">⚠️ Trampa — los que se van son más nuevos, '
                 'esta señal detecta eso, no deterioro real</span>')
+    if r["pct_leavers"] == 0 and r["pct_stayers"] == 0:
+        return '<span style="color:#ccc;">Sin casos — esta señal no se enciende en nadie</span>'
+    # Señal casi ausente en los que se fueron pero presente en activos →
+    # casi seguro falta el dato en los egresados, no es un hallazgo real.
+    if r["pct_leavers"] < 5 and r["pct_stayers"] >= 20:
+        return ('<span style="color:#C0392B;">🔧 Revisar datos — casi no aparece en los que '
+                'se fueron pero sí en los activos. Probablemente falta el dato en los egresados.</span>')
     if r["lift"] >= 2:
         return '<span style="color:#639922;font-weight:700;">✅ Señal útil — cuando se enciende, prestar atención</span>'
     if r["lift"] >= 1.2:
         return '<span style="color:#EF9F27;font-weight:700;">🟡 Señal débil — sirve como apoyo</span>'
-    if r["pct_leavers"] == 0 and r["pct_stayers"] == 0:
-        return '<span style="color:#ccc;">Sin casos suficientes para analizar</span>'
-    return '<span style="color:#aaa;">⬜ Ruido — aparece igual en los dos grupos, no predice nada</span>'
+    return '<span style="color:#aaa;">⬜ Ruido — aparece parecido en los dos grupos, no predice nada</span>'
 
 rows = ""
 for _, r in res.iterrows():
@@ -365,9 +370,16 @@ st.markdown('<div class="sec-header">💡 Qué sugiere la evidencia sobre los pe
             unsafe_allow_html=True)
 
 no_tenure = res[~res["tenure"]]
-subir = no_tenure[(no_tenure["lift"] >= 2.5) & (no_tenure["peso"] <= 1.5)]
-bajar = no_tenure[(no_tenure["lift"] < 1.2) & (no_tenure["peso"] >= 1.5) &
-                  (no_tenure["pct_leavers"] > 0)]
+# Señales con datos confiables: se encienden de forma plausible en los que se
+# fueron (>= 20%). Si una señal casi no aparece en egresados, probablemente
+# falta el dato y NO se puede concluir nada — se excluye de las sugerencias.
+confiables = no_tenure[no_tenure["pct_leavers"] >= 20]
+subir = confiables[(confiables["lift"] >= 2.5) & (confiables["peso"] <= 1.5)]
+# "Ruido honesto": aparece parecido en ambos grupos (no invertido por falta de dato).
+bajar = confiables[(confiables["lift"] >= 0.8) & (confiables["lift"] < 1.2) &
+                   (confiables["peso"] >= 1.5)]
+# Señales sospechosas de falta de datos (no son sugerencias, son alertas de calidad).
+falta_datos = no_tenure[(no_tenure["pct_leavers"] < 5) & (no_tenure["pct_stayers"] >= 20)]
 
 sug = []
 for _, r in subir.iterrows():
@@ -379,10 +391,25 @@ for _, r in subir.iterrows():
     )
 for _, r in bajar.iterrows():
     sug.append(
-        f'⬇️ <b>{_html.escape(r["corto"])}</b>: aparece casi igual en los que se fueron '
+        f'⬇️ <b>{_html.escape(r["corto"])}</b>: aparece parecido en los que se fueron '
         f'({r["pct_leavers"]}%) y en los activos ({r["pct_stayers"]}%). '
-        f'Hoy pesa {fmt_num(r["peso"],1)} pero no predice fugas — candidata a bajar peso.'
+        f'Hoy pesa {fmt_num(r["peso"],1)} pero no separa los grupos — candidata a bajar peso.'
     )
+
+# Alerta de calidad de datos (antes que las sugerencias)
+if len(falta_datos) > 0:
+    nombres = ", ".join(f'<b>{_html.escape(x)}</b>' for x in falta_datos["corto"])
+    st.markdown(
+        f'<div class="card" style="border-left:4px solid #C0392B;margin-bottom:14px;">'
+        f'<div style="font-size:14px;font-weight:700;color:#C0392B;margin-bottom:8px;">'
+        f'🔧 Antes de leer las sugerencias: hay un problema de datos</div>'
+        f'<p style="font-size:13px;color:#444;line-height:1.6;margin:0;">'
+        f'Estas señales casi no aparecen en los que se fueron pero sí en los activos: {nombres}. '
+        f'Eso casi nunca es una conducta real — lo más probable es que <b>a los egresados les '
+        f'falte ese dato</b> en la base (se sincronizaron sus ventas pero no las tablas '
+        f'secundarias). Mientras esto no se arregle, esas señales no se pueden comparar y '
+        f'quedan fuera de las sugerencias de abajo.</p></div>',
+        unsafe_allow_html=True)
 
 if sug:
     items = "".join(f'<li style="margin:8px 0;line-height:1.6;">{s}</li>' for s in sug)

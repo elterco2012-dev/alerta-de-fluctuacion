@@ -128,7 +128,7 @@ scoring al cambiar la conexión.
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales (12 activas + 3 deshabilitadas)
+### Señales y pesos actuales (11 activas + 4 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
 | % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 | activa |
@@ -144,6 +144,7 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | Supervisor no acompañó | 1.0 | < 1 visita/mes en 1-6 | activa |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 | activa |
 | Cartera activa baja | ~~1.5~~ → **0** | — | **deshabilitada** |
+| Cobranza real < 90% teórica | ~~2.0~~ → **0** | — | **deshabilitada** |
 | Llamadas bajas (Televentas) | ~~1.5~~ → **0** | — | **deshabilitada** |
 | Visitas bajas (Viajante) | ~~1.5~~ → **0** | — | **deshabilitada** |
 
@@ -157,6 +158,11 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 >   de asignación de cartera: se deshabilita hasta tener snapshots históricos.
 > - **Llamadas/Visitas bajas:** los egresados raramente tienen datos de Reactor en
 >   sus últimos meses activos → la señal casi no dispara para ellos (lift 0.05/0.51).
+> - **Cobranza real < 90%:** lift 1.07 en datos reales — la cobranza baja está
+>   distribuida uniformemente en la empresa (~48% egresados vs ~46% activos), no
+>   concentrada en los que se van. Δsep +3.2 al sacarla: infla scores de todos por
+>   igual sin mejorar la separación. Re-evaluar si en el futuro el dato muestra un
+>   lift más claro (hoy la cobertura es 88.5% para egresados).
 >
 > Deshabilitarlas (no solo bajarles peso) fue el cambio de mayor impacto: la falsa
 > alarma cayó ~32% → 16% sin perder detección, y la separación detección-vs-falsa
@@ -181,8 +187,8 @@ score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
 `RIESGO_REFERENCIA = 12` representa un vendedor en deterioro claro (combinación
-de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 +
-días cero 2.5 + ventana crítica 1.5 + grupo quemado 1.5 ≈ 12 puntos).
+de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + días cero 2.5 +
+ventana crítica 1.5 + grupo quemado 1.5 ≈ 10 puntos, más cualquier señal adicional).
 
 **Por qué NO se divide por la suma de todos los pesos (~21):** eso exigía
 activar >50% de las señales a la vez para llegar a score 6, algo que ningún

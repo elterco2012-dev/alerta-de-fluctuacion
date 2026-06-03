@@ -291,7 +291,12 @@ def calcular_scores(meses_tendencia: int = 3,
             # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
             # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.
             Señal("clientes_activos_baja", peso=0.0, descripcion="< 60% de cartera activa"),
-            Señal("cobranza_baja",         peso=2.0, descripcion="Cobranza real < 90% de teórica"),
+            # DESHABILITADA (peso 0): lift 1.07 en datos reales — la cobranza baja
+            # está distribuida uniformemente en la empresa (~48% egresados, ~46% activos),
+            # no concentrada en los que se van. Δsep +3.2 al sacarla: infla scores de todos
+            # por igual sin mejorar la separación. Se deshabilita; re-evaluar si la cobertura
+            # del dato mejora o si futuros datos muestran un lift más claro.
+            Señal("cobranza_baja",         peso=0.0, descripcion="Cobranza real < 90% de teórica"),
             Señal("ventana_critica_13",    peso=1.5, descripcion="En ventana crítica mes 1-3"),
             Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
             Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),

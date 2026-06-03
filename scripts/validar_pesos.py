@@ -53,7 +53,9 @@ PESOS_ACTUAL = {
     # Deshabilitada: Informix reasigna clientes al egreso → histórico queda en 0
     # → dato faltante la apaga en egresados pero no en activos → lift 0.01, Δsep +13.4.
     "< 60% de cartera activa":                                     0.0,
-    "Cobranza real < 90% de teórica":                              2.0,
+    # Deshabilitada: lift 1.07 (cobranza baja generalizada ~48% egr vs ~46% act),
+    # Δsep +3.2 al sacarla. No diferencia; re-evaluar si el dato mejora.
+    "Cobranza real < 90% de teórica":                              0.0,
     "En ventana crítica mes 1-3":                                  1.5,
     "En ventana crítica mes 4-6":                                  1.0,
     "Grupo con alta rotación histórica":                           1.5,

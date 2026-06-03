@@ -27,12 +27,16 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 # de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
 # hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
 #
-# Calibrado en 14.0 (antes 10.0) por backtest con holdout temporal
-# (scripts/validar_pesos.py): con REF=10 la falsa alarma en activos era 69%
-# (inservible para priorizar). REF=14 baja la falsa alarma a ~42% manteniendo
-# 62% de detección out-of-sample de egresados (máxima separación detección vs
-# falsa alarma, ~20.6). Si se ajusta, re-correr el backfill y actualizar CLAUDE.md.
-RIESGO_REFERENCIA = 14.0
+# Calibrado en 16.0 por backtest con holdout temporal (scripts/validar_pesos.py).
+# Historia: con REF=10 la falsa alarma en activos era 69% (inservible para
+# priorizar). Un primer ajuste a 14 se hizo con datos de cobranza incompletos
+# para egresados, que inflaban la detección (cobranza faltante = pct 0 = señal
+# falsa). Con la cobranza ya sincronizada y el bug de dato faltante corregido,
+# la curva honesta muestra el óptimo en REF=16: ~40% de detección out-of-sample
+# de egresados con ~32% de falsa alarma (máxima separación ~7.9). La separación
+# real es modesta: es un sistema de alerta temprana sobre datos ruidosos de RRHH,
+# no un oráculo. Si se ajusta, re-correr el backfill y actualizar CLAUDE.md.
+RIESGO_REFERENCIA = 16.0
 
 
 def get_connection():
@@ -293,43 +297,59 @@ def calcular_scores(meses_tendencia: int = 3,
         ]
 
         riesgo_total = 0.0
-        pct_plan_vals = hist["pct_plan"].values
+        pct_plan_vals  = hist["pct_plan"].values
+        plan_vals      = hist["plan"].values
         dias_cero_vals = hist["dias_venta_cero"].values
-        activos_pct = (hist["clientes_activos"] / hist["total_clientes"]).values
-        cob_pct = hist["pct_cobranza"].values
-        nuevos = hist["clientes_nuevos"].values
+        total_cli_vals = hist["total_clientes"].values
+        activos_cli    = hist["clientes_activos"].values
+        cob_pct        = hist["pct_cobranza"].values
+        cob_teorica    = hist["cobranza_teorica"].values
+        nuevos         = hist["clientes_nuevos"].values
 
-        # Señal 1: tendencia plan cayendo (pendiente negativa)
-        if len(pct_plan_vals) >= 2:
-            x = np.arange(len(pct_plan_vals))
-            pendiente = np.polyfit(x[::-1], pct_plan_vals, 1)[0]  # más reciente primero
+        # Un dato faltante en ventas_mensual queda en 0; si lo tomáramos como
+        # valor real, encendería señales de riesgo FALSAMENTE (ej: cobranza
+        # ausente = pct_cobranza 0 = "cobranza < 90"). Para evitarlo, cada señal
+        # usa solo los meses donde existe la BASE del dato:
+        #   plan      → meses con plan > 0
+        #   cobranza  → meses con cobranza_teorica > 0
+        #   cartera   → meses con total_clientes > 0
+        # Si no hay ningún mes con base, la señal NO se enciende (dato desconocido).
+        pct_plan_validos = pct_plan_vals[plan_vals > 0]
+        cob_validos      = cob_pct[cob_teorica > 0]
+        _mask_cli        = total_cli_vals > 0
+        activos_pct      = (activos_cli[_mask_cli] / total_cli_vals[_mask_cli])
+
+        # Señal 1: tendencia plan cayendo (pendiente negativa) — solo meses con plan
+        if len(pct_plan_validos) >= 2:
+            x = np.arange(len(pct_plan_validos))
+            pendiente = np.polyfit(x[::-1], pct_plan_validos, 1)[0]  # más reciente primero
             if pendiente < -3:
                 señales[0].activa = True
                 riesgo_total += señales[0].peso
         else:
             pendiente = 0
 
-        # Señal 2: plan promedio < 80%
-        prom_plan = pct_plan_vals.mean()
-        if prom_plan < 80:
+        # Señal 2: plan promedio < 80% — solo si hay plan cargado
+        prom_plan = pct_plan_validos.mean() if len(pct_plan_validos) else 0
+        if len(pct_plan_validos) and prom_plan < 80:
             señales[1].activa = True
             riesgo_total += señales[1].peso
 
-        # Señal 3: días venta cero altos
+        # Señal 3: días venta cero altos (si falta el dato queda en 0 y no enciende)
         prom_cero = dias_cero_vals.mean()
         if prom_cero > 3:
             señales[2].activa = True
             riesgo_total += señales[2].peso
 
-        # Señal 4: baja activación de cartera
+        # Señal 4: baja activación de cartera — solo meses con cartera conocida
         prom_activos = activos_pct.mean() if len(activos_pct) else 0
-        if prom_activos < 0.60:
+        if len(activos_pct) and prom_activos < 0.60:
             señales[3].activa = True
             riesgo_total += señales[3].peso
 
-        # Señal 5: cobranza baja
-        prom_cob = cob_pct.mean()
-        if prom_cob < 90:
+        # Señal 5: cobranza baja — solo si hay cobranza teórica (base) cargada
+        prom_cob = cob_validos.mean() if len(cob_validos) else 0
+        if len(cob_validos) and prom_cob < 90:
             señales[4].activa = True
             riesgo_total += señales[4].peso
 

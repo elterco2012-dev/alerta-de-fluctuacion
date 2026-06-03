@@ -156,15 +156,15 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 14.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 16.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 14` representa un vendedor en deterioro claro (ej: plan
-cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 + ventana crítica 1.5 + días cero 2.5
-+ algo más ≈ 12-14 puntos).
+`RIESGO_REFERENCIA = 16` representa un vendedor en deterioro claro (combinación
+de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 +
+días cero 2.5 + cartera 1.5 + ventana crítica ≈ 12-16 puntos).
 
 **Por qué NO se divide por la suma de todos los pesos (~23.5):** eso exigía
 activar >50% de las 15 señales a la vez para llegar a score 6, algo que
@@ -172,17 +172,28 @@ ningún vendedor real hace. Resultado: todos los egresados quedaban con score
 < 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
 referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-**Por qué 14 y no 10 (recalibración por backtest):** con `RIESGO_REFERENCIA=10`
-el modelo marcaba con score ≥ 6 al **69% de los vendedores activos** — una falsa
-alarma tan alta que el supervisor no puede priorizar. El barrido de calibración
-en `scripts/validar_pesos.py` (curva detección-vs-falsa-alarma sobre datos
-históricos) mostró que `REF=14` baja la falsa alarma a ~42% manteniendo ~62% de
-detección out-of-sample de egresados. Es el punto de **máxima separación**
-(detección − falsa alarma ≈ 20,6), junto con REF=13. Se eligió 14 por priorizar
-menos ruido para el supervisor. Nota honesta: una falsa alarma del 42% sigue
-siendo alta, pero refleja que la población realmente tiene mucho deterioro
-(permanencia 3-5 meses, grupos quemados), no que el modelo exagere. Por eso el
-nivel **crítico (≥8)** es el corte operativo de "reunión esta semana", no el ≥6.
+**Calibración por backtest (cómo se llegó a 16):** con `RIESGO_REFERENCIA=10`
+el modelo marcaba con score ≥ 6 al **69% de los activos** — falsa alarma
+inservible para priorizar. El barrido en `scripts/validar_pesos.py` (curva
+detección-vs-falsa-alarma con holdout temporal) define el punto óptimo.
+  - Un primer ajuste a 14 usó datos de cobranza incompletos para egresados, que
+    INFLABAN la detección (ver bug abajo): aparentaba 62% de detección.
+  - Con la cobranza ya sincronizada y el bug de dato faltante corregido, la curva
+    honesta ubica el óptimo en **REF=16**: ~40% de detección out-of-sample de
+    egresados con ~32% de falsa alarma (máxima separación ≈ 7,9).
+  - La separación real es modesta (~5-8, no los ~20 que sugería el dato inflado):
+    es alerta temprana sobre datos ruidosos de RRHH, no un oráculo. Detectar ~40%
+    de las fugas con 3 meses de anticipación sigue siendo valor real.
+  - El nivel **crítico (≥8)** es el corte operativo de "reunión esta semana".
+
+**Bug de dato faltante corregido (importante):** en `ventas_mensual` un dato
+ausente queda en 0. El motor tomaba ese 0 como valor real y encendía señales
+FALSAMENTE (cobranza ausente → pct 0 → "cobranza < 90"; plan ausente → pct 0 →
+"plan < 80%"). Ahora cada señal usa solo los meses con BASE del dato:
+plan → `plan > 0`; cobranza → `cobranza_teorica > 0`; cartera → `total_clientes > 0`.
+Si no hay ningún mes con base, la señal queda apagada (dato desconocido ≠ riesgo).
+Días venta cero ya era conservador (faltante = 0 = no enciende). Al cambiar esto,
+re-correr siempre el backfill.
 
 ### Niveles de riesgo
 - 8-10 → **crítico** → acción inmediata del supervisor

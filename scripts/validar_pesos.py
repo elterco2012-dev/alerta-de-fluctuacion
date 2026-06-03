@@ -42,7 +42,7 @@ from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-RIESGO_REFERENCIA = 14.0   # coincide con score_engine.py (calibrado por backtest)
+RIESGO_REFERENCIA = 16.0   # coincide con score_engine.py (calibrado por backtest)
 UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
 
 # ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────

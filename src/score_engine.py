@@ -282,18 +282,30 @@ def calcular_scores(meses_tendencia: int = 3,
             Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
             Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
-            Señal("clientes_activos_baja", peso=1.5, descripcion="< 60% de cartera activa"),
+            # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
+            # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
+            # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.
+            Señal("clientes_activos_baja", peso=0.0, descripcion="< 60% de cartera activa"),
             Señal("cobranza_baja",         peso=2.0, descripcion="Cobranza real < 90% de teórica"),
             Señal("ventana_critica_13",    peso=1.5, descripcion="En ventana crítica mes 1-3"),
             Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
             Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),
             Señal("clientes_nuevos_cero",  peso=0.5, descripcion="Sin clientes nuevos últimos 2 meses"),
-            Señal("llamadas_bajas",        peso=1.5, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
-            Señal("visitas_bajas",         peso=1.5, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
+            # DESHABILITADAS (peso 0): los egresados raramente tienen datos de Reactor en sus
+            # últimos meses activos → la señal dispara más en activos (tienen Reactor al día)
+            # que en egresados → invertida (lift < 1, Δsep positivo al sacarlas).
+            Señal("llamadas_bajas",        peso=0.0, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
+            Señal("visitas_bajas",         peso=0.0, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
             Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
             Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
             Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
             Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
+            # NUEVA: interacción tenure × grupo quemado (hipótesis central del proyecto).
+            # Umbral rb>0.30 (más amplio que grupo_quemado solo, 0.40): el combo "vendedor
+            # nuevo en grupo históricamente malo" tiene lift OOS 2.04 bien poblado (22% egr /
+            # 11% act). Se solapa con ventana_critica + grupo_quemado, pero captura el riesgo
+            # compuesto extra. Validar Δsep en validar_pesos.py tras el backfill.
+            Señal("tenure_x_grupo",        peso=1.0, descripcion="Nuevo en grupo quemado (tenure 1-6 × riesgo_base > 0.30)"),
         ]
 
         riesgo_total = 0.0
@@ -446,6 +458,14 @@ def calcular_scores(meses_tendencia: int = 3,
             if prom_acomp < 1:
                 señales[14].activa = True
                 riesgo_total += señales[14].peso
+
+        # Señal 16: interacción tenure × grupo quemado (hipótesis central del proyecto)
+        # Umbral rb > 0.30 (más amplio que grupo_quemado solo, 0.40): captura el riesgo
+        # COMPUESTO de ser nuevo en un grupo con mala historia de retención.
+        # Lift OOS 2.04, bien poblado (22% egresados / 11% activos). Ver explorar_senales_nuevas.py.
+        if en_critica_16 and v["riesgo_base"] > 0.30:
+            señales[15].activa = True
+            riesgo_total += señales[15].peso
 
         # Normalizar a 1-10 contra un riesgo de referencia realista.
         # Las señales no aplicables por tipo/datos (visitas para Televentas,

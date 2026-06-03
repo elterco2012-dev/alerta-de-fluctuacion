@@ -50,18 +50,24 @@ PESOS_ACTUAL = {
     "% Plan cayendo 3 meses seguidos":                              2.5,
     "% Plan < 80% promedio últimos meses":                         2.0,
     "Días sin venta > 3 en promedio":                              2.5,
-    "< 60% de cartera activa":                                     1.5,
+    # Deshabilitada: Informix reasigna clientes al egreso → histórico queda en 0
+    # → dato faltante la apaga en egresados pero no en activos → lift 0.01, Δsep +13.4.
+    "< 60% de cartera activa":                                     0.0,
     "Cobranza real < 90% de teórica":                              2.0,
     "En ventana crítica mes 1-3":                                  1.5,
     "En ventana crítica mes 4-6":                                  1.0,
     "Grupo con alta rotación histórica":                           1.5,
     "Sin clientes nuevos últimos 2 meses":                         0.5,
-    "< 70% de llamadas planificadas gestionadas (Televentas)":     1.5,
-    "< 70% de visitas planificadas realizadas (Viajante)":         1.5,
+    # Deshabilitadas: egresados raramente tienen datos Reactor en sus últimos meses
+    # → señal dispara más en activos que en egresados → invertida (lift < 1, Δsep > 0).
+    "< 70% de llamadas planificadas gestionadas (Televentas)":     0.0,
+    "< 70% de visitas planificadas realizadas (Viajante)":         0.0,
     "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": 2.0,
     "Balanza clientes negativa 2+ meses consecutivos":             1.5,
     "Ticket promedio cae > 5% por mes":                            1.0,
     "Supervisor no acompañó en ventana crítica 1-6":               1.0,
+    # Nueva: interacción tenure × grupo quemado. Lift OOS 2.04, bien poblado.
+    "Nuevo en grupo quemado (tenure 1-6 × riesgo_base > 0.30)":   1.0,
 }
 
 # ── Pesos PROPUESTOS ──────────────────────────────────────────────────────────

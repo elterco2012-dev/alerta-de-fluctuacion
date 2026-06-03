@@ -128,30 +128,43 @@ scoring al cambiar la conexión.
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales
-| señal | peso | umbral |
-|---|---|---|
-| % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 |
-| Días venta cero altos | 2.5 | promedio > 3 días |
-| % Plan promedio < 80% | 2.0 | media < 80 |
-| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 |
-| Cartera activa baja | 1.5 | < 60% activos |
-| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 |
-| En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 |
-| En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 |
-| Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 |
+### Señales y pesos actuales (16 señales)
+| señal | peso | umbral | estado |
+|---|---|---|---|
+| % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 | activa |
+| Días venta cero altos | 2.5 | promedio > 3 días | activa |
+| % Plan promedio < 80% | 2.0 | media < 80 | activa |
+| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
+| Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
+| En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
+| Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
+| Balanza clientes negativa | 1.5 | 2+ meses + pérdida > 3 | activa |
+| En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 | activa |
+| Ticket promedio cayendo | 1.0 | pendiente > 5%/mes | activa |
+| Supervisor no acompañó | 1.0 | < 1 visita/mes en 1-6 | activa |
+| **Nuevo en grupo quemado (tenure×grupo)** | **1.0** | tenure 1-6 AND rb > 0.30 | **nueva** |
+| Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 | activa |
+| Cartera activa baja | ~~1.5~~ → **0** | — | **deshabilitada** |
+| Llamadas bajas (Televentas) | ~~1.5~~ → **0** | — | **deshabilitada** |
+| Visitas bajas (Viajante) | ~~1.5~~ → **0** | — | **deshabilitada** |
 
-> **Pesos recalibrados (backtest):** "Días venta cero" subió 1.5→2.5 y "Cobranza
-> real" subió 1.0→2.0. Ambas son las señales con más evidencia predictiva en el
-> análisis leavers-vs-stayers (días cero: lift 2,7× presente en 71% de egresados;
-> cobranza: lift 2,5× presente en 97%). El cambio se validó con holdout temporal
-> (`scripts/validar_pesos.py`): subió la detección out-of-sample de egresados de
-> 70,5% a 79,5%, más de lo que subió la falsa alarma. Ver más abajo la calibración
-> de `RIESGO_REFERENCIA` que acompaña este cambio.
-
-> **Nota:** además de estas 9 señales originales hay 6 más implementadas en
-> `score_engine.py` (llamadas/visitas bajas, ausencias tempranas, balanza
-> negativa, ticket cayendo, supervisor no acompañó). Son 15 en total.
+> **Señales deshabilitadas (peso=0):** las tres tienen un problema estructural de
+> cobertura de datos en egresados que las invierte (disparan más en activos que en
+> egresados, lift < 1, Δsep positivo al sacarlas):
+> - **Cartera activa baja:** Informix reasigna los clientes al egreso → el histórico
+>   del vendedor que se fue queda con `total_clientes=0` → el fix de dato faltante
+>   desactiva la señal correctamente para egresados, pero sigue activa para el 98%
+>   de los activos (lift 0.01, Δsep +13.4). No hay forma de reconstruir el historial
+>   de asignación de cartera: se deshabilita hasta tener snapshots históricos.
+> - **Llamadas/Visitas bajas:** los egresados raramente tienen datos de Reactor en
+>   sus últimos meses activos → la señal casi no dispara para ellos (lift 0.05/0.51).
+>
+> **Nueva señal — Nuevo en grupo quemado (tenure×grupo):** interacción directa con
+> la hipótesis central del proyecto. Umbral rb>0.30 (más amplio que grupo_quemado
+> solo, 0.40). Lift OOS 2.04, bien poblado (22% egresados / 11% activos). Captura
+> el riesgo compuesto de ser vendedor nuevo en un grupo con mala historia de retención,
+> antes de que el deterioro individual sea visible. Requiere backfill para validar
+> el Δseparación honesto en `scripts/validar_pesos.py`.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
@@ -189,7 +202,9 @@ detección-vs-falsa-alarma con holdout temporal) define el punto óptimo.
 ausente queda en 0. El motor tomaba ese 0 como valor real y encendía señales
 FALSAMENTE (cobranza ausente → pct 0 → "cobranza < 90"; plan ausente → pct 0 →
 "plan < 80%"). Ahora cada señal usa solo los meses con BASE del dato:
-plan → `plan > 0`; cobranza → `cobranza_teorica > 0`; cartera → `total_clientes > 0`.
+plan → `plan > 0`; cobranza → `cobranza_teorica > 0`.
+La señal de cartera (`total_clientes > 0`) fue deshabilitada (peso=0): Informix reasigna
+los clientes al egreso y el histórico queda sin datos → no es recuperable sin snapshots.
 Si no hay ningún mes con base, la señal queda apagada (dato desconocido ≠ riesgo).
 Días venta cero ya era conservador (faltante = 0 = no enciende). Al cambiar esto,
 re-correr siempre el backfill.

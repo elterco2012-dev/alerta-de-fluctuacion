@@ -7,8 +7,11 @@ y guarda los resultados en la tabla score_historico de wurth.db.
 Luego la pantalla pages/Precision.py cruza esto con los egresados reales
 para medir si el sistema los hubiera detectado antes de que se fueran.
 
-Ejecutar con Python 32-bit (el que tiene ODBC):
-    C:\\...\\Python312-32\\python.exe scripts\\backfill_scores.py
+Lee de SQLite (no usa ODBC), así que corre con el Python 64-bit:
+    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\backfill_scores.py
+
+Requiere pandas instalado en ese Python:
+    "...\\Python312\\python.exe" -m pip install pandas
 
 Puede tardar varios minutos (1 llamada a calcular_scores por mes).
 """

@@ -38,6 +38,7 @@ except ImportError:
     sys.exit(1)
 
 DSN_INFORMIX = "MSPA"
+DSN_REACTOR  = "Wurth Reactor Produccion"  # work_days_log (días hábiles) vive acá, no en Informix
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 FIRMA        = 1
 
@@ -311,10 +312,15 @@ except Exception as e:
 print("[3b3/4] Días con venta (sbas)...", end=" ", flush=True)
 dias_con_venta = {}  # (vid, anio, mes) → int
 _sbas_date_field = None
-for _campo in ("budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
+# redat/lsdat/aufdat: nombres reales en este Informix (confirmado por explorar_sbas_columnas.py)
+# redat = Rechnungsdatum (fecha de factura) — el más preciso para "días con venta"
+# Los demás se mantienen como fallback por si cambia la estructura.
+# NO usar FIRST: en este Informix da error -201. Validamos la columna con
+# WHERE 1=0 (no trae filas pero falla si la columna no existe).
+for _campo in ("redat", "lsdat", "aufdat", "budat", "belegdat", "erfdat", "liefdat", "dat", "fdat"):
     try:
-        icur.execute(f"SELECT FIRST 1 {_campo} FROM sbas WHERE firma = {FIRMA}")
-        icur.fetchone()
+        icur.execute(f"SELECT {_campo} FROM sbas WHERE firma = {FIRMA} AND 1=0")
+        icur.fetchall()
         _sbas_date_field = _campo
         break
     except Exception:
@@ -346,24 +352,31 @@ if _sbas_date_field:
 else:
     print("AVISO: no se encontró campo de fecha en sbas — dias_venta_cero quedará en 0")
 
-# ── [3b4/4] Días hábiles por mes (works_days_log) ────────────────────────────
-print("[3b4/4] Días hábiles (works_days_log)...", end=" ", flush=True)
+# ── [3b4/4] Días hábiles por mes (work_days_log, en Reactor MySQL) ───────────
+# work_days_log NO está en Informix (da -206). Vive en Reactor CRM (MySQL).
+# Tiene una fila por día hábil (excluye fines de semana y feriados), columna de
+# fecha = real_date. Abrimos una conexión aparte solo para leerla. Si Reactor
+# no está disponible, se cae al default de 20 días/mes (no es bloqueante).
+print("[3b4/4] Días hábiles (work_days_log @ Reactor)...", end=" ", flush=True)
 dias_habiles = {}  # (anio, mes) → int
 try:
-    icur.execute("""
-        SELECT YEAR(fecha), MONTH(fecha), COUNT(fecha)
-        FROM works_days_log
-        WHERE fecha >= ?
-        GROUP BY 1, 2
-    """, fecha_desde_dt)
-    for row in icur.fetchall():
+    rcon = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
+    rcur = rcon.cursor()
+    rcur.execute("""
+        SELECT YEAR(real_date), MONTH(real_date), COUNT(*)
+        FROM work_days_log
+        WHERE real_date >= ?
+        GROUP BY YEAR(real_date), MONTH(real_date)
+    """, fecha_desde_str)
+    for row in rcur.fetchall():
         try:
             dias_habiles[(int(row[0]), int(row[1]))] = int(row[2])
         except (TypeError, ValueError):
             continue
+    rcon.close()
     print(f"OK — {len(dias_habiles)} meses cargados")
 except Exception as e:
-    print(f"AVISO: no se pudo leer works_days_log ({e}) — se usará 20 días/mes por defecto")
+    print(f"AVISO: no se pudo leer work_days_log de Reactor ({e}) — se usará 20 días/mes por defecto")
 
 icon.close()
 
@@ -540,7 +553,7 @@ for k in sorted(todas_keys_vm):
     pct_plan           = round(venta_total / plan * 100, 1) if plan > 0 else 0.0
     clientes_nuevos    = nuevos_data.get(k, 0)
 
-    # dias_venta_cero: días hábiles sin ninguna factura (fuente: sbas.budat + works_days_log)
+    # dias_venta_cero: días hábiles sin ninguna factura (fuente: sbas.redat + work_days_log @ Reactor)
     dcv             = dias_con_venta.get(k, None)
     dh              = dias_habiles.get((anio, mes), 20)
     dias_venta_cero = max(0, dh - dcv) if dcv is not None else 0

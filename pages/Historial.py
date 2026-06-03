@@ -14,7 +14,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import get_connection
-from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct, fmt_meses
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct, fmt_meses, page_header
 
 # Grupos excluidos del análisis (grupos administrativos, catch-all, o sin actividad comercial real)
 GRUPOS_EXCLUIDOS = {"Grupo 999"}
@@ -55,23 +55,8 @@ header { display: none; }
 
 
 # ── Nav ────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            flex-wrap:wrap; gap:10px;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e; white-space:nowrap;">
-    📈 Historial de Rotación — Wurth Argentina
-  </div>
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
-    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("📈 Historial de Rotación — Wurth Argentina", "/Historial"),
+            unsafe_allow_html=True)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

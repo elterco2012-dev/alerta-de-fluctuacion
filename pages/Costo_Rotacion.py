@@ -20,7 +20,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
-from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_pesos_corto, fmt_num
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_pesos_corto, fmt_num, page_header
 
 # ── Parámetros de costo (ajustables) ──────────────────────────────────────────
 SALARIO_INDUCCION   = 1_400_000   # Viajante/Ejecutivo mes 1-6
@@ -168,20 +168,8 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">💰 Costo de Rotación — Wurth Argentina</div>
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
-    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("💰 Costo de Rotación — Wurth Argentina", "/Costo_Rotacion"),
+            unsafe_allow_html=True)
 
 
 # ── Datos ──────────────────────────────────────────────────────────────────────

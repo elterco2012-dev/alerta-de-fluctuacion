@@ -11,7 +11,7 @@ import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection
-from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, page_header
 from intervenciones import (
     TIPOS, registrar, obtener_todas, calcular_impacto,
     hay_datos_demo, cargar_demo,
@@ -111,20 +111,8 @@ if not hay_datos_demo():
     cargar_demo(scores_df)
     st.cache_data.clear()
 
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">📝 Intervenciones — Wurth Argentina</div>
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">💰 Costo de rotación</a>
-    <a href="/Actividad"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📞 Actividad</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("📝 Intervenciones — Wurth Argentina", "/Intervenciones"),
+            unsafe_allow_html=True)
 
 st.markdown("""
 <div style="margin-bottom:24px;">

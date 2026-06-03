@@ -24,7 +24,7 @@ import os, sys
 import html as _html
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct
+from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct, page_header
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
@@ -104,18 +104,8 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 # ── Nav ────────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">🧠 Aprendizaje del modelo — Wurth Argentina</div>
-  <div style="font-size:13px; display:flex; gap:20px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;">🏠 Inicio</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;">🎯 Precisión</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("🧠 Aprendizaje del modelo — Wurth Argentina", "/Aprendizaje"),
+            unsafe_allow_html=True)
 
 # ── Chequeo de datos ───────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)

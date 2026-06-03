@@ -18,7 +18,7 @@ Ejecutar DESPUÉS de sincronizar_informix.py (que ya cargó vendedores y venta_t
 
 Opciones:
     --dry-run      Muestra totales sin escribir en SQLite
-    --full         Procesa toda la historia (por defecto: últimos 6 meses)
+    --full         Procesa toda la historia (por defecto: últimos 18 meses)
     --diagnostico  Solo muestra tipos de journal y estructura disponible
 """
 
@@ -43,12 +43,15 @@ PREFIJO_CLIENTE = "1130"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dry-run",     action="store_true", help="Mostrar sin guardar")
-parser.add_argument("--full",        action="store_true", help="Toda la historia")
+parser.add_argument("--full",        action="store_true", help="Toda la historia (por defecto: últimos 18 meses)")
 parser.add_argument("--diagnostico", action="store_true", help="Solo explorar estructura")
 args = parser.parse_args()
 
 DRY_RUN     = args.dry_run
-MESES_ATRAS = 99 if args.full else 6
+# 18 meses por defecto: cubre la cobranza del período pre-egreso de los
+# egresados de los últimos 18 meses (alineado con Informix y Reactor). Con 6
+# meses, los que se fueron hace más de medio año quedaban sin cobranza que cruzar.
+MESES_ATRAS = 99 if args.full else 18
 
 print("=" * 65)
 print("SINCRONIZACIÓN SUNDB → SQLite  (cobranza real)")

@@ -18,7 +18,7 @@ from snippets_v3 import (
     banner, hero_kpi, stat_kpi, accion_tag,
     badge, pill, fmt_num, fmt_pct, fmt_meses, fmt_antiguedad,
     score_breakdown_rows, recomendar_accion,
-    NIVEL_LABEL,
+    NIVEL_LABEL, page_header,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -124,19 +124,8 @@ header                      { display: none; }
 </style>""", unsafe_allow_html=True)
 
 # ── Nav header ────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #eee;">
-  <div style="font-size:18px; font-weight:800; color:#1a1a2e;">👤 Detalle de vendedor — Wurth Argentina</div>
-  <div style="font-size:13px; display:flex; gap:18px; flex-wrap:wrap;">
-    <a href="/"               target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🏠 Inicio</a>
-    <a href="/Supervisor"     target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">👤 Por supervisor</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📝 Intervenciones</a>
-    <a href="/Historial"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">📈 Historial</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;white-space:nowrap;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("👤 Detalle de vendedor — Wurth Argentina", "/Vendedor"),
+            unsafe_allow_html=True)
 
 # ── Query param ───────────────────────────────────────────────────────────────
 id_param = st.query_params.get("id", None)

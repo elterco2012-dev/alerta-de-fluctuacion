@@ -109,6 +109,57 @@ def fresh(ts_str):
     return f'<span class="wz-fresh"><span class="dot"></span>Actualizado: {ts_str}</span>'
 
 # ─────────────────────────────────────────────────────────────────────────────
+# NAVEGACIÓN — única fuente de verdad para los links del header.
+# Todas las páginas usan page_header()/nav_links() para que el menú sea
+# idéntico en todas y no se omita ninguna sección.
+# ─────────────────────────────────────────────────────────────────────────────
+NAV_ITEMS = [
+    ("/",               "🏠 Inicio"),
+    ("/Supervisor",     "👤 Por supervisor"),
+    ("/Intervenciones", "📝 Intervenciones"),
+    ("/Historial",      "📈 Historial"),
+    ("/Costo_Rotacion", "💰 Costo de rotación"),
+    ("/Actividad",      "📞 Actividad"),
+    ("/Precision",      "🎯 Precisión"),
+    ("/Aprendizaje",    "🧠 Aprendizaje"),
+]
+
+def nav_links(current=""):
+    """Devuelve el bloque HTML de navegación. La página actual va resaltada
+    (no es link). current es el path, ej '/Precision' o '/' para Inicio."""
+    out = []
+    for href, label in NAV_ITEMS:
+        if href == current:
+            out.append(f'<span style="color:#1a1a2e;font-weight:700;white-space:nowrap;">{label}</span>')
+        else:
+            out.append(f'<a href="{href}" target="_self" '
+                        f'style="color:#4A90D9;text-decoration:none;white-space:nowrap;">{label}</a>')
+    return ('<div style="font-size:13px; display:flex; gap:16px; flex-wrap:wrap; '
+            'justify-content:flex-end;">' + "".join(out) + '</div>')
+
+def page_header(titulo, current="", sub=""):
+    """Encabezado estándar: título a la izquierda, navegación completa a la
+    derecha. sub = HTML opcional bajo el título (ej. fresh(...))."""
+    sub_html = f'<div style="margin-top:4px;">{sub}</div>' if sub else ""
+    return (f'<div style="display:flex; justify-content:space-between; align-items:center; '
+            f'margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee; gap:20px; '
+            f'flex-wrap:wrap;"><div><div style="font-size:20px; font-weight:800; color:#1a1a2e;">'
+            f'{titulo}</div>{sub_html}</div>{nav_links(current)}</div>')
+
+# CSS que oculta el sidebar nativo de Streamlit y la barra superior.
+# Todas las páginas deben inyectarlo para que no aparezca el menú lateral
+# automático con la lista de páginas.
+HIDE_CHROME_CSS = (
+    '<style>'
+    '[data-testid="stSidebar"]   { display: none; }'
+    '[data-testid="stHeader"]    { display: none; }'
+    '[data-testid="stToolbar"]   { display: none; }'
+    '.stDeployButton             { display: none; }'
+    'header                      { display: none; }'
+    '</style>'
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EXPLICABILIDAD DEL SCORE
 # ─────────────────────────────────────────────────────────────────────────────
 SIGNAL_PESO = {

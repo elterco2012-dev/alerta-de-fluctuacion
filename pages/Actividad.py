@@ -12,7 +12,7 @@ import os, sys
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from snippets_v3 import banner, fmt_num, hero_kpi, stat_kpi, fmt_pct
+from snippets_v3 import banner, fmt_num, hero_kpi, stat_kpi, fmt_pct, page_header, HIDE_CHROME_CSS
 
 TARGET_TELEVENTAS   = 80   # llamadas planificadas por empresa / día
 TARGET_VIAJANTES    = 15   # visitas planificadas por empresa / día
@@ -27,23 +27,10 @@ st.set_page_config(
 
 _v3_css = os.path.join(os.path.dirname(__file__), '..', 'assets', 'dashboard-v3.css')
 st.markdown(f"<style>{open(_v3_css, encoding='utf-8').read()}</style>", unsafe_allow_html=True)
+st.markdown(HIDE_CHROME_CSS, unsafe_allow_html=True)
 
-st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center;
-            margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #eee;">
-  <div style="font-size:20px; font-weight:800; color:#1a1a2e;">
-    Wurth Argentina &mdash; Actividad Comercial
-  </div>
-  <div style="font-size:13px; display:flex; gap:20px;">
-    <a href="/"              target="_self" style="color:#4A90D9;text-decoration:none;">🏠 Inicio</a>
-    <a href="/Supervisor"    target="_self" style="color:#4A90D9;text-decoration:none;">👤 Por supervisor</a>
-    <a href="/Intervenciones" target="_self" style="color:#4A90D9;text-decoration:none;">📝 Intervenciones</a>
-    <a href="/Historial"     target="_self" style="color:#4A90D9;text-decoration:none;">📈 Historial</a>
-    <a href="/Costo_Rotacion" target="_self" style="color:#4A90D9;text-decoration:none;">💰 Costo de rotación</a>
-    <a href="/Precision"      target="_self" style="color:#4A90D9;text-decoration:none;">🎯 Precisión</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(page_header("Wurth Argentina &mdash; Actividad Comercial", "/Actividad"),
+            unsafe_allow_html=True)
 
 # ── Carga de datos ────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)

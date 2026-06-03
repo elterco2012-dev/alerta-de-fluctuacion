@@ -42,7 +42,7 @@ from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-RIESGO_REFERENCIA = 16.0   # coincide con score_engine.py (calibrado por backtest)
+RIESGO_REFERENCIA = 12.0   # coincide con score_engine.py (calibrado por backtest)
 UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
 
 # ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────
@@ -66,8 +66,7 @@ PESOS_ACTUAL = {
     "Balanza clientes negativa 2+ meses consecutivos":             1.5,
     "Ticket promedio cae > 5% por mes":                            1.0,
     "Supervisor no acompañó en ventana crítica 1-6":               1.0,
-    # Nueva: interacción tenure × grupo quemado. Lift OOS 2.04, bien poblado.
-    "Nuevo en grupo quemado (tenure 1-6 × riesgo_base > 0.30)":   1.0,
+    # tenure × grupo probada y descartada (Δsep +1.7, doble conteo). No se agregó.
 }
 
 # ── Pesos PROPUESTOS ──────────────────────────────────────────────────────────

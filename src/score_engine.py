@@ -27,16 +27,21 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 # de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
 # hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
 #
-# Calibrado en 16.0 por backtest con holdout temporal (scripts/validar_pesos.py).
-# Historia: con REF=10 la falsa alarma en activos era 69% (inservible para
-# priorizar). Un primer ajuste a 14 se hizo con datos de cobranza incompletos
-# para egresados, que inflaban la detección (cobranza faltante = pct 0 = señal
-# falsa). Con la cobranza ya sincronizada y el bug de dato faltante corregido,
-# la curva honesta muestra el óptimo en REF=16: ~40% de detección out-of-sample
-# de egresados con ~32% de falsa alarma (máxima separación ~7.9). La separación
-# real es modesta: es un sistema de alerta temprana sobre datos ruidosos de RRHH,
-# no un oráculo. Si se ajusta, re-correr el backfill y actualizar CLAUDE.md.
-RIESGO_REFERENCIA = 16.0
+# Calibrado en 12.0 por backtest con holdout temporal (scripts/validar_pesos.py).
+# Historia: con REF=10 la falsa alarma en activos era 69% (inservible). Un ajuste
+# a 14 usó cobranza incompleta para egresados (inflaba la detección). Con la
+# cobranza sincronizada y el bug de dato faltante corregido, la curva honesta
+# dio REF=16. PERO ese 16 se calibró con TRES señales rotas todavía activas
+# (cartera/llamadas/visitas) que inflaban el score de casi todos los activos:
+# por eso hubo que subir tanto la referencia para contener la falsa alarma. Al
+# deshabilitar esas señales (ver abajo), los scores bajaron parejo y la falsa
+# alarma se desplomó (~32% -> 16% a REF=16), dejando margen para BAJAR la
+# referencia y recuperar detección. El barrido honesto ubica el óptimo en
+# REF=12: ~62% de detección out-of-sample con ~31% de falsa alarma (separación
+# ~32, vs ~24 a REF=16). Además el nivel crítico (>=8) vuelve a ser alcanzable.
+# La separación real sigue siendo modesta: es alerta temprana sobre datos
+# ruidosos de RRHH, no un oráculo. Si se ajusta, re-correr backfill y CLAUDE.md.
+RIESGO_REFERENCIA = 12.0
 
 
 def get_connection():
@@ -300,12 +305,10 @@ def calcular_scores(meses_tendencia: int = 3,
             Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
             Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
             Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
-            # NUEVA: interacción tenure × grupo quemado (hipótesis central del proyecto).
-            # Umbral rb>0.30 (más amplio que grupo_quemado solo, 0.40): el combo "vendedor
-            # nuevo en grupo históricamente malo" tiene lift OOS 2.04 bien poblado (22% egr /
-            # 11% act). Se solapa con ventana_critica + grupo_quemado, pero captura el riesgo
-            # compuesto extra. Validar Δsep en validar_pesos.py tras el backfill.
-            Señal("tenure_x_grupo",        peso=1.0, descripcion="Nuevo en grupo quemado (tenure 1-6 × riesgo_base > 0.30)"),
+            # Probada y descartada: interacción tenure × grupo quemado (rb>0.30). Su lift
+            # aislado era 2.04, pero la auditoría marginal (validar_pesos.py) dio Δsep +1.7:
+            # mete ruido en vez de señal porque ya está cubierta por "ventana crítica 1-3" +
+            # "grupo quemado". El combo no aporta sobre la suma de sus componentes.
         ]
 
         riesgo_total = 0.0
@@ -458,14 +461,6 @@ def calcular_scores(meses_tendencia: int = 3,
             if prom_acomp < 1:
                 señales[14].activa = True
                 riesgo_total += señales[14].peso
-
-        # Señal 16: interacción tenure × grupo quemado (hipótesis central del proyecto)
-        # Umbral rb > 0.30 (más amplio que grupo_quemado solo, 0.40): captura el riesgo
-        # COMPUESTO de ser nuevo en un grupo con mala historia de retención.
-        # Lift OOS 2.04, bien poblado (22% egresados / 11% activos). Ver explorar_senales_nuevas.py.
-        if en_critica_16 and v["riesgo_base"] > 0.30:
-            señales[15].activa = True
-            riesgo_total += señales[15].peso
 
         # Normalizar a 1-10 contra un riesgo de referencia realista.
         # Las señales no aplicables por tipo/datos (visitas para Televentas,

@@ -128,7 +128,7 @@ scoring al cambiar la conexión.
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales (16 señales)
+### Señales y pesos actuales (12 activas + 3 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
 | % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 | activa |
@@ -142,7 +142,6 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 | activa |
 | Ticket promedio cayendo | 1.0 | pendiente > 5%/mes | activa |
 | Supervisor no acompañó | 1.0 | < 1 visita/mes en 1-6 | activa |
-| **Nuevo en grupo quemado (tenure×grupo)** | **1.0** | tenure 1-6 AND rb > 0.30 | **nueva** |
 | Sin clientes nuevos 2 meses | 0.5 | sum(nuevos últimos 2m) == 0 | activa |
 | Cartera activa baja | ~~1.5~~ → **0** | — | **deshabilitada** |
 | Llamadas bajas (Televentas) | ~~1.5~~ → **0** | — | **deshabilitada** |
@@ -159,44 +158,61 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 > - **Llamadas/Visitas bajas:** los egresados raramente tienen datos de Reactor en
 >   sus últimos meses activos → la señal casi no dispara para ellos (lift 0.05/0.51).
 >
-> **Nueva señal — Nuevo en grupo quemado (tenure×grupo):** interacción directa con
-> la hipótesis central del proyecto. Umbral rb>0.30 (más amplio que grupo_quemado
-> solo, 0.40). Lift OOS 2.04, bien poblado (22% egresados / 11% activos). Captura
-> el riesgo compuesto de ser vendedor nuevo en un grupo con mala historia de retención,
-> antes de que el deterioro individual sea visible. Requiere backfill para validar
-> el Δseparación honesto en `scripts/validar_pesos.py`.
+> Deshabilitarlas (no solo bajarles peso) fue el cambio de mayor impacto: la falsa
+> alarma cayó ~32% → 16% sin perder detección, y la separación detección-vs-falsa
+> alarma pasó de ~8 a ~24 a REF=16 (eso, a su vez, habilitó bajar la referencia a
+> 12; ver calibración abajo).
+
+> **Señal candidata probada y descartada — tenure×grupo:** se exploró la interacción
+> "vendedor nuevo (mes 1-6) en grupo quemado (rb>0.30)" con
+> `scripts/explorar_senales_nuevas.py` (lift aislado 2.04, prometedor). Se implementó
+> y backfilleó, pero la auditoría marginal en `validar_pesos.py` dio **Δsep +1.7**:
+> mete ruido en vez de señal porque ya está cubierta por "ventana crítica 1-3" +
+> "grupo quemado". Lección: un buen lift aislado NO garantiza aporte marginal si la
+> candidata se solapa con señales existentes. Por eso el flujo exige validar el
+> Δseparación post-backfill, no solo el lift. Se revirtió a peso 0 (no está en el motor).
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 16.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 12.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 16` representa un vendedor en deterioro claro (combinación
+`RIESGO_REFERENCIA = 12` representa un vendedor en deterioro claro (combinación
 de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 +
-días cero 2.5 + cartera 1.5 + ventana crítica ≈ 12-16 puntos).
+días cero 2.5 + ventana crítica 1.5 + grupo quemado 1.5 ≈ 12 puntos).
 
-**Por qué NO se divide por la suma de todos los pesos (~23.5):** eso exigía
-activar >50% de las 15 señales a la vez para llegar a score 6, algo que
-ningún vendedor real hace. Resultado: todos los egresados quedaban con score
-< 6 y la pantalla de Precisión mostraba 0% detectado. La calibración por
-referencia fija arregla esto. Si se ajusta el valor, actualizar este archivo.
+**Por qué NO se divide por la suma de todos los pesos (~21):** eso exigía
+activar >50% de las señales a la vez para llegar a score 6, algo que ningún
+vendedor real hace. Resultado: todos los egresados quedaban con score < 6 y la
+pantalla de Precisión mostraba 0% detectado. La calibración por referencia fija
+arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-**Calibración por backtest (cómo se llegó a 16):** con `RIESGO_REFERENCIA=10`
-el modelo marcaba con score ≥ 6 al **69% de los activos** — falsa alarma
-inservible para priorizar. El barrido en `scripts/validar_pesos.py` (curva
-detección-vs-falsa-alarma con holdout temporal) define el punto óptimo.
+**Calibración por backtest (cómo se llegó a 12):** con `RIESGO_REFERENCIA=10`
+el modelo (con las señales rotas todavía activas) marcaba con score ≥ 6 al
+**69% de los activos** — falsa alarma inservible. El barrido en
+`scripts/validar_pesos.py` (curva detección-vs-falsa-alarma con holdout temporal)
+define el punto óptimo, y se movió en dos etapas:
   - Un primer ajuste a 14 usó datos de cobranza incompletos para egresados, que
     INFLABAN la detección (ver bug abajo): aparentaba 62% de detección.
-  - Con la cobranza ya sincronizada y el bug de dato faltante corregido, la curva
-    honesta ubica el óptimo en **REF=16**: ~40% de detección out-of-sample de
-    egresados con ~32% de falsa alarma (máxima separación ≈ 7,9).
-  - La separación real es modesta (~5-8, no los ~20 que sugería el dato inflado):
-    es alerta temprana sobre datos ruidosos de RRHH, no un oráculo. Detectar ~40%
-    de las fugas con 3 meses de anticipación sigue siendo valor real.
-  - El nivel **crítico (≥8)** es el corte operativo de "reunión esta semana".
+  - Con la cobranza sincronizada y el bug de dato faltante corregido, la curva
+    honesta ubicó el óptimo en **REF=16** (~40% detección OOS, ~32% falsa alarma,
+    separación ≈ 8). PERO ese 16 estaba inflado por las **tres señales rotas**
+    (cartera/llamadas/visitas) que encendían el score de casi todos los activos:
+    había que subir mucho la referencia para contener la falsa alarma.
+  - Al **deshabilitar esas señales**, la falsa alarma se desplomó (~32% → 16% a
+    REF=16) y la separación trepó a ~24. Eso dejó margen para BAJAR la referencia
+    y recuperar detección. El barrido honesto post-limpieza ubica el óptimo en
+    **REF=12**: ~62% de detección out-of-sample con ~31% de falsa alarma
+    (separación ≈ 32). A REF=12 el nivel **crítico (≥8)** vuelve a ser alcanzable
+    (dispara en ~23% de egresados vs ~10% de activos; a REF=16 era 2% vs 0,6%).
+  - La separación real sigue siendo modesta: es alerta temprana sobre datos
+    ruidosos de RRHH, no un oráculo. Detectar ~62% de las fugas con 3 meses de
+    anticipación es valor real.
+  - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
+    operativa sigue siendo por ranking; ver abajo).
 
 **Bug de dato faltante corregido (importante):** en `ventas_mensual` un dato
 ausente queda en 0. El motor tomaba ese 0 como valor real y encendía señales
@@ -229,21 +245,23 @@ algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularida
 Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población el
 deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
 todos), así que **ningún umbral de score separa limpio a los que se van de los
-que se quedan**. La separación detección-vs-falsa-alarma es modesta en todo el
-rango, y el nivel crítico (≥8) a la calibración elegida (REF=16) casi no dispara.
+que se quedan**. La separación detección-vs-falsa-alarma mejoró bastante al
+deshabilitar las señales rotas y bajar a REF=12 (~32, antes ~8), pero sigue sin
+haber un corte que parta limpio: a REF=12 el nivel crítico (≥8) detecta ~23% de
+egresados pero también marca ~10% de activos.
 
 Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
 seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
 **"empezá por los de mayor score y bajá según tu capacidad"** (FOCO_SEMANA ≈ 20
 en la vista global; el top de cada zona en la vista por supervisor). Las tablas
-van ordenadas por score descendente. Los niveles crítico/alto quedan solo como
-indicador visual de color, no como corte accionable.
+van ordenadas por score descendente. Los niveles crítico/alto quedan como
+indicador visual de color y de urgencia, no como corte accionable rígido.
 
-Por qué REF=16 pese a que comprime el nivel crítico: para un uso por ranking, un
-REF alto mantiene los scores bien distribuidos (pocos empates arriba = mejor
-granularidad de orden). Bajar REF para "rescatar" el nivel crítico marcaría ~40%
-de los activos como críticos (inaccionable). Ver el barrido de niveles en
-`validar_pesos.py`.
+Por qué REF=12 (y no más alto): tras limpiar las señales rotas, REF=12 da la
+mejor separación del barrido honesto y mantiene los scores bien distribuidos
+para el ranking. Subir a 16 ya no hace falta para contener la falsa alarma (eso
+lo resolvió quitar la señal de cartera) y sólo apagaría el nivel crítico. Ver el
+barrido de niveles en `validar_pesos.py`.
 
 ### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
 Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar

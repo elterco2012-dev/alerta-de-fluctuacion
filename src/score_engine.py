@@ -499,7 +499,11 @@ def calcular_scores(meses_tendencia: int = 3,
             "pct_cobranza": round(prom_cob, 1),
             "en_ventana_critica": en_critica_13 or en_critica_46,
             "grupo_riesgo_base": v["riesgo_base"],
-            "señales_activas": [s.descripcion for s in señales if s.activa],
+            # Solo señales que aportan al score: una señal deshabilitada (peso=0)
+            # puede cumplir su condición y quedar activa=True, pero NO debe mostrarse
+            # como driver de riesgo (cartera/cobranza se sacaron justamente por no
+            # diferenciar fugas). Mostrarlas confundiría al supervisor.
+            "señales_activas": [s.descripcion for s in señales if s.activa and s.peso > 0],
         })
 
     if not scores:

@@ -62,16 +62,21 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+# Mapea cada señal activa a un pill corto. Las señales deshabilitadas (peso=0:
+# cartera, cobranza, llamadas, visitas) ya no llegan en señales_activas — el
+# motor las filtra — así que no necesitan entrada acá.
 SEÑAL_TAGS = {
-    "% Plan cayendo 3 meses seguidos":    ("caída 3m",     "red"),
-    "% Plan < 80% promedio últimos meses":("plan<80%",     "orange"),
-    "Días sin venta > 3 en promedio":     ("días cero↑",   "red"),
-    "< 60% de cartera activa":            ("inactivos↑",   "orange"),
-    "Cobranza real < 90% de teórica":     ("cobranza baja","orange"),
-    "En ventana crítica mes 1-3":         ("onboarding",   "red"),
-    "En ventana crítica mes 4-6":         ("mes 4-6",      "orange"),
-    "Grupo con alta rotación histórica":  ("zona quemada", "orange"),
-    "Sin clientes nuevos últimos 2 meses":("clientes L:0", "yellow"),
+    "% Plan cayendo 3 meses seguidos":                              ("caída 3m",     "red"),
+    "% Plan < 80% promedio últimos meses":                          ("plan<80%",     "orange"),
+    "Días sin venta > 3 en promedio":                              ("días cero↑",   "red"),
+    "En ventana crítica mes 1-3":                                  ("onboarding",   "red"),
+    "En ventana crítica mes 4-6":                                  ("mes 4-6",      "orange"),
+    "Grupo con alta rotación histórica":                           ("zona quemada", "orange"),
+    "Sin clientes nuevos últimos 2 meses":                         ("clientes L:0", "yellow"),
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑",   "red"),
+    "Balanza clientes negativa 2+ meses consecutivos":             ("balanza −",    "orange"),
+    "Ticket promedio cae > 5% por mes":                            ("ticket↓",      "orange"),
+    "Supervisor no acompañó en ventana crítica 1-6":              ("sin acomp.",   "yellow"),
 }
 
 def _pills(tags):
@@ -245,9 +250,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-if rb > 0.60:
-    st.warning(f"⚠️ **{nombre_grupo}** es una zona con alta rotación histórica. "
-               f"Los vendedores nuevos aquí tienen mayor probabilidad de irse antes de los 6 meses.")
+# Umbral alineado con la señal "grupo_quemado" del motor (riesgo_base > 0.40):
+# si los vendedores de esta zona reciben la señal de grupo quemado, el supervisor
+# tiene que ver la advertencia. Es la hipótesis central del proyecto.
+if rb > 0.40:
+    st.warning(f"⚠️ **{nombre_grupo}** es una zona con alta rotación histórica "
+               f"(riesgo base {rb:.0%}). Los vendedores nuevos aquí tienen mayor "
+               f"probabilidad de irse antes de los 6 meses, incluso sin deterioro "
+               f"individual visible. Priorizá el acompañamiento temprano.")
 
 # KPIs
 n_activos  = len(df_sup)

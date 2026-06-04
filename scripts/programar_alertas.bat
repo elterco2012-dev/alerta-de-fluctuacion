@@ -11,7 +11,7 @@ REM ============================================================
 echo ============================================================
 echo  Registrando tarea programada de Windows
 echo ============================================================
-echo  Nombre : Wurth - Alertas Rotacion
+echo  Nombre : WurthAlertas
 echo  Script : C:\alerta-de-fluctuacion\scripts\sync_y_alertas.bat
 echo  Horario: todos los dias a las 08:00
 echo ============================================================
@@ -20,7 +20,7 @@ echo.
 REM /IT = corre en la sesion interactiva (necesario para Outlook COM y DSN ODBC)
 REM /RL LIMITED = privilegios normales (misma integridad que Outlook)
 REM /F = sobrescribe si ya existe
-schtasks /Create /TN "Wurth - Alertas Rotacion" /TR "\"C:\alerta-de-fluctuacion\scripts\sync_y_alertas.bat\"" /SC DAILY /ST 08:00 /IT /RL LIMITED /F
+schtasks /Create /TN "WurthAlertas" /TR "C:\alerta-de-fluctuacion\scripts\sync_y_alertas.bat" /SC DAILY /ST 08:00 /IT /RL LIMITED /F
 
 echo.
 if errorlevel 1 goto :error
@@ -32,9 +32,9 @@ echo  IMPORTANTE: la tarea corre solo cuando estas logueado en
 echo  Windows (lo necesita Outlook COM). Si la PC esta apagada o
 echo  con sesion cerrada a las 08:00, no se ejecuta.
 echo.
-echo  Probarla ahora:   schtasks /Run /TN "Wurth - Alertas Rotacion"
-echo  Verla:            schtasks /Query /TN "Wurth - Alertas Rotacion"
-echo  Borrarla:         schtasks /Delete /TN "Wurth - Alertas Rotacion" /F
+echo  Probarla ahora:   schtasks /Run /TN "WurthAlertas"
+echo  Verla:            schtasks /Query /TN "WurthAlertas"
+echo  Borrarla:         schtasks /Delete /TN "WurthAlertas" /F
 echo ============================================================
 goto :fin
 

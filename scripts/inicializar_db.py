@@ -304,6 +304,21 @@ CREATE TABLE IF NOT EXISTS cobranza_mensual (
 """)
 con.commit()
 
+# ── Migración: agregar columnas nuevas a bases ya existentes ───────────────────
+# CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe con el esquema viejo.
+# Si la base venía sin director/es_supervisor, las agregamos acá (idempotente).
+def _asegurar_columna(tabla, columna, definicion):
+    cols = [r[1] for r in cur.execute(f"PRAGMA table_info({tabla})")]
+    if columna not in cols:
+        cur.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+        print(f"  + columna {tabla}.{columna}")
+
+print("Verificando esquema...", flush=True)
+_asegurar_columna("vendedores", "director",      "TEXT")
+_asegurar_columna("vendedores", "es_supervisor", "INTEGER DEFAULT 0")
+_asegurar_columna("grupos",     "supervisor",    "TEXT")
+con.commit()
+
 # ── Insertar grupos ───────────────────────────────────────────────────────────
 print(f"Insertando {len(grupos_set)} grupos...", end=" ", flush=True)
 for gid, gnom in grupos_set.items():

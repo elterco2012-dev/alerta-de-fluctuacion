@@ -130,11 +130,11 @@ scoring al cambiar la conexión.
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales (11 activas + 4 deshabilitadas)
+### Señales y pesos actuales (9 activas + 6 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
 | % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
-| Días venta cero altos | 2.5 | promedio > 8 días | activa |
+| Días venta cero altos | ~~2.5~~ → **0** | — | **deshabilitada** |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
 | Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
 | Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
@@ -159,6 +159,14 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 >   no discrimina a ningún umbral útil: a <-3 dispara en el 93% de todos; a <-20
 >   todavía en el 92%; a <-50 (el único punto donde no dispara en casi todos) ya
 >   es tan extremo que casi nadie llega. Se deshabilita hasta tener datos más estables.
+> - **Días venta cero (la "señal estrella" histórica):** con el umbral recalibrado a
+>   `> 8` (datos 2026) se INVIRTIÓ: dispara más en activos (12.8%) que en egresados
+>   (10.2%), lift 0.80, Δsep +2.7 al sacarla. Mismo problema de cobertura que
+>   llamadas/visitas: los egresados tienen datos incompletos en sus últimos meses
+>   activos → `dias_venta_cero` faltante = 0 = no enciende → subcuenta a los que se
+>   van. Con el umbral viejo (`>3`, disparaba en el 99%) el problema quedaba tapado.
+>   Tenía lift 3.44 en los datos viejos del contenedor, pero en producción 2026 no
+>   separa. Re-evaluar cuando los egresados tengan datos completos de sus últimos meses.
 > - **Cartera activa baja:** Informix reasigna los clientes al egreso → el histórico
 >   del vendedor que se fue queda con `total_clientes=0` → el fix de dato faltante
 >   desactiva la señal correctamente para egresados, pero sigue activa para el 98%

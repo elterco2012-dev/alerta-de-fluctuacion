@@ -52,7 +52,10 @@ PESOS_ACTUAL = {
     # es tan volátil que la pendiente no discrimina a ningún umbral razonable.
     "% Plan cayendo 3 meses seguidos":                              0.0,
     "% Plan < 80% promedio últimos meses":                         2.0,
-    "Días sin venta > 3 en promedio":                              2.5,
+    # Deshabilitada: con umbral > 8 (recalibrado 2026) se invirtió — dispara más en
+    # activos (12.8%) que en egresados (10.2%), lift 0.80, Δsep +2.7. Egresados con
+    # datos incompletos en sus últimos meses → días cero faltante = 0 = no enciende.
+    "Días sin venta > 3 en promedio":                              0.0,
     # Deshabilitada: Informix reasigna clientes al egreso → histórico queda en 0
     # → dato faltante la apaga en egresados pero no en activos → lift 0.01, Δsep +13.4.
     "< 60% de cartera activa":                                     0.0,

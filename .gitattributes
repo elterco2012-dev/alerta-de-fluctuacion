@@ -3,4 +3,5 @@
 *.py text eol=lf
 *.md text eol=lf
 *.txt text eol=lf
+*.bat text eol=crlf
 *.db binary

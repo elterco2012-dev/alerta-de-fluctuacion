@@ -30,6 +30,11 @@ from alertas import (cargar_estado, detectar_nuevos_criticos,
 
 DIAS_REALERTA = 7   # re-alertar si sigue crítico después de N días
 
+# Máximo de vendedores por email. El scoring ya es un ranking: se toman los N
+# peores por score. El resto sigue en estado "crítico" en el dashboard pero no
+# genera ruido de email. Alineado con FOCO_SEMANA del dashboard (~20).
+MAX_ALERTAS = 20
+
 smtp_user     = os.getenv("SMTP_USER", "")
 smtp_pwd      = os.getenv("SMTP_PWD", "")
 alert_to      = [e.strip() for e in os.getenv("ALERT_TO", "").split(",") if e.strip()]
@@ -54,7 +59,16 @@ nuevos = detectar_nuevos_criticos(scores, estado, dias_realerta=DIAS_REALERTA)
 if nuevos.empty:
     print("Sin alertas nuevas (ningún crítico nuevo ni re-alerta pendiente).")
 else:
-    print(f"{len(nuevos)} vendedor(es) a alertar:")
+    total_criticos = len(nuevos)
+
+    # Limitar al top N por score (ya viene ordenado desc del calcular_scores)
+    if len(nuevos) > MAX_ALERTAS:
+        print(f"{total_criticos} vendedores críticos detectados — "
+              f"se alertan los top {MAX_ALERTAS} por score (ver dashboard para el resto).")
+        nuevos = nuevos.head(MAX_ALERTAS)
+    else:
+        print(f"{len(nuevos)} vendedor(es) a alertar:")
+
     for _, r in nuevos.iterrows():
         nombre = r.get("nombre") or f"ID {int(r['id_vendedor'])}"
         print(f"  · {nombre} ({int(r['id_vendedor'])}) — Score {r['score']:.1f} — {r['supervisor']}")

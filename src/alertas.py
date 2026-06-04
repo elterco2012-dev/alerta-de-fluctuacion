@@ -36,31 +36,57 @@ SEÑAL_CORTA = {
     "% Plan cayendo 3 meses seguidos":    "caída 3m",
     "% Plan < 80% promedio últimos meses":"plan<80%",
     "Días sin venta > 3 en promedio":     "días cero↑",
-    "< 60% de cartera activa":            "inactivos↑",
-    "Cobranza real < 90% de teórica":     "cobranza baja",
     "En ventana crítica mes 1-3":         "onboarding",
     "En ventana crítica mes 4-6":         "mes 4-6",
     "Grupo con alta rotación histórica":  "zona quemada",
-    "Sin clientes nuevos últimos 2 meses":"clientes L:0",
+    "Sin clientes nuevos últimos 2 meses":"sin nuevos",
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": "ausencias↑",
+    "Balanza clientes negativa 2+ meses consecutivos": "balanza−",
+    "Ticket promedio cae > 5% por mes":   "ticket↓",
+    "Supervisor no acompañó en ventana crítica 1-6": "sin acomp.",
 }
 
 
 # ── Estado persistido ──────────────────────────────────────────────────────────
+# Formato: {"criticos": {"1234": "2026-06-04T10:00:00", ...}, "ultima_ejecucion": "..."}
+# La clave es el id_vendedor (str), el valor es el timestamp de la ÚLTIMA alerta enviada.
 
 def cargar_estado() -> dict:
-    """Lee el estado de la última ejecución (qué vendors ya eran críticos)."""
+    """Lee el estado de la última ejecución."""
     if not os.path.exists(ESTADO_PATH):
-        return {"criticos": [], "ultima_ejecucion": None}
+        return {"criticos": {}, "ultima_ejecucion": None}
     with open(ESTADO_PATH) as f:
-        return json.load(f)
+        estado = json.load(f)
+    # Migración: formato viejo era una lista, nuevo es un dict con timestamps.
+    if isinstance(estado.get("criticos"), list):
+        estado["criticos"] = {str(v): None for v in estado["criticos"]}
+    return estado
 
 
-def guardar_estado(scores: pd.DataFrame) -> None:
-    """Persiste el conjunto de vendors críticos del run actual."""
-    criticos = scores[scores.nivel_riesgo == "critico"]["id_vendedor"].astype(int).tolist()
+def guardar_estado(scores: pd.DataFrame, alertados_ids: set) -> None:
+    """
+    Persiste el estado después del run.
+    - Vendedores que siguen críticos pero NO se alertaron esta vez → mantener timestamp anterior
+    - Vendedores que se alertaron → actualizar timestamp a ahora
+    - Vendedores que bajaron de crítico → eliminar
+    """
+    estado_prev = cargar_estado()
+    prev        = estado_prev.get("criticos", {})
+    ahora_ts    = datetime.now().isoformat(timespec="seconds")
+
+    criticos_ids = set(
+        str(int(v)) for v in scores.loc[scores.nivel_riesgo == "critico", "id_vendedor"]
+    )
+    nuevo_estado: dict[str, str | None] = {}
+    for vid in criticos_ids:
+        if vid in alertados_ids:
+            nuevo_estado[vid] = ahora_ts        # se alertó ahora → actualizar
+        else:
+            nuevo_estado[vid] = prev.get(vid)   # sigue crítico pero no se alertó → conservar
+
     estado = {
-        "criticos": criticos,
-        "ultima_ejecucion": datetime.now().isoformat(timespec="seconds"),
+        "criticos": nuevo_estado,
+        "ultima_ejecucion": ahora_ts,
     }
     os.makedirs(os.path.dirname(ESTADO_PATH), exist_ok=True)
     with open(ESTADO_PATH, "w") as f:
@@ -69,14 +95,31 @@ def guardar_estado(scores: pd.DataFrame) -> None:
 
 # ── Detección ──────────────────────────────────────────────────────────────────
 
-def detectar_nuevos_criticos(scores: pd.DataFrame, estado: dict) -> pd.DataFrame:
+def detectar_nuevos_criticos(scores: pd.DataFrame, estado: dict,
+                             dias_realerta: int = 7) -> pd.DataFrame:
     """
-    Retorna los vendors que pasaron a crítico desde el último chequeo.
+    Retorna los vendors que hay que alertar en este run:
+    - Vendedores que acaban de llegar a crítico (no estaban en estado previo)
+    - Vendedores que siguen críticos y pasaron `dias_realerta` días desde la última alerta
+
     Si no hay estado previo (primer run), alerta sobre todos los críticos actuales.
     """
-    criticos_previos = set(estado.get("criticos", []))
-    criticos_ahora   = scores[scores.nivel_riesgo == "critico"]
-    return criticos_ahora[~criticos_ahora["id_vendedor"].isin(criticos_previos)].copy()
+    criticos_prev = estado.get("criticos", {})   # {str(id): "ISO datetime" | None}
+    criticos_ahora = scores[scores.nivel_riesgo == "critico"].copy()
+    ahora = datetime.now()
+
+    def _debe_alertar(vid: int) -> bool:
+        key = str(vid)
+        if key not in criticos_prev:
+            return True   # nuevo crítico
+        ultima_str = criticos_prev[key]
+        if ultima_str is None:
+            return True   # estado migrado sin timestamp → alertar
+        ultima = datetime.fromisoformat(ultima_str)
+        return (ahora - ultima).days >= dias_realerta
+
+    mask = criticos_ahora["id_vendedor"].apply(lambda v: _debe_alertar(int(v)))
+    return criticos_ahora[mask].copy()
 
 
 # ── Formato Teams ──────────────────────────────────────────────────────────────

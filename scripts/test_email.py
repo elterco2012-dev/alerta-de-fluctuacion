@@ -17,7 +17,7 @@ except ImportError:
             os.environ.setdefault(_k.strip(), _v.strip())
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from alertas import _email_html, enviar_email_outlook
+from alertas import _email_html, enviar_email_outlook, _buscar_outlook_clasico, _obtener_outlook
 import pandas as pd
 
 alert_to  = [e.strip() for e in os.getenv("ALERT_TO", "").split(",") if e.strip()]
@@ -60,8 +60,19 @@ except ImportError:
     win32com = None
 
 if 'win32com' in dir() and win32com is not None:
+    exe = _buscar_outlook_clasico()
+    if exe:
+        print(f"  Outlook clásico encontrado: {exe}")
+    else:
+        print("  ADVERTENCIA: no se encontró OUTLOOK.EXE clásico en rutas conocidas.")
     try:
-        enviar_email_outlook(alert_to, vendedor_prueba)
+        ol = _obtener_outlook(_verbose=True)
+        n = len(vendedor_prueba)
+        mail = ol.CreateItem(0)
+        mail.To = "; ".join(alert_to)
+        mail.Subject = f"[Wurth] 🔴 PRUEBA — alerta de rotación {__import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        mail.HTMLBody = _email_html(vendedor_prueba)
+        mail.Send()
         print("  Email enviado via Outlook COM. Revisa tu bandeja.")
         sys.exit(0)
     except Exception as e:

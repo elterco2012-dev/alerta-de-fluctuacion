@@ -257,28 +257,13 @@ def _email_html(nuevos: pd.DataFrame) -> str:
 
 def _buscar_outlook_clasico() -> str | None:
     """
-    Devuelve la ruta del OUTLOOK.EXE clásico, o None si no lo encuentra.
-    El 'nuevo Outlook' NO tiene COM; necesitamos el ejecutable clásico.
-    Busca primero en el registro (App Paths) y luego en rutas conocidas.
-    """
-    # 1. Registro de Windows — la fuente más confiable
-    try:
-        import winreg
-        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-            try:
-                with winreg.OpenKey(
-                    hive,
-                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE",
-                ) as k:
-                    ruta = winreg.QueryValue(k, None)
-                    if ruta and os.path.exists(ruta):
-                        return ruta
-            except OSError:
-                continue
-    except Exception:
-        pass
+    Devuelve la ruta del OUTLOOK.EXE clásico de Office, o None si no lo encuentra.
+    El 'nuevo Outlook' no soporta COM; necesitamos el OUTLOOK.EXE del Office clásico.
 
-    # 2. Rutas típicas de instalación (Office 2016/2019/365, 32 y 64 bits)
+    IMPORTANTE: no usa App Paths del registro porque puede apuntar al nuevo Outlook.
+    Busca directamente en los directorios de instalación de Office.
+    """
+    # Rutas de Office clásico (Office 2016/2019/365, 32 y 64 bits)
     patrones = [
         r"C:\Program Files\Microsoft Office\root\Office*\OUTLOOK.EXE",
         r"C:\Program Files (x86)\Microsoft Office\root\Office*\OUTLOOK.EXE",
@@ -289,18 +274,35 @@ def _buscar_outlook_clasico() -> str | None:
         for ruta in glob.glob(patron):
             if os.path.exists(ruta):
                 return ruta
+
+    # Fallback: registro (podría apuntar al nuevo, pero vale intentar)
+    try:
+        import winreg
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(
+                    hive,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE",
+                ) as k:
+                    ruta = winreg.QueryValue(k, None).strip('"')
+                    if ruta and os.path.exists(ruta):
+                        return ruta
+            except OSError:
+                continue
+    except Exception:
+        pass
     return None
 
 
-def _obtener_outlook(timeout: int = 60):
+def _obtener_outlook(timeout: int = 90, _verbose: bool = False):
     """
     Devuelve un objeto COM de Outlook clásico listo para usar.
 
-    Estrategia (sirve aunque uses el 'nuevo Outlook' a diario):
-      1. Conectar a una instancia de Outlook clásico ya abierta.
-      2. Si no hay, Dispatch directo (lanza el clásico si está registrado).
-      3. Si falla (típico cuando el 'nuevo Outlook' es el default), buscar el
-         OUTLOOK.EXE clásico, lanzarlo en segundo plano y reintentar hasta `timeout`.
+    Estrategia:
+      1. Conectar a una instancia ya corriendo (GetActiveObject).
+      2. Si no hay, localizar OUTLOOK.EXE clásico, lanzarlo SIN flags y esperar
+         hasta `timeout` segundos a que registre el servidor COM.
+         (No usamos /recycle: ese flag puede ceder el control al nuevo Outlook.)
     """
     import pythoncom
     import win32com.client
@@ -312,32 +314,29 @@ def _obtener_outlook(timeout: int = 60):
     except Exception:
         pass
 
-    # 2. Dispatch directo
-    try:
-        return win32com.client.Dispatch("Outlook.Application")
-    except Exception:
-        pass
-
-    # 3. Lanzar el clásico explícitamente y reintentar
+    # 2. Lanzar el clásico explícitamente
     exe = _buscar_outlook_clasico()
     if not exe:
         raise RuntimeError(
             "No se encontró el Outlook clásico (OUTLOOK.EXE). El 'nuevo Outlook' "
-            "no soporta automatización; instalá/conservá el Outlook clásico."
+            "no soporta automatización COM."
         )
-    subprocess.Popen([exe, "/recycle"])
-    deadline = time.time() + timeout
+    if _verbose:
+        print(f"  Lanzando: {exe}")
+    # DETACHED_PROCESS: corre en segundo plano sin consola propia
+    subprocess.Popen([exe], creationflags=0x00000008)  # DETACHED_PROCESS
+    # Outlook tarda ~15s en registrar el servidor COM; esperamos con backoff
+    esperas = [5, 5, 5, 5, 5, 10, 10, 10, 10, 10, 15]  # suma = 90s
     ultimo_err = None
-    while time.time() < deadline:
-        time.sleep(3)
-        for getter in (lambda: win32com.client.GetActiveObject("Outlook.Application"),
-                       lambda: win32com.client.Dispatch("Outlook.Application")):
-            try:
-                return getter()
-            except Exception as e:
-                ultimo_err = e
+    for espera in esperas:
+        time.sleep(espera)
+        try:
+            ol = win32com.client.GetActiveObject("Outlook.Application")
+            return ol
+        except Exception as e:
+            ultimo_err = e
     raise RuntimeError(
-        f"Se lanzó el Outlook clásico pero no respondió en {timeout}s. "
+        f"Se lanzó el Outlook clásico ({exe}) pero no respondió en {timeout}s. "
         f"Último error: {ultimo_err}"
     )
 

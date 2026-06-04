@@ -33,30 +33,26 @@ MESES_RAMPA_NUEVO      = 2      # meses hasta que el nuevo vendedor alcanza prod
 PCT_PERDIDA_COBERTURA  = 0.08   # % cartera que se pierde durante cobertura por televentas
 PCT_PERDIDA_RAMPA      = 0.12   # % cartera que se pierde en rampa del nuevo vendedor
 
-# Fallbacks si no hay datos reales de plan
-_PLAN_FALLBACK_VIAJANTE   = 17_000_000
-_PLAN_FALLBACK_TELEVENTAS =  6_000_000
+# Plan mensual escalonado (igual para Viajante y Televentas en los primeros 6 meses).
+# Para el cálculo de pérdida de cartera: se usa el plan del vendedor que se va,
+# no un promedio de todos los vendedores del tipo.
+_PLAN_VIAJANTE_VETERANO   = 20_740_007   # mes 7+ de calle
+_PLAN_TELEVENTAS_VETERANO = 16_351_480   # mes 7+ de televentas
+_PLAN_ESCALON = {
+    (1, 2): 9_450_000,
+    (3, 4): 11_550_000,
+    (5, 6): 13_650_000,
+}
 
 
-@st.cache_data(ttl=600)
-def _cargar_plan_promedio() -> dict:
-    """Calcula el plan mensual promedio por tipo desde los últimos 3 meses con datos."""
-    con = get_connection()
-    df = pd.read_sql("""
-        SELECT v.tipo, AVG(vm.plan) as plan_prom
-        FROM ventas_mensual vm
-        JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
-        WHERE vm.plan > 0
-          AND vm.anio * 12 + vm.mes >= (
-              SELECT MAX(anio * 12 + mes) - 2 FROM ventas_mensual
-          )
-        GROUP BY v.tipo
-    """, con)
-    con.close()
-    result = {}
-    for _, row in df.iterrows():
-        result[row["tipo"]] = int(row["plan_prom"])
-    return result
+def _plan_por_tenure(tipo: str, meses_activo: int) -> int:
+    """Plan mensual del vendedor según su antigüedad al momento de calcular el costo."""
+    if meses_activo >= 7:
+        return _PLAN_TELEVENTAS_VETERANO if "Televentas" in tipo else _PLAN_VIAJANTE_VETERANO
+    for (lo, hi), plan in _PLAN_ESCALON.items():
+        if lo <= meses_activo <= hi:
+            return plan
+    return _PLAN_ESCALON[(5, 6)]   # fallback conservador para mes 6 exacto
 
 
 @st.cache_data(ttl=600)
@@ -93,22 +89,18 @@ def salario_mensual(tipo: str, meses_activo: int) -> int:
     return SALARIO_PRODUCTIVO
 
 
-def calcular_costo_rotacion(row, planes: dict | None = None) -> dict:
+def calcular_costo_rotacion(row) -> dict:
     """Calcula costo estimado de baja para un vendedor."""
-    sal = salario_mensual(row["tipo"], row["meses_activo"])
-
-    # Plan real del período o fallback
-    if planes:
-        plan = planes.get(row["tipo"]) or (
-            _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
-        )
-    else:
-        plan = _PLAN_FALLBACK_TELEVENTAS if "Televentas" in row["tipo"] else _PLAN_FALLBACK_VIAJANTE
+    sal  = salario_mensual(row["tipo"], row["meses_activo"])
+    plan = _plan_por_tenure(row["tipo"], int(row["meses_activo"]))
 
     # Costo directo
     costo_salario_perdido = sal * 1                        # último mes improductivo
     costo_reclutamiento   = sal * 1                        # publicación + entrevistas
-    costo_induccion_nuevo = SALARIO_INDUCCION * int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
+    # Inducción: sueldo del reemplazo mientras YA está contratado pero todavía no
+    # rinde (rampa). NO se cuenta MESES_HASTA_NUEVO: en la vacante no se paga sueldo
+    # (esa pérdida ya está en perdida_cobertura). Contarla acá duplicaba el costo.
+    costo_induccion_nuevo = SALARIO_INDUCCION * MESES_RAMPA_NUEVO
 
     # Costo indirecto: cobertura televentas + rampa nuevo (con modelo de cobertura Wurth)
     perdida_cobertura = plan * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
@@ -208,8 +200,7 @@ def _get_scores():
     return calcular_scores()
 
 with st.spinner("Calculando..."):
-    df     = _get_scores()
-    planes = _cargar_plan_promedio()
+    df = _get_scores()
 
 if df.empty:
     st.warning("No hay datos disponibles.")
@@ -220,8 +211,7 @@ if df.empty:
 # ══════════════════════════════════════════════════════════════════════════════
 bajas = _cargar_bajas_historicas()
 if not bajas.empty:
-    costos_h = bajas.apply(lambda r: calcular_costo_rotacion(r, planes),
-                           axis=1, result_type="expand")
+    costos_h = bajas.apply(calcular_costo_rotacion, axis=1, result_type="expand")
     bajas = pd.concat([bajas, costos_h], axis=1)
 
     # Ventana relativa a la baja más reciente de los datos (robusto a datos no-live)
@@ -310,7 +300,7 @@ if not bajas.empty:
                "si se van los vendedores activos en riesgo.")
 
 # Calcular costo por vendedor usando plan real del período actual
-costos = df.apply(lambda row: calcular_costo_rotacion(row, planes), axis=1, result_type="expand")
+costos = df.apply(calcular_costo_rotacion, axis=1, result_type="expand")
 df = pd.concat([df, costos], axis=1)
 
 # ── Filtros ────────────────────────────────────────────────────────────────────
@@ -472,24 +462,25 @@ else:
 
 
 # ── Nota metodológica ──────────────────────────────────────────────────────────
-_plan_v  = planes.get("Viajante",   _PLAN_FALLBACK_VIAJANTE)
-_plan_tv = planes.get("Televentas", _PLAN_FALLBACK_TELEVENTAS)
-_meses_ind = int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
+# Ejemplo: Televentas veterano (mes 7+) y Viajante nuevo (mes 1-2)
+_plan_tv_vet = _PLAN_TELEVENTAS_VETERANO
+_plan_v_nuevo = _PLAN_ESCALON[(1, 2)]
+_meses_ind  = MESES_RAMPA_NUEVO
 _tot_dir_tv = SALARIO_TELEVENTAS * 2 + SALARIO_INDUCCION * _meses_ind
-_perd_cob   = _plan_tv * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
-_perd_rampa = _plan_tv * MESES_RAMPA_NUEVO  * PCT_PERDIDA_RAMPA
+_perd_cob   = _plan_tv_vet * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
+_perd_rampa = _plan_tv_vet * MESES_RAMPA_NUEVO  * PCT_PERDIDA_RAMPA
 
 st.markdown("---")
 with st.expander("Metodología de cálculo — ¿de dónde salen los números?"):
     st.caption(
         "Los salarios se actualizan mensualmente en pages/Costo_Rotacion.py. "
-        "El plan mensual se calcula automáticamente del promedio real de los últimos 3 meses en Informix. "
+        "El plan se asigna por antigüedad del vendedor (escalón real, no promedio del tipo). "
         "El modelo de cobertura refleja que televentas actúa de cobertura mientras se contrata el reemplazo."
     )
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"""
-**Costos directos — ejemplo Televentas:**
+**Costos directos — ejemplo Televentas veterano (7+ meses):**
 
 | Concepto | Cálculo | Total |
 |---|---|---|
@@ -499,26 +490,24 @@ with st.expander("Metodología de cálculo — ¿de dónde salen los números?")
 | **Total directo** | | **{_fmt_pesos(_tot_dir_tv)}** |
 
 **Salarios base:**
-- Viajante en inducción (0-6m): {_fmt_pesos(SALARIO_INDUCCION)}/mes
-- Viajante productivo (7+m): {_fmt_pesos(SALARIO_PRODUCTIVO)}/mes
-- Televentas CCT: {_fmt_pesos(SALARIO_TELEVENTAS)}/mes
+- Viajante / Televentas meses 1-2: {_fmt_pesos(_PLAN_ESCALON[(1,2)])} plan
+- Viajante / Televentas meses 3-4: {_fmt_pesos(_PLAN_ESCALON[(3,4)])} plan
+- Viajante / Televentas meses 5-6: {_fmt_pesos(_PLAN_ESCALON[(5,6)])} plan
+- Viajante veterano (7+m): {_fmt_pesos(_PLAN_VIAJANTE_VETERANO)} plan
+- Televentas veterano (7+m): {_fmt_pesos(_PLAN_TELEVENTAS_VETERANO)} plan
 """)
     with col2:
         st.markdown(f"""
 **Costo indirecto — pérdida parcial de cartera (modelo con cobertura Wurth):**
 
 Cuando un vendedor se va, **televentas cubre la zona** hasta que ingresa el reemplazo.
-La pérdida es menor que en modelos sin cobertura, pero no es cero:
+La pérdida se calcula sobre el **plan del vendedor que se fue** (no un promedio del tipo):
 
-| Período | Duración | Pérdida estimada | Total |
+| Período | Duración | Pérdida estimada | Ejemplo Televentas vet. |
 |---|---|---|---|
 | Cobertura televentas | {MESES_HASTA_NUEVO:.1f} m | {int(PCT_PERDIDA_COBERTURA*100)}% del plan/mes | {_fmt_pesos(_perd_cob)} |
 | Rampa nuevo vendedor | {MESES_RAMPA_NUEVO:.0f} m | {int(PCT_PERDIDA_RAMPA*100)}% del plan/mes | {_fmt_pesos(_perd_rampa)} |
 | **Pérdida total** | | | **{_fmt_pesos(_perd_cob + _perd_rampa)}** |
-
-**Plan promedio actual (últimos 3 meses):**
-- Viajante: {_fmt_pesos(_plan_v)}/mes
-- Televentas: {_fmt_pesos(_plan_tv)}/mes
 
 *Ajustar PCT\\_PERDIDA\\_COBERTURA y PCT\\_PERDIDA\\_RAMPA según experiencia histórica.*
 """)

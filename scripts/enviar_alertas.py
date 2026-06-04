@@ -1,24 +1,34 @@
 """
 enviar_alertas.py
 -----------------
-Detecta vendedores que subieron a nivel crítico y envía email.
-Requiere Python 64-bit (tiene pandas). Ejecutar DESPUÉS de sincronizar_informix.py.
+Detecta vendedores que subieron a nivel crítico (o siguen críticos hace 7+ días)
+y envía email. Requiere Python 64-bit. Ejecutar DESPUÉS de sincronizar_informix.py.
+
+Configuración: crear un archivo .env en la raíz del proyecto (ver .env.example).
 """
 
 import os
 import sys
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-except ImportError:
-    pass
+# Cargar .env si existe (acepta tanto python-dotenv instalado como carga manual)
+_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(_env_path):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        for _line in open(_env_path, encoding="utf-8"):
+            if "=" in _line and not _line.strip().startswith("#"):
+                _k, _v = _line.strip().split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from score_engine import calcular_scores
 from alertas import (cargar_estado, detectar_nuevos_criticos,
                      guardar_estado, enviar_email)
+
+DIAS_REALERTA = 7   # re-alertar si sigue crítico después de N días
 
 smtp_user     = os.getenv("SMTP_USER", "")
 smtp_pwd      = os.getenv("SMTP_PWD", "")
@@ -30,7 +40,7 @@ tiene_teams  = bool(teams_webhook)
 
 if not tiene_email and not tiene_teams:
     print("Sin canales de alerta configurados.")
-    print("Agregá TEAMS_WEBHOOK y/o SMTP_USER + SMTP_PWD + ALERT_TO al .env")
+    print("Creá el archivo .env (ver .env.example) con SMTP_USER, SMTP_PWD y ALERT_TO.")
     sys.exit(0)
 
 print("=" * 55)
@@ -39,15 +49,17 @@ print("=" * 55)
 
 scores = calcular_scores(meses_tendencia=3)
 estado = cargar_estado()
-nuevos = detectar_nuevos_criticos(scores, estado)
+nuevos = detectar_nuevos_criticos(scores, estado, dias_realerta=DIAS_REALERTA)
 
 if nuevos.empty:
-    print("Sin nuevos vendedores críticos — no se envían alertas.")
+    print("Sin alertas nuevas (ningún crítico nuevo ni re-alerta pendiente).")
 else:
-    print(f"{len(nuevos)} nuevo(s) en nivel crítico:")
+    print(f"{len(nuevos)} vendedor(es) a alertar:")
     for _, r in nuevos.iterrows():
         nombre = r.get("nombre") or f"ID {int(r['id_vendedor'])}"
-        print(f"  · {nombre} ({int(r['id_vendedor'])}) — Score {r['score']} — {r['supervisor']}")
+        print(f"  · {nombre} ({int(r['id_vendedor'])}) — Score {r['score']:.1f} — {r['supervisor']}")
+
+    alertados_ids = set()
 
     if tiene_teams:
         from alertas import enviar_teams
@@ -69,9 +81,12 @@ else:
                 "to":       alert_to,
             }, nuevos)
             print("Email OK.")
+            alertados_ids = set(str(int(v)) for v in nuevos["id_vendedor"])
         except Exception as e:
             print(f"ERROR email: {e}")
+            print("  No se actualiza el estado — el próximo run lo reintentará.")
             sys.exit(1)
 
-guardar_estado(scores)
+    guardar_estado(scores, alertados_ids)
+
 print("\nListo.")

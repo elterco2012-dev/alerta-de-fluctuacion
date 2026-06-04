@@ -15,6 +15,9 @@ Uso típico (desde enviar_alertas.py):
 import json
 import smtplib
 import os
+import glob
+import time
+import subprocess
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -36,31 +39,57 @@ SEÑAL_CORTA = {
     "% Plan cayendo 3 meses seguidos":    "caída 3m",
     "% Plan < 80% promedio últimos meses":"plan<80%",
     "Días sin venta > 3 en promedio":     "días cero↑",
-    "< 60% de cartera activa":            "inactivos↑",
-    "Cobranza real < 90% de teórica":     "cobranza baja",
     "En ventana crítica mes 1-3":         "onboarding",
     "En ventana crítica mes 4-6":         "mes 4-6",
     "Grupo con alta rotación histórica":  "zona quemada",
-    "Sin clientes nuevos últimos 2 meses":"clientes L:0",
+    "Sin clientes nuevos últimos 2 meses":"sin nuevos",
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": "ausencias↑",
+    "Balanza clientes negativa 2+ meses consecutivos": "balanza−",
+    "Ticket promedio cae > 5% por mes":   "ticket↓",
+    "Supervisor no acompañó en ventana crítica 1-6": "sin acomp.",
 }
 
 
 # ── Estado persistido ──────────────────────────────────────────────────────────
+# Formato: {"criticos": {"1234": "2026-06-04T10:00:00", ...}, "ultima_ejecucion": "..."}
+# La clave es el id_vendedor (str), el valor es el timestamp de la ÚLTIMA alerta enviada.
 
 def cargar_estado() -> dict:
-    """Lee el estado de la última ejecución (qué vendors ya eran críticos)."""
+    """Lee el estado de la última ejecución."""
     if not os.path.exists(ESTADO_PATH):
-        return {"criticos": [], "ultima_ejecucion": None}
+        return {"criticos": {}, "ultima_ejecucion": None}
     with open(ESTADO_PATH) as f:
-        return json.load(f)
+        estado = json.load(f)
+    # Migración: formato viejo era una lista, nuevo es un dict con timestamps.
+    if isinstance(estado.get("criticos"), list):
+        estado["criticos"] = {str(v): None for v in estado["criticos"]}
+    return estado
 
 
-def guardar_estado(scores: pd.DataFrame) -> None:
-    """Persiste el conjunto de vendors críticos del run actual."""
-    criticos = scores[scores.nivel_riesgo == "critico"]["id_vendedor"].astype(int).tolist()
+def guardar_estado(scores: pd.DataFrame, alertados_ids: set) -> None:
+    """
+    Persiste el estado después del run.
+    - Vendedores que siguen críticos pero NO se alertaron esta vez → mantener timestamp anterior
+    - Vendedores que se alertaron → actualizar timestamp a ahora
+    - Vendedores que bajaron de crítico → eliminar
+    """
+    estado_prev = cargar_estado()
+    prev        = estado_prev.get("criticos", {})
+    ahora_ts    = datetime.now().isoformat(timespec="seconds")
+
+    criticos_ids = set(
+        str(int(v)) for v in scores.loc[scores.nivel_riesgo == "critico", "id_vendedor"]
+    )
+    nuevo_estado: dict[str, str | None] = {}
+    for vid in criticos_ids:
+        if vid in alertados_ids:
+            nuevo_estado[vid] = ahora_ts        # se alertó ahora → actualizar
+        else:
+            nuevo_estado[vid] = prev.get(vid)   # sigue crítico pero no se alertó → conservar
+
     estado = {
-        "criticos": criticos,
-        "ultima_ejecucion": datetime.now().isoformat(timespec="seconds"),
+        "criticos": nuevo_estado,
+        "ultima_ejecucion": ahora_ts,
     }
     os.makedirs(os.path.dirname(ESTADO_PATH), exist_ok=True)
     with open(ESTADO_PATH, "w") as f:
@@ -69,14 +98,31 @@ def guardar_estado(scores: pd.DataFrame) -> None:
 
 # ── Detección ──────────────────────────────────────────────────────────────────
 
-def detectar_nuevos_criticos(scores: pd.DataFrame, estado: dict) -> pd.DataFrame:
+def detectar_nuevos_criticos(scores: pd.DataFrame, estado: dict,
+                             dias_realerta: int = 7) -> pd.DataFrame:
     """
-    Retorna los vendors que pasaron a crítico desde el último chequeo.
+    Retorna los vendors que hay que alertar en este run:
+    - Vendedores que acaban de llegar a crítico (no estaban en estado previo)
+    - Vendedores que siguen críticos y pasaron `dias_realerta` días desde la última alerta
+
     Si no hay estado previo (primer run), alerta sobre todos los críticos actuales.
     """
-    criticos_previos = set(estado.get("criticos", []))
-    criticos_ahora   = scores[scores.nivel_riesgo == "critico"]
-    return criticos_ahora[~criticos_ahora["id_vendedor"].isin(criticos_previos)].copy()
+    criticos_prev = estado.get("criticos", {})   # {str(id): "ISO datetime" | None}
+    criticos_ahora = scores[scores.nivel_riesgo == "critico"].copy()
+    ahora = datetime.now()
+
+    def _debe_alertar(vid: int) -> bool:
+        key = str(vid)
+        if key not in criticos_prev:
+            return True   # nuevo crítico
+        ultima_str = criticos_prev[key]
+        if ultima_str is None:
+            return True   # estado migrado sin timestamp → alertar
+        ultima = datetime.fromisoformat(ultima_str)
+        return (ahora - ultima).days >= dias_realerta
+
+    mask = criticos_ahora["id_vendedor"].apply(lambda v: _debe_alertar(int(v)))
+    return criticos_ahora[mask].copy()
 
 
 # ── Formato Teams ──────────────────────────────────────────────────────────────
@@ -209,14 +255,100 @@ def _email_html(nuevos: pd.DataFrame) -> str:
     </body></html>"""
 
 
+def _buscar_outlook_clasico() -> str | None:
+    """
+    Devuelve la ruta del OUTLOOK.EXE clásico de Office, o None si no lo encuentra.
+    El 'nuevo Outlook' no soporta COM; necesitamos el OUTLOOK.EXE del Office clásico.
+
+    IMPORTANTE: no usa App Paths del registro porque puede apuntar al nuevo Outlook.
+    Busca directamente en los directorios de instalación de Office.
+    """
+    # Rutas de Office clásico (Office 2016/2019/365, 32 y 64 bits)
+    patrones = [
+        r"C:\Program Files\Microsoft Office\root\Office*\OUTLOOK.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office*\OUTLOOK.EXE",
+        r"C:\Program Files\Microsoft Office\Office*\OUTLOOK.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office*\OUTLOOK.EXE",
+    ]
+    for patron in patrones:
+        for ruta in glob.glob(patron):
+            if os.path.exists(ruta):
+                return ruta
+
+    # Fallback: registro (podría apuntar al nuevo, pero vale intentar)
+    try:
+        import winreg
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(
+                    hive,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE",
+                ) as k:
+                    ruta = winreg.QueryValue(k, None).strip('"')
+                    if ruta and os.path.exists(ruta):
+                        return ruta
+            except OSError:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _obtener_outlook(timeout: int = 90, _verbose: bool = False):
+    """
+    Devuelve un objeto COM de Outlook clásico listo para usar.
+
+    Estrategia:
+      1. Conectar a una instancia ya corriendo (GetActiveObject).
+      2. Si no hay, localizar OUTLOOK.EXE clásico, lanzarlo SIN flags y esperar
+         hasta `timeout` segundos a que registre el servidor COM.
+         (No usamos /recycle: ese flag puede ceder el control al nuevo Outlook.)
+    """
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+
+    # 1. ¿Hay un Outlook clásico ya corriendo?
+    try:
+        return win32com.client.GetActiveObject("Outlook.Application")
+    except Exception:
+        pass
+
+    # 2. Lanzar el clásico explícitamente
+    exe = _buscar_outlook_clasico()
+    if not exe:
+        raise RuntimeError(
+            "No se encontró el Outlook clásico (OUTLOOK.EXE). El 'nuevo Outlook' "
+            "no soporta automatización COM."
+        )
+    if _verbose:
+        print(f"  Lanzando: {exe}")
+    # DETACHED_PROCESS: corre en segundo plano sin consola propia
+    subprocess.Popen([exe], creationflags=0x00000008)  # DETACHED_PROCESS
+    # Outlook tarda ~15s en registrar el servidor COM; esperamos con backoff
+    esperas = [5, 5, 5, 5, 5, 10, 10, 10, 10, 10, 15]  # suma = 90s
+    ultimo_err = None
+    for espera in esperas:
+        time.sleep(espera)
+        try:
+            ol = win32com.client.GetActiveObject("Outlook.Application")
+            return ol
+        except Exception as e:
+            ultimo_err = e
+    raise RuntimeError(
+        f"Se lanzó el Outlook clásico ({exe}) pero no respondió en {timeout}s. "
+        f"Último error: {ultimo_err}"
+    )
+
+
 def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
     """
-    Envía alerta usando Outlook instalado via COM (win32com).
-    No requiere contraseña ni SMTP AUTH — usa la sesión de Outlook activa.
+    Envía alerta usando el Outlook clásico via COM (win32com).
+    No requiere contraseña ni SMTP AUTH. Si el clásico no está abierto, lo
+    levanta solo en segundo plano (ver `_obtener_outlook`).
     """
-    import win32com.client
     n = len(nuevos)
-    outlook = win32com.client.Dispatch("Outlook.Application")
+    outlook = _obtener_outlook()
     mail = outlook.CreateItem(0)
     mail.To = "; ".join(to)
     mail.Subject = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"
@@ -228,15 +360,19 @@ def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
 def enviar_email(smtp_config: dict, nuevos: pd.DataFrame) -> bool:
     """
     Envía alerta por email. Intenta primero via Outlook COM (sin SMTP AUTH),
-    con fallback a SMTP si Outlook no está disponible.
+    con fallback a SMTP solo si pywin32 no está instalado.
+
+    Si win32com está instalado pero Outlook falla (ej: no está abierto), el error
+    se propaga — no se intenta SMTP porque el tenant tiene SMTP AUTH deshabilitado.
     """
     to = smtp_config.get("to", [])
     try:
+        import win32com.client  # noqa: F401 — solo para detectar si está instalado
         return enviar_email_outlook(to, nuevos)
-    except Exception:
-        pass
+    except ImportError:
+        pass   # pywin32 no instalado → caer a SMTP
 
-    # Fallback SMTP
+    # Fallback SMTP (solo cuando win32com no está disponible)
     n = len(nuevos)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"

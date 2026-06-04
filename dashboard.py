@@ -245,6 +245,20 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom, delta_map, _ts_datos = cargar_datos()
 
+# ── Control de acceso por rol ─────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso()   # cualquier rol puede entrar acá
+
+if _usuario["rol"] == "supervisor":
+    # El supervisor no tiene vista global: va directo a su zona.
+    st.switch_page("pages/Supervisor.py")
+
+# Director: filtra scores y grupos a sus supervisores.
+if not _usuario["ve_todo"] and _usuario["supervisores"]:
+    _sups = set(_usuario["supervisores"])
+    scores_df  = scores_df[scores_df["supervisor"].isin(_sups)]
+    grupos_df  = grupos_df[grupos_df["supervisor"].isin(_sups)]
+
 # ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
 _sup_stats = (
     scores_df[scores_df["supervisor"].notna() & (scores_df["supervisor"] != "")]
@@ -260,6 +274,7 @@ _avg_por_sup          = _sup_stats["n_vendedores"].mean() if _n_supervisores > 0
 _sup_con_muchos_nuevos = int((_sup_stats["n_onboarding"] >= 3).sum())
 
 # ── Encabezado + Navegación ────────────────────────────────────────────────────
+_acc.barra_usuario_st(_usuario)
 st.markdown(page_header("Wurth Argentina &mdash; Alertas de Rotación", "/", sub=fresh(_ts_datos)),
             unsafe_allow_html=True)
 
@@ -367,9 +382,10 @@ else:
     df_extra = df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
-def _tabla_rows(subset, delta_map=None):
+def _tabla_rows(subset, delta_map=None, usuario_clave=""):
     if delta_map is None:
         delta_map = {}
+    _u_qs = f"&usuario={usuario_clave}" if usuario_clave else ""
     rows = ""
     for _, r in subset.iterrows():
         vid    = int(r["id_vendedor"])
@@ -381,7 +397,7 @@ def _tabla_rows(subset, delta_map=None):
         rows += f"""
     <tr>
       <td>
-        <div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+        <div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
         <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
@@ -415,11 +431,11 @@ def _tabla_html(rows_html):
 </table>
 </div>"""
 
-st.markdown(_tabla_html(_tabla_rows(df_show, delta_map)), unsafe_allow_html=True)
+st.markdown(_tabla_html(_tabla_rows(df_show, delta_map, _usuario["clave"])), unsafe_allow_html=True)
 
 if not df_extra.empty:
     with st.expander(f"Ver {len(df_extra)} vendedores más"):
-        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map)), unsafe_allow_html=True)
+        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map, _usuario["clave"])), unsafe_allow_html=True)
 
 if busqueda_sc:
     st.caption(f"{len(df_show)} vendedores encontrados.")

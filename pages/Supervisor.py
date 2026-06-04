@@ -62,16 +62,21 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+# Mapea cada señal activa a un pill corto. Las señales deshabilitadas (peso=0:
+# cartera, cobranza, llamadas, visitas) ya no llegan en señales_activas — el
+# motor las filtra — así que no necesitan entrada acá.
 SEÑAL_TAGS = {
-    "% Plan cayendo 3 meses seguidos":    ("caída 3m",     "red"),
-    "% Plan < 80% promedio últimos meses":("plan<80%",     "orange"),
-    "Días sin venta > 3 en promedio":     ("días cero↑",   "red"),
-    "< 60% de cartera activa":            ("inactivos↑",   "orange"),
-    "Cobranza real < 90% de teórica":     ("cobranza baja","orange"),
-    "En ventana crítica mes 1-3":         ("onboarding",   "red"),
-    "En ventana crítica mes 4-6":         ("mes 4-6",      "orange"),
-    "Grupo con alta rotación histórica":  ("zona quemada", "orange"),
-    "Sin clientes nuevos últimos 2 meses":("clientes L:0", "yellow"),
+    "% Plan cayendo 3 meses seguidos":                              ("caída 3m",     "red"),
+    "% Plan < 80% promedio últimos meses":                          ("plan<80%",     "orange"),
+    "Días sin venta > 3 en promedio":                              ("días cero↑",   "red"),
+    "En ventana crítica mes 1-3":                                  ("onboarding",   "red"),
+    "En ventana crítica mes 4-6":                                  ("mes 4-6",      "orange"),
+    "Grupo con alta rotación histórica":                           ("zona quemada", "orange"),
+    "Sin clientes nuevos últimos 2 meses":                         ("clientes L:0", "yellow"),
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑",   "red"),
+    "Balanza clientes negativa 2+ meses consecutivos":             ("balanza −",    "orange"),
+    "Ticket promedio cae > 5% por mes":                            ("ticket↓",      "orange"),
+    "Supervisor no acompañó en ventana crítica 1-6":              ("sin acomp.",   "yellow"),
 }
 
 def _pills(tags):
@@ -143,17 +148,92 @@ def cargar_datos():
 
 scores_df, grupos_df, sparks, delta_map, _ts_datos = cargar_datos()
 
+# ── Control de acceso por rol ────────────────────────────────────────────────
+# Cada usuario ve un alcance distinto: el supervisor solo su zona, el director
+# las zonas de sus supervisores, RRHH/gerencia toda la empresa. Sin login con
+# clave: el usuario se elige en un selector (ver src/acceso.py). La identidad
+# viaja en el query param ?usuario= para sobrevivir a los reruns y deep-links.
+import acceso
+
+_clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
+usuario = acceso.resolver(_clave)
+
+if usuario is None:
+    # Pantalla de identificación: elegir quién sos antes de ver nada.
+    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
+                unsafe_allow_html=True)
+    st.markdown("<div style='max-width:460px;margin-top:8px;'>", unsafe_allow_html=True)
+    st.markdown('<div class="sec-header">¿Quién está ingresando?</div>',
+                unsafe_allow_html=True)
+    st.caption("Cada usuario ve solo el alcance que le corresponde: un supervisor "
+               "su zona, un director sus supervisores, RRHH y gerencia toda la empresa.")
+    _users = acceso.listar_usuarios()
+    _opts  = {f"{u['etiqueta']}  ·  {acceso.ROL_LABEL[u['rol']]}": u["clave"]
+              for u in _users}
+    _sel = st.selectbox("Ingresá como…", list(_opts.keys()),
+                        index=None, placeholder="Elegí tu nombre / rol")
+    if st.button("Ingresar →", type="primary", disabled=_sel is None):
+        st.query_params["usuario"] = _opts[_sel]
+        st.query_params.pop("supervisor", None)
+        st.session_state.pop("_acc_usuario", None)
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+# Sincronizar sesión y URL.
+st.session_state["_acc_usuario"] = usuario["clave"]
+if "usuario" not in st.query_params:
+    st.query_params["usuario"] = usuario["clave"]
+
+def _barra_usuario():
+    """Chip con el usuario activo y botón para cambiar de identidad."""
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        st.markdown(
+            f"<div style='font-size:12px;color:#888;margin-bottom:6px;'>Ingresaste como "
+            f"<b style='color:#1a1a2e;'>{usuario['etiqueta']}</b> "
+            f"· {acceso.ROL_LABEL[usuario['rol']]}</div>",
+            unsafe_allow_html=True)
+    with c2:
+        if st.button("Cambiar usuario", key="logout"):
+            st.query_params.clear()
+            st.session_state.pop("_acc_usuario", None)
+            st.rerun()
+
 # ── Router ─────────────────────────────────────────────────────────────────────
 supervisor_sel = st.query_params.get("supervisor", None)
+
+# Un supervisor no tiene "landing": entra directo a su única zona.
+if supervisor_sel is None and usuario["rol"] == "supervisor":
+    supervisor_sel = usuario["supervisores"][0]
+
+# Nadie puede ver una zona fuera de su alcance (deep-link manipulado, etc.).
+if supervisor_sel is not None and not acceso.puede_ver(usuario, supervisor_sel):
+    _barra_usuario()
+    st.error(f"No tenés permiso para ver la zona de **{supervisor_sel}**.")
+    if st.button("← Volver a mis zonas"):
+        st.query_params.pop("supervisor", None)
+        st.rerun()
+    st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LANDING
 # ══════════════════════════════════════════════════════════════════════════════
 if not supervisor_sel:
-    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
-                unsafe_allow_html=True)
+    _barra_usuario()
+    _titulo = ("👤 Mis supervisores — Wurth Argentina"
+               if usuario["rol"] == "director"
+               else "👤 Por supervisor — Wurth Argentina")
+    st.markdown(page_header(_titulo, "/Supervisor"), unsafe_allow_html=True)
 
-    resumen = scores_df.groupby("supervisor").agg(
+    # Acotar a las zonas que el usuario tiene permitido ver.
+    scores_scope = (scores_df if usuario["ve_todo"]
+                    else scores_df[scores_df["supervisor"].isin(usuario["supervisores"])])
+    if scores_scope.empty:
+        st.info("No hay vendedores activos en tu alcance.")
+        st.stop()
+
+    resumen = scores_scope.groupby("supervisor").agg(
         activos  =("id_vendedor", "count"),
         criticos =("nivel_riesgo", lambda x: (x=="critico").sum()),
         altos    =("nivel_riesgo", lambda x: (x=="alto").sum()),
@@ -214,7 +294,7 @@ df_sup = scores_df[scores_df["supervisor"] == supervisor_sel]
 if df_sup.empty:
     st.error(f"No se encontró el supervisor: **{supervisor_sel}**")
     if st.button("← Volver"):
-        st.query_params.clear()
+        st.query_params.pop("supervisor", None)
         st.rerun()
     st.stop()
 
@@ -225,12 +305,21 @@ nivel_zona   = _zona_nivel(rb)
 perm_zona    = grupo_info["permanencia_promedio_meses"].values[0] if not grupo_info.empty else None
 perm_general = grupos_df["permanencia_promedio_meses"].mean()
 
-# Navegación
+# Navegación. El supervisor no tiene landing (una sola zona): su botón es
+# "Cambiar usuario". El director/staff vuelve al listado de zonas conservando
+# su identidad.
+_barra_usuario()
 nav_b, _ = st.columns([1, 5])
 with nav_b:
-    if st.button("← Todas las zonas"):
-        st.query_params.clear()
-        st.rerun()
+    if usuario["rol"] == "supervisor":
+        if st.button("← Cambiar usuario"):
+            st.query_params.clear()
+            st.rerun()
+    else:
+        _volver = "← Mis supervisores" if usuario["rol"] == "director" else "← Todas las zonas"
+        if st.button(_volver):
+            st.query_params.pop("supervisor", None)
+            st.rerun()
 st.markdown(page_header(f"👤 {supervisor_sel}", "/Supervisor", sub=fresh(_ts_datos)),
             unsafe_allow_html=True)
 
@@ -245,9 +334,14 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-if rb > 0.60:
-    st.warning(f"⚠️ **{nombre_grupo}** es una zona con alta rotación histórica. "
-               f"Los vendedores nuevos aquí tienen mayor probabilidad de irse antes de los 6 meses.")
+# Umbral alineado con la señal "grupo_quemado" del motor (riesgo_base > 0.40):
+# si los vendedores de esta zona reciben la señal de grupo quemado, el supervisor
+# tiene que ver la advertencia. Es la hipótesis central del proyecto.
+if rb > 0.40:
+    st.warning(f"⚠️ **{nombre_grupo}** es una zona con alta rotación histórica "
+               f"(riesgo base {rb:.0%}). Los vendedores nuevos aquí tienen mayor "
+               f"probabilidad de irse antes de los 6 meses, incluso sin deterioro "
+               f"individual visible. Priorizá el acompañamiento temprano.")
 
 # KPIs
 n_activos  = len(df_sup)
@@ -294,13 +388,14 @@ else:
 # Tabla
 st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</div>',
             unsafe_allow_html=True)
+_u_qs = f"&usuario={usuario['clave']}"
 rows = ""
 for _, r in df_sup.iterrows():
     vid   = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
     prev  = delta_map.get(vid)
     delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
-      <td><div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+      <td><div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
           <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>

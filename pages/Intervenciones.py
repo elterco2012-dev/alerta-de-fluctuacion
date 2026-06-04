@@ -111,6 +111,14 @@ if not hay_datos_demo():
     cargar_demo(scores_df)
     st.cache_data.clear()
 
+# ── Acceso ────────────────────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso()
+
+# Filtrar scores al alcance del usuario.
+if not _usuario["ve_todo"] and _usuario["supervisores"]:
+    scores_df = scores_df[scores_df["supervisor"].isin(set(_usuario["supervisores"]))]
+
 st.markdown(page_header("📝 Intervenciones — Wurth Argentina", "/Intervenciones"),
             unsafe_allow_html=True)
 

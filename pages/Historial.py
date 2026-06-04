@@ -54,7 +54,15 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 
+# ── Acceso ───────────────────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso()   # supervisor → se redirige; director → filtra
+
+if _usuario["rol"] == "supervisor":
+    st.switch_page("pages/Supervisor.py")
+
 # ── Nav ────────────────────────────────────────────────────────────────────────
+_acc.barra_usuario_st(_usuario)
 st.markdown(page_header("📈 Historial de Rotación — Wurth Argentina", "/Historial"),
             unsafe_allow_html=True)
 
@@ -177,6 +185,11 @@ def cargar_rotacion_anual():
 with st.spinner("Cargando historial..."):
     df, sup_map, cnt_map, sup_id_map = cargar_historial()
     rotacion_anual = cargar_rotacion_anual()
+
+# Director ve solo sus zonas.
+if not _usuario["ve_todo"] and _usuario["supervisores"]:
+    _sups = set(_usuario["supervisores"])
+    df = df[df["supervisor"].isin(_sups)]
 
 if df.empty:
     st.warning("No hay datos históricos disponibles.")

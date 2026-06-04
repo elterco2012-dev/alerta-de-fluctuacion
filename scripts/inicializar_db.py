@@ -45,16 +45,25 @@ except Exception as e:
     cols_f040 = ["vertr", "eintrdat", "austrdat"]
 print(f"  Total columnas: {len(cols_f040)}")
 
-# ── Pre-cargar mapa vertr→nombre para resolver supervisores ──────────────────
+# ── Pre-cargar mapa vertr→nombre y set de vertr activos ──────────────────────
+# vertr_activo: vertr con austrdat NULL (sigue trabajando). Se usa para validar
+# que un supervisor/director esté activo, igual que el `austrdat IS NULL` del
+# reporte de jerarquía de Access.
 vertr_nombre = {}
+vertr_activo = set()
 if "name1" in cols_f040:
     try:
-        icur.execute(f"SELECT vertr, name1 FROM f040 WHERE firma = {FIRMA}")
+        icur.execute(f"SELECT vertr, name1, austrdat FROM f040 WHERE firma = {FIRMA}")
         for row in icur.fetchall():
             try:
-                vertr_nombre[int(row[0])] = str(row[1]).strip() if row[1] else ""
+                _vid = int(row[0])
             except (TypeError, ValueError):
-                pass
+                continue
+            vertr_nombre[_vid] = str(row[1]).strip() if row[1] else ""
+            # austrdat válido (no NULL, no fecha basura) ⇒ egresado ⇒ NO activo
+            _aus = str(row[2])[:10] if row[2] else None
+            if not _aus or _aus[:4] in ("0001", "0000", "1900"):
+                vertr_activo.add(_vid)
     except Exception:
         pass
 
@@ -77,8 +86,14 @@ campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","g
 # Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
+# kz3 = ID (vertr) del director al que reporta el vendedor/supervisor.
+campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirektor")), None)
 
-print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}")
+# Cuentas especiales que NO son vendedores reales (casa central, dummies). Se
+# excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
+VERTR_EXCLUIDOS = {1500, 7777, 9499}
+
+print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}  director={campo_director}")
 
 # Construir SELECT dinámico
 select_campos = ["vertr", "eintrdat", "austrdat"]
@@ -87,6 +102,7 @@ if campo_grupo_id:   select_campos.append(campo_grupo_id)
 if campo_grupo_nom:  select_campos.append(campo_grupo_nom)
 if campo_supervisor: select_campos.append(campo_supervisor)
 if campo_tipo:       select_campos.append(campo_tipo)
+if campo_director:   select_campos.append(campo_director)
 
 icur.execute(f"""
     SELECT {', '.join(select_campos)}
@@ -137,6 +153,7 @@ for row in icur.fetchall():
         supervisor_raw = str(row[idx]).strip() if row[idx] else None
         idx += 1
     # bvertr es ID numérico del supervisor → resolver nombre desde vertr_nombre
+    sup_id = None
     if supervisor_raw:
         try:
             sup_id = int(supervisor_raw)
@@ -145,6 +162,14 @@ for row in icur.fetchall():
             supervisor = supervisor_raw
     else:
         supervisor = None
+    # Un vendedor ES supervisor si su bvertr apunta a sí mismo (bvertr = vertr),
+    # NO es una cuenta especial y está activo (austrdat NULL). Réplica exacta del
+    # reporte de jerarquía de Access.
+    es_supervisor = (
+        sup_id is not None and sup_id == vid
+        and vid not in VERTR_EXCLUIDOS
+        and vid in vertr_activo
+    )
 
     tipo = "Viajante"
     if campo_tipo and idx < len(row):
@@ -152,6 +177,23 @@ for row in icur.fetchall():
         # vart en Würth: 1=Viajante (Außendienst), 2=Televentas (Innendienst)
         if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
+        idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
+
+    # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre.
+    # Solo si el director NO es cuenta especial y está activo (mismo criterio que
+    # los supervisores): si no, un kz3 apuntando a 1500/egresado metía un
+    # "director" inválido (ej: Kalpokas 1500).
+    director = None
+    if campo_director and idx < len(row):
+        director_raw = str(row[idx]).strip() if row[idx] else None
+        idx += 1
+        if director_raw:
+            try:
+                dir_id = int(director_raw)
+                if dir_id not in VERTR_EXCLUIDOS and dir_id in vertr_activo:
+                    director = vertr_nombre.get(dir_id, director_raw)
+            except (TypeError, ValueError):
+                director = director_raw  # kz3 no numérico: dejar el valor crudo
 
     eintr_str = _to_iso(eintrdat)
     austr_str = _to_iso(austrdat)
@@ -159,10 +201,13 @@ for row in icur.fetchall():
 
     if not eintr_str:
         continue  # sin fecha de ingreso, no tiene sentido
+    if vid in VERTR_EXCLUIDOS:
+        continue  # cuenta especial, no es un vendedor real
 
     vendedores_rows.append((
         vid, tipo, id_grupo, nombre_grupo or (f"Grupo {id_grupo}" if id_grupo else "Sin grupo"),
-        supervisor or "", nombre or f"ID {vid}", eintr_str, austr_str, None, activo
+        supervisor or "", nombre or f"ID {vid}", eintr_str, austr_str, None, activo,
+        director or "", 1 if es_supervisor else 0,
     ))
 
 print(f"OK — {len(vendedores_rows)} vendedores, {len(grupos_set)} grupos")
@@ -171,8 +216,9 @@ icon.close()
 # ── Mostrar muestra ────────────────────────────────────────────────────────────
 print("\nMuestra (primeros 5):")
 for r in vendedores_rows[:5]:
-    vid, tipo, gid, gnom, superv, nombre, fi, fe, _, activo = r
-    print(f"  {vid}  {nombre[:30]:<30}  {gnom:<20}  {fi}  {'activo' if activo else 'baja'}")
+    vid, tipo, gid, gnom, superv, nombre, fi, fe, _, activo, director, es_sup = r
+    rol = "SUPERV" if es_sup else "vend"
+    print(f"  {vid}  {nombre[:28]:<28}  {gnom:<18}  {rol:<6}  dir={director or '—'}")
 
 # ── Crear SQLite ──────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -199,7 +245,9 @@ CREATE TABLE IF NOT EXISTS vendedores (
     fecha_ingreso TEXT,
     fecha_egreso  TEXT,
     motivo_egreso TEXT,
-    activo        INTEGER DEFAULT 1
+    activo        INTEGER DEFAULT 1,
+    director      TEXT,
+    es_supervisor INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ventas_mensual (
@@ -276,6 +324,21 @@ CREATE TABLE IF NOT EXISTS cobranza_mensual (
 """)
 con.commit()
 
+# ── Migración: agregar columnas nuevas a bases ya existentes ───────────────────
+# CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe con el esquema viejo.
+# Si la base venía sin director/es_supervisor, las agregamos acá (idempotente).
+def _asegurar_columna(tabla, columna, definicion):
+    cols = [r[1] for r in cur.execute(f"PRAGMA table_info({tabla})")]
+    if columna not in cols:
+        cur.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}")
+        print(f"  + columna {tabla}.{columna}")
+
+print("Verificando esquema...", flush=True)
+_asegurar_columna("vendedores", "director",      "TEXT")
+_asegurar_columna("vendedores", "es_supervisor", "INTEGER DEFAULT 0")
+_asegurar_columna("grupos",     "supervisor",    "TEXT")
+con.commit()
+
 # ── Insertar grupos ───────────────────────────────────────────────────────────
 print(f"Insertando {len(grupos_set)} grupos...", end=" ", flush=True)
 for gid, gnom in grupos_set.items():
@@ -292,8 +355,8 @@ print(f"Insertando {len(vendedores_rows)} vendedores...", end=" ", flush=True)
 cur.executemany("""
     INSERT INTO vendedores
         (id_vendedor, tipo, id_grupo, nombre_grupo, supervisor, nombre,
-         fecha_ingreso, fecha_egreso, motivo_egreso, activo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         fecha_ingreso, fecha_egreso, motivo_egreso, activo, director, es_supervisor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_vendedor) DO UPDATE SET
         tipo          = excluded.tipo,
         id_grupo      = excluded.id_grupo,
@@ -302,8 +365,30 @@ cur.executemany("""
         nombre        = excluded.nombre,
         fecha_ingreso = excluded.fecha_ingreso,
         fecha_egreso  = excluded.fecha_egreso,
-        activo        = excluded.activo
+        activo        = excluded.activo,
+        director      = excluded.director,
+        es_supervisor = excluded.es_supervisor
 """, vendedores_rows)
+con.commit()
+print("OK")
+
+# ── Completar grupos.supervisor desde los vendedores ──────────────────────────
+# Cada grupo toma como supervisor el nombre del supervisor más frecuente entre
+# sus vendedores (resuelto de bvertr). Así la tabla grupos queda consistente con
+# la jerarquía real, no solo con el id de zona.
+print("Asignando supervisor a cada grupo...", end=" ", flush=True)
+cur.execute("""
+    UPDATE grupos
+    SET supervisor = (
+        SELECT v.supervisor
+        FROM vendedores v
+        WHERE v.id_grupo = grupos.id_grupo
+          AND v.supervisor IS NOT NULL AND v.supervisor <> ''
+        GROUP BY v.supervisor
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+    )
+""")
 con.commit()
 print("OK")
 

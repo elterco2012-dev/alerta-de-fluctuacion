@@ -32,6 +32,10 @@ st.markdown(HIDE_CHROME_CSS, unsafe_allow_html=True)
 st.markdown(page_header("Wurth Argentina &mdash; Actividad Comercial", "/Actividad"),
             unsafe_allow_html=True)
 
+# ── Acceso ────────────────────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso()
+
 # ── Carga de datos ────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cargar_actividad():
@@ -60,6 +64,10 @@ def cargar_actividad():
     return df
 
 df_all = cargar_actividad()
+
+# Filtrar al alcance del usuario.
+if not _usuario["ve_todo"] and _usuario["supervisores"]:
+    df_all = df_all[df_all["supervisor"].isin(set(_usuario["supervisores"]))]
 
 if df_all.empty:
     st.warning("No hay datos en actividad_mensual. Ejecutá `sincronizar_reactor.py` primero.")

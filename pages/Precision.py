@@ -59,6 +59,10 @@ header { display: none; }
 .sig-fill { height:10px; border-radius:3px; min-width:4px; }
 </style>""", unsafe_allow_html=True)
 
+# ── Acceso (solo Gerencia) ────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso(roles=["gerencia", "rrhh"])
+
 # ── Nav ────────────────────────────────────────────────────────────────────────
 st.markdown(page_header("🎯 Precisión del modelo — Wurth Argentina", "/Precision"),
             unsafe_allow_html=True)

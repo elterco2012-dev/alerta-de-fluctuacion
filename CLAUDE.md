@@ -130,11 +130,11 @@ scoring al cambiar la conexión.
 El score es 1-10. **NO es una foto mensual. Es una tendencia de 3 meses.**
 Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
-### Señales y pesos actuales (11 activas + 4 deshabilitadas)
+### Señales y pesos actuales (9 activas + 6 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
 | % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
-| Días venta cero altos | 2.5 | promedio > 8 días | activa |
+| Días venta cero altos | ~~2.5~~ → **0** | — | **deshabilitada** |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
 | Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
 | Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
@@ -159,6 +159,14 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 >   no discrimina a ningún umbral útil: a <-3 dispara en el 93% de todos; a <-20
 >   todavía en el 92%; a <-50 (el único punto donde no dispara en casi todos) ya
 >   es tan extremo que casi nadie llega. Se deshabilita hasta tener datos más estables.
+> - **Días venta cero (la "señal estrella" histórica):** con el umbral recalibrado a
+>   `> 8` (datos 2026) se INVIRTIÓ: dispara más en activos (12.8%) que en egresados
+>   (10.2%), lift 0.80, Δsep +2.7 al sacarla. Mismo problema de cobertura que
+>   llamadas/visitas: los egresados tienen datos incompletos en sus últimos meses
+>   activos → `dias_venta_cero` faltante = 0 = no enciende → subcuenta a los que se
+>   van. Con el umbral viejo (`>3`, disparaba en el 99%) el problema quedaba tapado.
+>   Tenía lift 3.44 en los datos viejos del contenedor, pero en producción 2026 no
+>   separa. Re-evaluar cuando los egresados tengan datos completos de sus últimos meses.
 > - **Cartera activa baja:** Informix reasigna los clientes al egreso → el histórico
 >   del vendedor que se fue queda con `total_clientes=0` → el fix de dato faltante
 >   desactiva la señal correctamente para egresados, pero sigue activa para el 98%
@@ -255,10 +263,13 @@ cada estado del modelo:
     egresados vs ~11% de activos (a REF=16 era 2% vs 0,6%).
   - Tras recalibrar umbrales a datos reales 2026 (ver sección anterior), los scores
     volvieron a comprimirse (REF=10 daba separación 1.8, detección OOS 4.5%). El
-    barrido re-corrido con umbrales nuevos + pendiente deshabilitada ubica el
-    óptimo en **REF=8**: ~19% de detección OOS con ~11% de falsa alarma (separación
-    ≈ 8.7). La separación sigue siendo modesta: es alerta temprana sobre datos
-    ruidosos de RRHH, no un oráculo, y el historial de egresados aún es corto.
+    barrido re-corrido con umbrales nuevos + pendiente y días-cero deshabilitadas
+    (y el `score_historico` limpio de entradas huérfanas, `[chequeo]=0.00`) ubica el
+    óptimo en **REF=8**: ~15% de detección OOS con ~4.5% de falsa alarma (separación
+    ≈ 10.3, la mejor del barrido; a REF≥10 la detección colapsa a 0 porque los
+    scores quedan comprimidos). La separación sigue siendo modesta: es alerta
+    temprana sobre datos ruidosos de RRHH, no un oráculo, y el historial de
+    egresados aún es corto.
   - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
     operativa sigue siendo por ranking; ver abajo).
 
@@ -282,6 +293,18 @@ activos (11% vs 5%). Es señal estructural de alerta temprana: marca a vendedore
 nuevos en grupos históricamente malos antes de que muestren deterioro individual.
 Caveat honesto: los egresados alimentan el riesgo_base de su grupo, lo que infla
 algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularidad.
+
+**Backfill: entradas huérfanas en `score_historico` (gotcha del `[chequeo]`).**
+El backfill usa `INSERT OR REPLACE`, que solo sobreescribe filas de vendedores que
+`calcular_scores()` devuelve para ese período. Si un vendedor sale del motor (ej.
+pasó a ser supervisor y lo excluye el filtro), su fila vieja —calculada con pesos
+y REF anteriores— queda **intacta** y `validar_pesos.py` reporta `[chequeo] != 0`
+al no poder reconstruirla con los pesos actuales (un caso real: vendedor 6183,
+2025-10, score 8.2 viejo vs 4.4 reconstruido). Por eso `backfill_scores.py` ahora,
+antes de insertar cada período, hace `DELETE ... WHERE periodo=? AND id_vendedor
+NOT IN (<ids devueltos>)`. Si el `[chequeo]` vuelve a despegarse, correr
+`scripts/diagnostico_chequeo.bat`: muestra la peor fila y si el problema es REF
+desincronizado, peso `??` (string desincronizado) o una entrada huérfana.
 
 ### Niveles de riesgo (etiquetas visuales, NO el disparador de acción)
 - 8-10 → **crítico**

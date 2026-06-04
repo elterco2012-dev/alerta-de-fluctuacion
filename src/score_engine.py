@@ -295,7 +295,14 @@ def calcular_scores(meses_tendencia: int = 3,
             # dataset porque el %plan es muy volátil en toda la fuerza de ventas.
             Señal("caída_plan_3m",        peso=0.0, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
-            Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
+            # DESHABILITADA (peso 0): tras recalibrar el umbral a > 8 (datos 2026), la
+            # señal se invirtió: dispara más en activos (12.8%) que en egresados (10.2%),
+            # lift 0.80, Δsep +2.7 al sacarla. Mismo problema de cobertura que llamadas/
+            # visitas: los egresados tienen datos incompletos en sus últimos meses →
+            # dias_venta_cero faltante = 0 = no enciende → subcuenta a los que se van.
+            # Con el umbral viejo (>3) quedaba tapado (disparaba en el 99%). Re-evaluar
+            # cuando haya más historial real de egresados con datos completos.
+            Señal("dias_cero_alto",        peso=0.0, descripcion="Días sin venta > 3 en promedio"),
             # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
             # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
             # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.

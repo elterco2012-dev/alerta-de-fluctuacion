@@ -133,14 +133,14 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 ### Señales y pesos actuales (11 activas + 4 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
-| % Plan cayendo 3 meses seguidos | 2.5 | pendiente < -3 | activa |
-| Días venta cero altos | 2.5 | promedio > 3 días | activa |
-| % Plan promedio < 80% | 2.0 | media < 80 | activa |
+| % Plan en caída fuerte | 2.5 | pendiente < -50 pp/mes | activa |
+| Días venta cero altos | 2.5 | promedio > 8 días | activa |
+| % Plan promedio bajo | 2.0 | media < 55 | activa |
 | Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
 | Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
 | Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
-| Balanza clientes negativa | 1.5 | 2+ meses + pérdida > 3 | activa |
+| Balanza clientes muy negativa | 1.5 | 2+ meses + suma < -60 | activa |
 | En ventana crítica mes 4-6 | 1.0 | mes_numero 4-6 | activa |
 | Ticket promedio cayendo | 1.0 | pendiente > 5%/mes | activa |
 | Supervisor no acompañó | 1.0 | < 1 visita/mes en 1-6 | activa |
@@ -179,6 +179,30 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 > "grupo quemado". Lección: un buen lift aislado NO garantiza aporte marginal si la
 > candidata se solapa con señales existentes. Por eso el flujo exige validar el
 > Δseparación post-backfill, no solo el lift. Se revirtió a peso 0 (no está en el motor).
+
+> **Recalibración de umbrales a datos reales 2026 (cuatro señales):** en el primer
+> run real con datos de producción (188 activos), **154 (82%) salían críticos** —
+> inservible operativamente. El diagnóstico (`scripts/diagnostico_valores.py`) mostró
+> que los umbrales originales estaban pensados para un negocio sano, pero la fuerza
+> de ventas Würth 2026 está estructuralmente deteriorada: la **mediana** del vendedor
+> tiene ~7 días-cero/mes, ~65% de cumplimiento de plan y balanza de cartera -49. Con
+> los umbrales viejos las cuatro señales más pesadas disparaban en casi todos (no
+> discriminaban): días-cero `>3` → 99%, plan `<80` → 84%, pendiente `<-3` → 93%,
+> balanza `<-3` → 94%. Se recalibró cada umbral al punto donde dispara en el **peor
+> ~25-30%** de la población (≈ p25-p30 de su distribución):
+> - **Días venta cero:** `> 3` → **`> 8`** (99% → ~31%)
+> - **% Plan promedio:** `< 80` → **`< 55`** (84% → ~28%)
+> - **Pendiente % plan:** `< -3` → **`< -50`** (93% → ~25%; el %plan es muy volátil
+>   mes a mes, la mediana de pendiente es -44, por eso hace falta un corte tan abajo)
+> - **Balanza clientes (suma 2m):** `< -3` → **`< -60`** (94% → ~30%)
+>
+> Lección: un umbral absoluto ("plan < 80%") deja de discriminar cuando la población
+> entera cae por debajo. La señal sirve solo si marca a los **peores relativos** al
+> resto, no un absoluto de "negocio sano". Caveat: pendiente y balanza apenas
+> discriminan a ningún umbral (a `<-20` todavía disparan ~90%); el corte a p25 las
+> deja rankear el cuarto peor, pero conviene validar su lift egresados-vs-activos con
+> `validar_pesos.py` cuando haya suficiente historial real. **Si se re-sincronizan
+> datos, re-correr `diagnostico_valores.py` + `diagnostico_distribucion.py` y reajustar.**
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra

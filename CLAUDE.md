@@ -331,6 +331,26 @@ automáticamente. Lo único manual: el usuario **Gerencia** (no está en f040) �
 diccionario `STAFF` en `src/acceso.py`. Hoy hay un solo usuario "Gerencia" de
 acceso total que comparten gerencia (Daniel) y RRHH.
 
+### Matriz de acceso por página (el control está en TODAS, no solo Supervisor)
+
+Cada página llama a `acceso.requerir_acceso(roles=...)` al inicio. Si no hay
+usuario, muestra el selector de identidad; si el rol no alcanza, bloquea. La
+identidad sobrevive a `st.switch_page()` vía `st.session_state["_acc_usuario"]`
+(además del query param `?usuario=`).
+
+| Página | Gerencia | Director | Supervisor |
+|---|---|---|---|
+| `Precision`, `Aprendizaje`, `Costo_Rotacion` | ✅ todo | ⛔ bloqueado | ⛔ bloqueado |
+| `Inicio` (dashboard.py), `Historial` | ✅ todo | ✅ solo sus zonas | ↪ redirigido a `Supervisor` |
+| `Vendedor`, `Intervenciones`, `Actividad` | ✅ todo | ✅ filtrado a su alcance | ✅ filtrado a su alcance |
+| `Supervisor` | ✅ elige zona | ✅ sus supervisores | ✅ entra directo a su zona |
+
+Helpers reutilizables en `acceso.py`: `requerir_acceso(roles)` (gate + selector),
+`barra_usuario_st(usuario)` (chip "ingresaste como…" + cambiar usuario),
+`puede_ver(usuario, supervisor)` (chequeo de alcance, también usado en `Vendedor`
+para bloquear deep-links a vendedores fuera de la zona). Los links a `/Vendedor`
+arrastran `?usuario=` para no romper la sesión al navegar.
+
 ---
 
 ## Decisiones técnicas tomadas y por qué
@@ -339,6 +359,51 @@ acceso total que comparten gerencia (Daniel) y RRHH.
 - **SQLite** como intermedio: no golpear Informix en cada recarga del dashboard.
 - **Reglas con pesos** antes que ML: el modelo de reglas es explicable al supervisor. Un modelo black-box no genera confianza en este contexto.
 - **ML en el futuro**: cuando haya datos reales limpios y el equipo entienda el sistema.
+
+---
+
+## Modelo de costo de rotación (`pages/Costo_Rotacion.py`)
+
+Estima cuánto cuesta cada baja. Misma fórmula para el **costo histórico** (bajas
+reales ya ocurridas) y la **exposición futura** (activos en riesgo). Todos los
+parámetros están arriba del archivo y son ajustables.
+
+### Costo directo
+- Último mes improductivo del que se va: `1 sueldo`
+- Reclutamiento (aviso + entrevistas): `1 sueldo`
+- Inducción del reemplazo: `SALARIO_INDUCCION × MESES_RAMPA_NUEVO`
+  → **solo la rampa** (el nuevo ya contratado pero todavía sin rendir). **NO** se
+  cuenta `MESES_HASTA_NUEVO` (vacante): en la vacante no se paga sueldo y esa
+  pérdida ya está en la cobertura. Contarla ahí duplicaba ~2M por baja (corregido).
+
+### Costo indirecto — pérdida de cartera (modelo de cobertura Würth)
+Cuando un vendedor se va, **televentas cubre la zona** hasta que entra el reemplazo,
+así que la pérdida es parcial, no total:
+- `plan × MESES_HASTA_NUEVO (1.5) × PCT_PERDIDA_COBERTURA (8%)`
+- `plan × MESES_RAMPA_NUEVO (2) × PCT_PERDIDA_RAMPA (12%)`
+
+### Plan escalonado por antigüedad — decisión clave
+La pérdida de cartera se calcula sobre el **plan del vendedor que se va, según su
+antigüedad**, NO sobre un promedio único del tipo. Esto importa porque la mayoría
+de las bajas ocurren en los primeros 6 meses, donde el plan es ~2× menor que el de
+un veterano: aplicarles el plan del veterano inflaba la pérdida al doble.
+`_plan_por_tenure(tipo, meses)` devuelve (valores reales Würth 2026):
+
+| Tramo | Viajante | Televentas |
+|---|---|---|
+| meses 1-2 | $9.450.000 | $9.450.000 |
+| meses 3-4 | $11.550.000 | $11.550.000 |
+| meses 5-6 | $13.650.000 | $13.650.000 |
+| meses 7+ | $20.740.007 | $16.351.480 |
+
+> Antes había un `_cargar_plan_promedio()` que sacaba un solo promedio por tipo de
+> `ventas_mensual`; se eliminó. También se corrigió el fallback de Televentas que
+> estaba en $6M (real $16.35M, casi 3× menos).
+
+### Parámetros aún supuestos (validar con datos reales)
+`PCT_PERDIDA_COBERTURA` (8%) y `PCT_PERDIDA_RAMPA` (12%) son los valores más "a ojo"
+del modelo. Son lo que más mueve el número final: si en algún momento hay datos de
+cuánta cartera se pierde realmente al irse un vendedor, ajustarlos ahí.
 
 ---
 
@@ -374,7 +439,7 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
    director→supervisor sale sola de `f040.kz3`.
 2. ~~Análisis de costo de rotación~~ ✅ **hecho** — `pages/Costo_Rotacion.py`:
    exposición futura (activos en riesgo) **+ costo histórico** (bajas reales,
-   tendencia mensual y desglose por motivo).
+   tendencia mensual y desglose por motivo). Ver metodología abajo.
 3. Conexión real a Informix via pyodbc (ya operativa vía los sync desde Windows)
 4. Alerta por email/Teams cuando un vendedor sube a nivel crítico
 5. Modelo ML cuando haya 6+ meses de datos reales

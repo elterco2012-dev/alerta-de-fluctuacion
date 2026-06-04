@@ -283,9 +283,14 @@ def calcular_scores(meses_tendencia: int = 3,
         acomp_vid = acompanamiento[acompanamiento["id_vendedor"] == vid].head(meses_tendencia) if not acompanamiento.empty else pd.DataFrame()
 
         señales = [
-            Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan en caída fuerte (pendiente < -50 pp/mes)"),
-            Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 55% promedio últimos meses"),
-            Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 8 en promedio"),
+            # NOTA: la descripción es la CLAVE de la señal en todo el sistema
+            # (dashboard, páginas, alertas, score_historico, validar_pesos). NO la
+            # cambies aunque el umbral cambie, o rompés esos lookups y la validación.
+            # Los umbrales reales (recalibrados 2026) están en la lógica más abajo:
+            # caída plan < -50 pp/mes, plan < 55%, días cero > 8, balanza < -60.
+            Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
+            Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
+            Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
             # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
             # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
             # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.
@@ -306,7 +311,7 @@ def calcular_scores(meses_tendencia: int = 3,
             Señal("llamadas_bajas",        peso=0.0, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
             Señal("visitas_bajas",         peso=0.0, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
             Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
-            Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes muy negativa (suma 2m < -60)"),
+            Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
             Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
             Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
             # Probada y descartada: interacción tenure × grupo quemado (rb>0.30). Su lift

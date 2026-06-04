@@ -203,6 +203,14 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 > deja rankear el cuarto peor, pero conviene validar su lift egresados-vs-activos con
 > `validar_pesos.py` cuando haya suficiente historial real. **Si se re-sincronizan
 > datos, re-correr `diagnostico_valores.py` + `diagnostico_distribucion.py` y reajustar.**
+>
+> **OJO — la descripción de la señal es su CLAVE en todo el sistema.** El texto
+> `descripcion=` de cada `Señal` (ej. "Días sin venta > 3 en promedio") se usa como
+> clave en dashboard, páginas, alertas, `score_historico` y `validar_pesos.py`. Por
+> eso NO se cambió aunque el umbral pasó a 8: cambiar el string rompería todos esos
+> lookups y la validación. Los nombres de la tabla de arriba son legibles para
+> humanos (umbral actualizado), pero la clave interna sigue diciendo "> 3" etc.
+> Al recalibrar un umbral se toca SOLO la lógica del motor, nunca el `descripcion=`.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra

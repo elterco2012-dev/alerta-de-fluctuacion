@@ -302,15 +302,14 @@ ninguna base externa (reconstruyen todo desde `score_historico` / `ventas_mensua
 
 ## Usuarios del sistema y acceso por rol
 
-A la vista por supervisor (`pages/Supervisor.py`) entran cuatro tipos de usuario,
+A la vista por supervisor (`pages/Supervisor.py`) entran tres tipos de usuario,
 con **alcance jerárquico** distinto. Lo resuelve `src/acceso.py`:
 
 | Rol | Qué ve | Origen del dato |
 |---|---|---|
-| **Supervisor** | solo su propia zona (entra directo, sin landing) | tabla `grupos` (automático) |
-| **Director** | las zonas de los supervisores que tiene a cargo | config `DIRECTORES` en `acceso.py` |
-| **RRHH** | toda la empresa (vista agregada, tendencias, motivos) | config `STAFF` en `acceso.py` |
-| **Gerencia** | toda la empresa (KPIs, grupos problemáticos, costo) | config `STAFF` en `acceso.py` |
+| **Supervisor** | solo su propia zona (entra directo, sin landing) | tabla `grupos`/`vendedores` (automático desde f040) |
+| **Director** | las zonas de los supervisores que tiene a cargo | derivado de `f040.kz3` (automático), fallback `DIRECTORES_MANUAL` |
+| **Gerencia** | toda la empresa (KPIs, grupos, costo) — lo usan gerencia y RRHH | config `STAFF` en `acceso.py` (no está en f040, lo creamos) |
 
 **Sin login con contraseña:** el usuario se identifica eligiendo su nombre en un
 selector (se asume la pantalla detrás de un acceso corporativo). La identidad
@@ -321,13 +320,16 @@ bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
 - **supervisor** de cada vendedor = `f040.bvertr` (resuelto a nombre). Un vendedor
   es supervisor si `bvertr == vertr` (`es_supervisor=1`).
 - **director** de cada supervisor = `f040.kz3` (resuelto a nombre).
-- cuentas especiales `vertr` 1500/7777/9499 se excluyen.
+- cuentas especiales `vertr` 1500/7777/9499 y los **egresados** (`austrdat` no NULL)
+  se excluyen tanto de supervisores como de directores (réplica del reporte de
+  jerarquía de Access).
 
 `src/acceso.py` arma la jerarquía director→supervisor **sola** desde `vendedores`
 (`_directores_db()`); si la base todavía no trae esas columnas (datos seed), cae al
 fallback `DIRECTORES_MANUAL`. Los **supervisores** salen de `grupos`/`vendedores`
-automáticamente. Lo único que sigue siendo manual: los usuarios de **RRHH/gerencia**
-(no están en f040) → editar el diccionario `STAFF` en `src/acceso.py`.
+automáticamente. Lo único manual: el usuario **Gerencia** (no está en f040) →
+diccionario `STAFF` en `src/acceso.py`. Hoy hay un solo usuario "Gerencia" de
+acceso total que comparten gerencia (Daniel) y RRHH.
 
 ---
 
@@ -368,9 +370,11 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
 ## Próximos features planeados (en orden de prioridad)
 
 1. ~~Vista filtrada por supervisor~~ ✅ **hecho** — acceso por rol (supervisor /
-   director / RRHH / gerencia) en `pages/Supervisor.py` + `src/acceso.py`.
-   Pendiente: completar `DIRECTORES`/`STAFF` con la estructura real.
-2. Conexión real a Informix via pyodbc
-3. Alerta por email/Teams cuando un vendedor sube a nivel crítico
-4. Análisis de costo de rotación (costo estimado por baja)
+   director / gerencia) en `pages/Supervisor.py` + `src/acceso.py`. La jerarquía
+   director→supervisor sale sola de `f040.kz3`.
+2. ~~Análisis de costo de rotación~~ ✅ **hecho** — `pages/Costo_Rotacion.py`:
+   exposición futura (activos en riesgo) **+ costo histórico** (bajas reales,
+   tendencia mensual y desglose por motivo).
+3. Conexión real a Informix via pyodbc (ya operativa vía los sync desde Windows)
+4. Alerta por email/Teams cuando un vendedor sube a nivel crítico
 5. Modelo ML cuando haya 6+ meses de datos reales

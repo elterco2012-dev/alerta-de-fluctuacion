@@ -59,6 +59,32 @@ def _cargar_plan_promedio() -> dict:
     return result
 
 
+@st.cache_data(ttl=600)
+def _cargar_bajas_historicas() -> pd.DataFrame:
+    """Bajas reales con fecha de egreso e ingreso, para costear la rotación que YA
+    ocurrió (no la proyectada). Calcula la antigüedad al momento del egreso."""
+    con = get_connection()
+    df = pd.read_sql("""
+        SELECT id_vendedor, nombre, tipo, nombre_grupo, supervisor,
+               fecha_ingreso, fecha_egreso, motivo_egreso
+        FROM vendedores
+        WHERE activo = 0
+          AND fecha_egreso  IS NOT NULL AND fecha_egreso  <> ''
+          AND fecha_ingreso IS NOT NULL AND fecha_ingreso <> ''
+    """, con)
+    con.close()
+    if df.empty:
+        return df
+    df["fecha_egreso"]  = pd.to_datetime(df["fecha_egreso"],  errors="coerce")
+    df["fecha_ingreso"] = pd.to_datetime(df["fecha_ingreso"], errors="coerce")
+    df = df.dropna(subset=["fecha_egreso", "fecha_ingreso"])
+    # Antigüedad al egreso (mínimo 1 mes) → alimenta la misma fórmula de costo.
+    df["meses_activo"] = (((df["fecha_egreso"] - df["fecha_ingreso"]).dt.days / 30.44)
+                          .round().clip(lower=1).astype(int))
+    df["periodo_egreso"] = df["fecha_egreso"].dt.to_period("M").astype(str)
+    return df
+
+
 def salario_mensual(tipo: str, meses_activo: int) -> int:
     if "Televentas" in tipo:
         return SALARIO_TELEVENTAS
@@ -184,6 +210,100 @@ with st.spinner("Calculando..."):
 if df.empty:
     st.warning("No hay datos disponibles.")
     st.stop()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COSTO HISTÓRICO — cuánto YA costó la rotación (bajas reales)
+# ══════════════════════════════════════════════════════════════════════════════
+bajas = _cargar_bajas_historicas()
+if not bajas.empty:
+    costos_h = bajas.apply(lambda r: calcular_costo_rotacion(r, planes),
+                           axis=1, result_type="expand")
+    bajas = pd.concat([bajas, costos_h], axis=1)
+
+    # Ventana relativa a la baja más reciente de los datos (robusto a datos no-live)
+    _max_eg = bajas["fecha_egreso"].max()
+    cap_v1, cap_v2 = st.columns([1, 3])
+    with cap_v1:
+        _ventana = st.selectbox("Período histórico",
+                                ["Últimos 12 meses", "Últimos 24 meses", "Todo el historial"],
+                                index=0)
+    meses_v = {"Últimos 12 meses": 12, "Últimos 24 meses": 24, "Todo el historial": None}[_ventana]
+    if meses_v:
+        desde = _max_eg - pd.DateOffset(months=meses_v)
+        bajas_v = bajas[bajas["fecha_egreso"] >= desde]
+    else:
+        bajas_v = bajas
+
+    n_bajas      = len(bajas_v)
+    costo_hist   = bajas_v["costo_total"].sum()
+    costo_prom_h = bajas_v["costo_total"].mean() if n_bajas else 0
+    tenure_prom  = bajas_v["meses_activo"].mean() if n_bajas else 0
+    _rango = (f"{bajas_v['fecha_egreso'].min():%m/%Y} – {bajas_v['fecha_egreso'].max():%m/%Y}"
+              if n_bajas else "—")
+
+    col_h, col_hs = st.columns([1, 2.2])
+    with col_h:
+        st.markdown(hero_kpi("Costo de la rotación ya ocurrida", fmt_pesos_corto(costo_hist),
+                             f"{n_bajas} baja{'s' if n_bajas!=1 else ''} · {_rango}", red=True),
+                    unsafe_allow_html=True)
+    with col_hs:
+        _h1, _h2, _h3 = st.columns(3)
+        with _h1:
+            st.markdown(stat_kpi("Costo promedio por baja", fmt_pesos_corto(costo_prom_h)),
+                        unsafe_allow_html=True)
+        with _h2:
+            st.markdown(stat_kpi("Antigüedad prom. al irse", f"{tenure_prom:.1f} meses"),
+                        unsafe_allow_html=True)
+        with _h3:
+            _voluntarias = bajas_v["motivo_egreso"].isin(["Renuncia voluntaria", "Abandono"]).sum()
+            _pct_vol = (_voluntarias / n_bajas * 100) if n_bajas else 0
+            st.markdown(stat_kpi("Salidas voluntarias", f"{_pct_vol:.0f}%"), unsafe_allow_html=True)
+
+    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+    if n_bajas:
+        g1, g2 = st.columns(2)
+        # Tendencia mensual del costo
+        with g1:
+            st.markdown('<div class="sec-header">📉 Costo de rotación por mes</div>',
+                        unsafe_allow_html=True)
+            por_mes = (bajas_v.groupby("periodo_egreso")
+                       .agg(costo=("costo_total", "sum"), n=("id_vendedor", "count"))
+                       .reset_index().sort_values("periodo_egreso"))
+            fig_m = go.Figure(go.Bar(
+                x=por_mes["periodo_egreso"], y=por_mes["costo"],
+                marker_color="#E24B4A",
+                customdata=por_mes["n"],
+                hovertemplate="<b>%{x}</b><br>Costo: $%{y:,.0f}<br>Bajas: %{customdata}<extra></extra>",
+            ))
+            fig_m.update_layout(height=300, margin=dict(l=0, r=10, t=10, b=10),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                yaxis=dict(showgrid=True, gridcolor="#f0f0f0"))
+            st.plotly_chart(fig_m, use_container_width=True)
+        # Costo por motivo de egreso
+        with g2:
+            st.markdown('<div class="sec-header">🧭 Costo por motivo de egreso</div>',
+                        unsafe_allow_html=True)
+            por_motivo = (bajas_v.groupby("motivo_egreso")
+                          .agg(costo=("costo_total", "sum"), n=("id_vendedor", "count"))
+                          .reset_index().sort_values("costo"))
+            fig_mo = go.Figure(go.Bar(
+                x=por_motivo["costo"], y=por_motivo["motivo_egreso"], orientation="h",
+                marker_color="#EF9F27",
+                customdata=por_motivo["n"],
+                text=[_fmt_pesos(v) for v in por_motivo["costo"]], textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Costo: $%{x:,.0f}<br>Bajas: %{customdata}<extra></extra>",
+            ))
+            fig_mo.update_layout(height=300, margin=dict(l=0, r=110, t=10, b=10),
+                                 plot_bgcolor="white", paper_bgcolor="white",
+                                 xaxis=dict(showticklabels=False, showgrid=False))
+            st.plotly_chart(fig_mo, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown('<div class="sec-header">🔮 Exposición futura — activos en riesgo hoy</div>',
+                unsafe_allow_html=True)
+    st.caption("Lo de arriba ya pasó. Lo de abajo es lo que podés evitar: cuánto costaría "
+               "si se van los vendedores activos en riesgo.")
 
 # Calcular costo por vendedor usando plan real del período actual
 costos = df.apply(lambda row: calcular_costo_rotacion(row, planes), axis=1, result_type="expand")

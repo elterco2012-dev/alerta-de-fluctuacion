@@ -52,10 +52,10 @@ DIRECTORES_MANUAL: dict[str, list[str]] = {
     ],
 }
 
-# Usuarios con acceso total (RRHH y Gerencia). clave → rol.
-# EJEMPLO — reemplazar por las personas reales.
+# Usuarios con acceso total (ven toda la empresa). NO están en f040, los creamos
+# nosotros. Un único usuario "Gerencia" que usan tanto la gerencia (Daniel) como
+# RRHH. Si en el futuro hace falta separar accesos, agregar más entradas acá.
 STAFF: dict[str, str] = {
-    "RRHH":     "rrhh",
     "Gerencia": "gerencia",
 }
 

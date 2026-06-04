@@ -45,16 +45,25 @@ except Exception as e:
     cols_f040 = ["vertr", "eintrdat", "austrdat"]
 print(f"  Total columnas: {len(cols_f040)}")
 
-# ── Pre-cargar mapa vertr→nombre para resolver supervisores ──────────────────
+# ── Pre-cargar mapa vertr→nombre y set de vertr activos ──────────────────────
+# vertr_activo: vertr con austrdat NULL (sigue trabajando). Se usa para validar
+# que un supervisor/director esté activo, igual que el `austrdat IS NULL` del
+# reporte de jerarquía de Access.
 vertr_nombre = {}
+vertr_activo = set()
 if "name1" in cols_f040:
     try:
-        icur.execute(f"SELECT vertr, name1 FROM f040 WHERE firma = {FIRMA}")
+        icur.execute(f"SELECT vertr, name1, austrdat FROM f040 WHERE firma = {FIRMA}")
         for row in icur.fetchall():
             try:
-                vertr_nombre[int(row[0])] = str(row[1]).strip() if row[1] else ""
+                _vid = int(row[0])
             except (TypeError, ValueError):
-                pass
+                continue
+            vertr_nombre[_vid] = str(row[1]).strip() if row[1] else ""
+            # austrdat válido (no NULL, no fecha basura) ⇒ egresado ⇒ NO activo
+            _aus = str(row[2])[:10] if row[2] else None
+            if not _aus or _aus[:4] in ("0001", "0000", "1900"):
+                vertr_activo.add(_vid)
     except Exception:
         pass
 
@@ -153,9 +162,14 @@ for row in icur.fetchall():
             supervisor = supervisor_raw
     else:
         supervisor = None
-    # Un vendedor cuyo bvertr apunta a sí mismo ES un supervisor (condición del
-    # reporte de jerarquía de Access: bvertr = vertr).
-    es_supervisor = sup_id is not None and sup_id == vid
+    # Un vendedor ES supervisor si su bvertr apunta a sí mismo (bvertr = vertr),
+    # NO es una cuenta especial y está activo (austrdat NULL). Réplica exacta del
+    # reporte de jerarquía de Access.
+    es_supervisor = (
+        sup_id is not None and sup_id == vid
+        and vid not in VERTR_EXCLUIDOS
+        and vid in vertr_activo
+    )
 
     tipo = "Viajante"
     if campo_tipo and idx < len(row):
@@ -165,16 +179,21 @@ for row in icur.fetchall():
             tipo = "Televentas"
         idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
 
-    # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre
+    # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre.
+    # Solo si el director NO es cuenta especial y está activo (mismo criterio que
+    # los supervisores): si no, un kz3 apuntando a 1500/egresado metía un
+    # "director" inválido (ej: Kalpokas 1500).
     director = None
     if campo_director and idx < len(row):
         director_raw = str(row[idx]).strip() if row[idx] else None
         idx += 1
         if director_raw:
             try:
-                director = vertr_nombre.get(int(director_raw), director_raw)
+                dir_id = int(director_raw)
+                if dir_id not in VERTR_EXCLUIDOS and dir_id in vertr_activo:
+                    director = vertr_nombre.get(dir_id, director_raw)
             except (TypeError, ValueError):
-                director = director_raw
+                director = director_raw  # kz3 no numérico: dejar el valor crudo
 
     eintr_str = _to_iso(eintrdat)
     austr_str = _to_iso(austrdat)

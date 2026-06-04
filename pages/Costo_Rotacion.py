@@ -108,7 +108,10 @@ def calcular_costo_rotacion(row, planes: dict | None = None) -> dict:
     # Costo directo
     costo_salario_perdido = sal * 1                        # último mes improductivo
     costo_reclutamiento   = sal * 1                        # publicación + entrevistas
-    costo_induccion_nuevo = SALARIO_INDUCCION * int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
+    # Inducción: sueldo del reemplazo mientras YA está contratado pero todavía no
+    # rinde (rampa). NO se cuenta MESES_HASTA_NUEVO: en la vacante no se paga sueldo
+    # (esa pérdida ya está en perdida_cobertura). Contarla acá duplicaba el costo.
+    costo_induccion_nuevo = SALARIO_INDUCCION * MESES_RAMPA_NUEVO
 
     # Costo indirecto: cobertura televentas + rampa nuevo (con modelo de cobertura Wurth)
     perdida_cobertura = plan * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
@@ -474,7 +477,9 @@ else:
 # ── Nota metodológica ──────────────────────────────────────────────────────────
 _plan_v  = planes.get("Viajante",   _PLAN_FALLBACK_VIAJANTE)
 _plan_tv = planes.get("Televentas", _PLAN_FALLBACK_TELEVENTAS)
-_meses_ind = int(round(MESES_HASTA_NUEVO + MESES_RAMPA_NUEVO))
+# Inducción = solo la rampa del nuevo (ya contratado, todavía no rinde). La
+# vacante no suma sueldo acá: su costo está en la pérdida de cobertura.
+_meses_ind = MESES_RAMPA_NUEVO
 _tot_dir_tv = SALARIO_TELEVENTAS * 2 + SALARIO_INDUCCION * _meses_ind
 _perd_cob   = _plan_tv * MESES_HASTA_NUEVO * PCT_PERDIDA_COBERTURA
 _perd_rampa = _plan_tv * MESES_RAMPA_NUEVO  * PCT_PERDIDA_RAMPA

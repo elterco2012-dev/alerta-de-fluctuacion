@@ -15,6 +15,9 @@ Uso típico (desde enviar_alertas.py):
 import json
 import smtplib
 import os
+import glob
+import time
+import subprocess
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -252,14 +255,101 @@ def _email_html(nuevos: pd.DataFrame) -> str:
     </body></html>"""
 
 
+def _buscar_outlook_clasico() -> str | None:
+    """
+    Devuelve la ruta del OUTLOOK.EXE clásico, o None si no lo encuentra.
+    El 'nuevo Outlook' NO tiene COM; necesitamos el ejecutable clásico.
+    Busca primero en el registro (App Paths) y luego en rutas conocidas.
+    """
+    # 1. Registro de Windows — la fuente más confiable
+    try:
+        import winreg
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(
+                    hive,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE",
+                ) as k:
+                    ruta = winreg.QueryValue(k, None)
+                    if ruta and os.path.exists(ruta):
+                        return ruta
+            except OSError:
+                continue
+    except Exception:
+        pass
+
+    # 2. Rutas típicas de instalación (Office 2016/2019/365, 32 y 64 bits)
+    patrones = [
+        r"C:\Program Files\Microsoft Office\root\Office*\OUTLOOK.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office*\OUTLOOK.EXE",
+        r"C:\Program Files\Microsoft Office\Office*\OUTLOOK.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office*\OUTLOOK.EXE",
+    ]
+    for patron in patrones:
+        for ruta in glob.glob(patron):
+            if os.path.exists(ruta):
+                return ruta
+    return None
+
+
+def _obtener_outlook(timeout: int = 60):
+    """
+    Devuelve un objeto COM de Outlook clásico listo para usar.
+
+    Estrategia (sirve aunque uses el 'nuevo Outlook' a diario):
+      1. Conectar a una instancia de Outlook clásico ya abierta.
+      2. Si no hay, Dispatch directo (lanza el clásico si está registrado).
+      3. Si falla (típico cuando el 'nuevo Outlook' es el default), buscar el
+         OUTLOOK.EXE clásico, lanzarlo en segundo plano y reintentar hasta `timeout`.
+    """
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+
+    # 1. ¿Hay un Outlook clásico ya corriendo?
+    try:
+        return win32com.client.GetActiveObject("Outlook.Application")
+    except Exception:
+        pass
+
+    # 2. Dispatch directo
+    try:
+        return win32com.client.Dispatch("Outlook.Application")
+    except Exception:
+        pass
+
+    # 3. Lanzar el clásico explícitamente y reintentar
+    exe = _buscar_outlook_clasico()
+    if not exe:
+        raise RuntimeError(
+            "No se encontró el Outlook clásico (OUTLOOK.EXE). El 'nuevo Outlook' "
+            "no soporta automatización; instalá/conservá el Outlook clásico."
+        )
+    subprocess.Popen([exe, "/recycle"])
+    deadline = time.time() + timeout
+    ultimo_err = None
+    while time.time() < deadline:
+        time.sleep(3)
+        for getter in (lambda: win32com.client.GetActiveObject("Outlook.Application"),
+                       lambda: win32com.client.Dispatch("Outlook.Application")):
+            try:
+                return getter()
+            except Exception as e:
+                ultimo_err = e
+    raise RuntimeError(
+        f"Se lanzó el Outlook clásico pero no respondió en {timeout}s. "
+        f"Último error: {ultimo_err}"
+    )
+
+
 def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
     """
-    Envía alerta usando Outlook instalado via COM (win32com).
-    No requiere contraseña ni SMTP AUTH — usa la sesión de Outlook activa.
+    Envía alerta usando el Outlook clásico via COM (win32com).
+    No requiere contraseña ni SMTP AUTH. Si el clásico no está abierto, lo
+    levanta solo en segundo plano (ver `_obtener_outlook`).
     """
-    import win32com.client
     n = len(nuevos)
-    outlook = win32com.client.Dispatch("Outlook.Application")
+    outlook = _obtener_outlook()
     mail = outlook.CreateItem(0)
     mail.To = "; ".join(to)
     mail.Subject = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"

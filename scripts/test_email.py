@@ -49,6 +49,7 @@ print("=" * 55)
 
 # ── Intento 1: Outlook COM ────────────────────────────────────────────────────
 print("\n[1/2] Probando Outlook COM (win32com)...")
+print("  (si el Outlook clásico no está abierto, lo levanto solo — esperá unos segundos)")
 try:
     import win32com.client
     print("  pywin32 instalado OK.")
@@ -65,7 +66,7 @@ if 'win32com' in dir() and win32com is not None:
         sys.exit(0)
     except Exception as e:
         print(f"  ERROR Outlook COM: {e}")
-        print("  Asegurate de que Outlook esté abierto y con sesión activa.")
+        print("  El 'nuevo Outlook' no tiene COM; se necesita el Outlook CLÁSICO instalado.")
 
 # ── Intento 2: SMTP ────────────────────────────────────────────────────────────
 print("\n[2/2] Probando SMTP (smtp.office365.com:587)...")

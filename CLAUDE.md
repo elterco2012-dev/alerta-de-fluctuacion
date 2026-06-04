@@ -441,5 +441,33 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
    exposición futura (activos en riesgo) **+ costo histórico** (bajas reales,
    tendencia mensual y desglose por motivo). Ver metodología abajo.
 3. Conexión real a Informix via pyodbc (ya operativa vía los sync desde Windows)
-4. Alerta por email/Teams cuando un vendedor sube a nivel crítico
+4. ~~Alerta por email/Teams cuando un vendedor sube a nivel crítico~~ ✅ **hecho** —
+   `src/alertas.py` + `scripts/enviar_alertas.py`. Detalle abajo.
 5. Modelo ML cuando haya 6+ meses de datos reales
+
+### Alertas (#4) — cómo funciona el envío de email
+
+El tenant de Office 365 tiene **SMTP AUTH deshabilitado por IT** (error 535), así
+que NO se puede mandar por `smtplib`. El canal real es **Outlook clásico via COM**
+(`win32com`), que usa la sesión de Outlook sin contraseña ni SMTP AUTH.
+
+Complicación: la organización migró al **"nuevo Outlook" de Windows, que no soporta
+COM**. Solución en `src/alertas.py`:
+- `_buscar_outlook_clasico()` localiza el `OUTLOOK.EXE` **clásico** en los directorios
+  de Office (`Program Files\Microsoft Office\root\Office*`), NO por App Paths del
+  registro (que puede apuntar al nuevo Outlook).
+- `_obtener_outlook()` conecta a una instancia abierta (`GetActiveObject`); si no hay,
+  lanza el clásico en segundo plano (sin `/recycle`, que cedería el control al nuevo)
+  y reintenta con backoff hasta 90s. El usuario puede seguir usando el nuevo Outlook
+  a diario; el script spinea el clásico solo cuando manda la alerta.
+- `enviar_email()` solo cae a SMTP si `pywin32` NO está instalado; si COM está pero
+  falla, propaga el error (no intenta SMTP, que fallaría con 535).
+
+Estado y re-alerta: `data/estado_alertas.json` guarda `{id_vendedor: timestamp última
+alerta}`. Se alerta cuando un vendedor es **nuevo en crítico** o sigue crítico hace
+**≥ 7 días** (`DIAS_REALERTA`). Probar el canal: `scripts/test_email.bat`.
+
+Automatización: `scripts/sync_y_alertas.bat` corre sync (Python 32-bit, ODBC) →
+snapshot → alertas (Python 64-bit, con pywin32). `scripts/programar_alertas.bat`
+registra la tarea diaria en el Programador de Windows (con `/IT`: corre en la sesión
+interactiva, necesario para Outlook COM y los DSN del usuario).

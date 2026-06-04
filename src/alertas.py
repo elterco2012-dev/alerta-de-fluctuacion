@@ -271,15 +271,19 @@ def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
 def enviar_email(smtp_config: dict, nuevos: pd.DataFrame) -> bool:
     """
     Envía alerta por email. Intenta primero via Outlook COM (sin SMTP AUTH),
-    con fallback a SMTP si Outlook no está disponible.
+    con fallback a SMTP solo si pywin32 no está instalado.
+
+    Si win32com está instalado pero Outlook falla (ej: no está abierto), el error
+    se propaga — no se intenta SMTP porque el tenant tiene SMTP AUTH deshabilitado.
     """
     to = smtp_config.get("to", [])
     try:
+        import win32com.client  # noqa: F401 — solo para detectar si está instalado
         return enviar_email_outlook(to, nuevos)
-    except Exception:
-        pass
+    except ImportError:
+        pass   # pywin32 no instalado → caer a SMTP
 
-    # Fallback SMTP
+    # Fallback SMTP (solo cuando win32com no está disponible)
     n = len(nuevos)
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"[Wurth] 🔴 {n} vendedor{'es' if n > 1 else ''} en nivel crítico — {datetime.now().strftime('%d/%m/%Y')}"

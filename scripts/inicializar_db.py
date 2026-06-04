@@ -163,6 +163,7 @@ for row in icur.fetchall():
         # vart en Würth: 1=Viajante (Außendienst), 2=Televentas (Innendienst)
         if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
+        idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
 
     # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre
     director = None

@@ -263,10 +263,13 @@ cada estado del modelo:
     egresados vs ~11% de activos (a REF=16 era 2% vs 0,6%).
   - Tras recalibrar umbrales a datos reales 2026 (ver sección anterior), los scores
     volvieron a comprimirse (REF=10 daba separación 1.8, detección OOS 4.5%). El
-    barrido re-corrido con umbrales nuevos + pendiente deshabilitada ubica el
-    óptimo en **REF=8**: ~19% de detección OOS con ~11% de falsa alarma (separación
-    ≈ 8.7). La separación sigue siendo modesta: es alerta temprana sobre datos
-    ruidosos de RRHH, no un oráculo, y el historial de egresados aún es corto.
+    barrido re-corrido con umbrales nuevos + pendiente y días-cero deshabilitadas
+    (y el `score_historico` limpio de entradas huérfanas, `[chequeo]=0.00`) ubica el
+    óptimo en **REF=8**: ~15% de detección OOS con ~4.5% de falsa alarma (separación
+    ≈ 10.3, la mejor del barrido; a REF≥10 la detección colapsa a 0 porque los
+    scores quedan comprimidos). La separación sigue siendo modesta: es alerta
+    temprana sobre datos ruidosos de RRHH, no un oráculo, y el historial de
+    egresados aún es corto.
   - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
     operativa sigue siendo por ranking; ver abajo).
 
@@ -290,6 +293,18 @@ activos (11% vs 5%). Es señal estructural de alerta temprana: marca a vendedore
 nuevos en grupos históricamente malos antes de que muestren deterioro individual.
 Caveat honesto: los egresados alimentan el riesgo_base de su grupo, lo que infla
 algo el lift retrospectivo; para un vendedor nuevo (uso real) no hay circularidad.
+
+**Backfill: entradas huérfanas en `score_historico` (gotcha del `[chequeo]`).**
+El backfill usa `INSERT OR REPLACE`, que solo sobreescribe filas de vendedores que
+`calcular_scores()` devuelve para ese período. Si un vendedor sale del motor (ej.
+pasó a ser supervisor y lo excluye el filtro), su fila vieja —calculada con pesos
+y REF anteriores— queda **intacta** y `validar_pesos.py` reporta `[chequeo] != 0`
+al no poder reconstruirla con los pesos actuales (un caso real: vendedor 6183,
+2025-10, score 8.2 viejo vs 4.4 reconstruido). Por eso `backfill_scores.py` ahora,
+antes de insertar cada período, hace `DELETE ... WHERE periodo=? AND id_vendedor
+NOT IN (<ids devueltos>)`. Si el `[chequeo]` vuelve a despegarse, correr
+`scripts/diagnostico_chequeo.bat`: muestra la peor fila y si el problema es REF
+desincronizado, peso `??` (string desincronizado) o una entrada huérfana.
 
 ### Niveles de riesgo (etiquetas visuales, NO el disparador de acción)
 - 8-10 → **crítico**

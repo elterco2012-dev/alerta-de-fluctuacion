@@ -40,7 +40,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 # nivel crítico (>=8) detecta ~41% de egresados con ~11% de falsa alarma.
 # La separación real sigue siendo modesta: es alerta temprana sobre datos
 # ruidosos de RRHH, no un oráculo. Si se ajusta, re-correr backfill y CLAUDE.md.
-RIESGO_REFERENCIA = 10.0
+RIESGO_REFERENCIA = 8.0
 
 
 def get_connection():
@@ -283,7 +283,17 @@ def calcular_scores(meses_tendencia: int = 3,
         acomp_vid = acompanamiento[acompanamiento["id_vendedor"] == vid].head(meses_tendencia) if not acompanamiento.empty else pd.DataFrame()
 
         señales = [
-            Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
+            # NOTA: la descripción es la CLAVE de la señal en todo el sistema
+            # (dashboard, páginas, alertas, score_historico, validar_pesos). NO la
+            # cambies aunque el umbral cambie, o rompés esos lookups y la validación.
+            # Los umbrales reales (recalibrados 2026) están en la lógica más abajo:
+            # caída plan < -50 pp/mes, plan < 55%, días cero > 8, balanza < -60.
+            # DESHABILITADA (peso 0): con umbral <-50 pp/mes (único punto donde no
+            # dispara en el 90%+ de la población) solo alcanza al 1.1% de egresados
+            # y al 0% de activos — muestra estadísticamente tan pequeña que no es
+            # significativa (Δsep=0). La pendiente del %plan no discrimina en este
+            # dataset porque el %plan es muy volátil en toda la fuerza de ventas.
+            Señal("caída_plan_3m",        peso=0.0, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
             Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
             # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
@@ -339,24 +349,34 @@ def calcular_scores(meses_tendencia: int = 3,
         activos_pct      = (activos_cli[_mask_cli] / total_cli_vals[_mask_cli])
 
         # Señal 1: tendencia plan cayendo (pendiente negativa) — solo meses con plan
+        # Umbral -50 (antes -3): el %plan real es muy volátil mes a mes, así que casi
+        # todos tienen pendiente fuertemente negativa (mediana -44 pp/mes; a < -3
+        # disparaba el 93% de los activos, a < -20 todavía el 92%). El umbral -50 ≈ p25:
+        # marca solo el cuarto de vendedores con la caída más empinada. Ver CLAUDE.md
+        # (calibración de umbrales a datos reales 2026).
         if len(pct_plan_validos) >= 2:
             x = np.arange(len(pct_plan_validos))
             pendiente = np.polyfit(x[::-1], pct_plan_validos, 1)[0]  # más reciente primero
-            if pendiente < -3:
+            if pendiente < -50:
                 señales[0].activa = True
                 riesgo_total += señales[0].peso
         else:
             pendiente = 0
 
-        # Señal 2: plan promedio < 80% — solo si hay plan cargado
+        # Señal 2: plan promedio bajo — solo si hay plan cargado
+        # Umbral 55 (antes 80): la mediana de cumplimiento de plan es ~65%, así que
+        # < 80 marcaba al 84% de los activos (no discrimina). < 55 ≈ p28: el ~28% que
+        # rinde claramente por debajo del resto. Ver CLAUDE.md.
         prom_plan = pct_plan_validos.mean() if len(pct_plan_validos) else 0
-        if len(pct_plan_validos) and prom_plan < 80:
+        if len(pct_plan_validos) and prom_plan < 55:
             señales[1].activa = True
             riesgo_total += señales[1].peso
 
         # Señal 3: días venta cero altos (si falta el dato queda en 0 y no enciende)
+        # Umbral 8 (antes 3): la mediana real es ~7 días/mes, así que > 3 disparaba al
+        # 99% de los activos. > 8 ≈ p70: el ~31% con más días sin vender. Ver CLAUDE.md.
         prom_cero = dias_cero_vals.mean()
-        if prom_cero > 3:
+        if prom_cero > 8:
             señales[2].activa = True
             riesgo_total += señales[2].peso
 
@@ -439,11 +459,13 @@ def calcular_scores(meses_tendencia: int = 3,
                 señales[11].activa = True
                 riesgo_total += señales[11].peso
 
-        # Señal 13: balanza negativa los últimos 2 meses Y pérdida neta > 3 clientes
-        # Umbral más estricto para evitar falsos positivos (70% de meses son negativos)
+        # Señal 13: balanza negativa los últimos 2 meses Y pérdida neta fuerte
+        # Umbral -60 (antes -3): la balanza real es negativa para casi todos (mediana
+        # -49 en 2 meses); a < -3 disparaba el 94% de los activos, a < -20 todavía el
+        # 90%. -60 ≈ p25-p30: el ~30% con mayor pérdida neta de cartera. Ver CLAUDE.md.
         if not bal_vid.empty and "balanza" in bal_vid.columns and len(bal_vid) >= 2:
             ultimos_2 = bal_vid["balanza"].values[:2]  # más recientes primero (orden DESC)
-            if all(b < 0 for b in ultimos_2) and ultimos_2.sum() < -3:
+            if all(b < 0 for b in ultimos_2) and ultimos_2.sum() < -60:
                 señales[12].activa = True
                 riesgo_total += señales[12].peso
 

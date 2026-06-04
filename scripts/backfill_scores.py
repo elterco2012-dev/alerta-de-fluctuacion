@@ -92,6 +92,16 @@ def main():
             print("sin datos")
             continue
 
+        # Borrar entradas del período para vendedores que calcular_scores ya no devuelve
+        # (ej: vendedores que pasaron a ser supervisores y quedan excluidos del motor).
+        # Esto evita que entradas viejas calculadas con código anterior queden huérfanas.
+        ids_actuales = [int(r["id_vendedor"]) for _, r in df.iterrows()]
+        placeholders = ",".join("?" * len(ids_actuales))
+        con_local.execute(
+            f"DELETE FROM score_historico WHERE periodo = ? AND id_vendedor NOT IN ({placeholders})",
+            [periodo_str] + ids_actuales,
+        )
+
         # Insertar o reemplazar en score_historico
         filas = []
         for _, r in df.iterrows():

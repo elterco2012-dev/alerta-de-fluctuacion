@@ -77,8 +77,14 @@ campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","g
 # Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
+# kz3 = ID (vertr) del director al que reporta el vendedor/supervisor.
+campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirektor")), None)
 
-print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}")
+# Cuentas especiales que NO son vendedores reales (casa central, dummies). Se
+# excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
+VERTR_EXCLUIDOS = {1500, 7777, 9499}
+
+print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}  director={campo_director}")
 
 # Construir SELECT dinámico
 select_campos = ["vertr", "eintrdat", "austrdat"]
@@ -87,6 +93,7 @@ if campo_grupo_id:   select_campos.append(campo_grupo_id)
 if campo_grupo_nom:  select_campos.append(campo_grupo_nom)
 if campo_supervisor: select_campos.append(campo_supervisor)
 if campo_tipo:       select_campos.append(campo_tipo)
+if campo_director:   select_campos.append(campo_director)
 
 icur.execute(f"""
     SELECT {', '.join(select_campos)}
@@ -137,6 +144,7 @@ for row in icur.fetchall():
         supervisor_raw = str(row[idx]).strip() if row[idx] else None
         idx += 1
     # bvertr es ID numérico del supervisor → resolver nombre desde vertr_nombre
+    sup_id = None
     if supervisor_raw:
         try:
             sup_id = int(supervisor_raw)
@@ -145,6 +153,9 @@ for row in icur.fetchall():
             supervisor = supervisor_raw
     else:
         supervisor = None
+    # Un vendedor cuyo bvertr apunta a sí mismo ES un supervisor (condición del
+    # reporte de jerarquía de Access: bvertr = vertr).
+    es_supervisor = sup_id is not None and sup_id == vid
 
     tipo = "Viajante"
     if campo_tipo and idx < len(row):
@@ -153,16 +164,30 @@ for row in icur.fetchall():
         if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
 
+    # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre
+    director = None
+    if campo_director and idx < len(row):
+        director_raw = str(row[idx]).strip() if row[idx] else None
+        idx += 1
+        if director_raw:
+            try:
+                director = vertr_nombre.get(int(director_raw), director_raw)
+            except (TypeError, ValueError):
+                director = director_raw
+
     eintr_str = _to_iso(eintrdat)
     austr_str = _to_iso(austrdat)
     activo    = 0 if austr_str else 1
 
     if not eintr_str:
         continue  # sin fecha de ingreso, no tiene sentido
+    if vid in VERTR_EXCLUIDOS:
+        continue  # cuenta especial, no es un vendedor real
 
     vendedores_rows.append((
         vid, tipo, id_grupo, nombre_grupo or (f"Grupo {id_grupo}" if id_grupo else "Sin grupo"),
-        supervisor or "", nombre or f"ID {vid}", eintr_str, austr_str, None, activo
+        supervisor or "", nombre or f"ID {vid}", eintr_str, austr_str, None, activo,
+        director or "", 1 if es_supervisor else 0,
     ))
 
 print(f"OK — {len(vendedores_rows)} vendedores, {len(grupos_set)} grupos")
@@ -171,8 +196,9 @@ icon.close()
 # ── Mostrar muestra ────────────────────────────────────────────────────────────
 print("\nMuestra (primeros 5):")
 for r in vendedores_rows[:5]:
-    vid, tipo, gid, gnom, superv, nombre, fi, fe, _, activo = r
-    print(f"  {vid}  {nombre[:30]:<30}  {gnom:<20}  {fi}  {'activo' if activo else 'baja'}")
+    vid, tipo, gid, gnom, superv, nombre, fi, fe, _, activo, director, es_sup = r
+    rol = "SUPERV" if es_sup else "vend"
+    print(f"  {vid}  {nombre[:28]:<28}  {gnom:<18}  {rol:<6}  dir={director or '—'}")
 
 # ── Crear SQLite ──────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -199,7 +225,9 @@ CREATE TABLE IF NOT EXISTS vendedores (
     fecha_ingreso TEXT,
     fecha_egreso  TEXT,
     motivo_egreso TEXT,
-    activo        INTEGER DEFAULT 1
+    activo        INTEGER DEFAULT 1,
+    director      TEXT,
+    es_supervisor INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ventas_mensual (
@@ -292,8 +320,8 @@ print(f"Insertando {len(vendedores_rows)} vendedores...", end=" ", flush=True)
 cur.executemany("""
     INSERT INTO vendedores
         (id_vendedor, tipo, id_grupo, nombre_grupo, supervisor, nombre,
-         fecha_ingreso, fecha_egreso, motivo_egreso, activo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         fecha_ingreso, fecha_egreso, motivo_egreso, activo, director, es_supervisor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id_vendedor) DO UPDATE SET
         tipo          = excluded.tipo,
         id_grupo      = excluded.id_grupo,
@@ -302,8 +330,30 @@ cur.executemany("""
         nombre        = excluded.nombre,
         fecha_ingreso = excluded.fecha_ingreso,
         fecha_egreso  = excluded.fecha_egreso,
-        activo        = excluded.activo
+        activo        = excluded.activo,
+        director      = excluded.director,
+        es_supervisor = excluded.es_supervisor
 """, vendedores_rows)
+con.commit()
+print("OK")
+
+# ── Completar grupos.supervisor desde los vendedores ──────────────────────────
+# Cada grupo toma como supervisor el nombre del supervisor más frecuente entre
+# sus vendedores (resuelto de bvertr). Así la tabla grupos queda consistente con
+# la jerarquía real, no solo con el id de zona.
+print("Asignando supervisor a cada grupo...", end=" ", flush=True)
+cur.execute("""
+    UPDATE grupos
+    SET supervisor = (
+        SELECT v.supervisor
+        FROM vendedores v
+        WHERE v.id_grupo = grupos.id_grupo
+          AND v.supervisor IS NOT NULL AND v.supervisor <> ''
+        GROUP BY v.supervisor
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+    )
+""")
 con.commit()
 print("OK")
 

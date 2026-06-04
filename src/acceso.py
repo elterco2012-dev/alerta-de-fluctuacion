@@ -32,9 +32,13 @@ from typing import Optional
 _DB = os.path.join(os.path.dirname(__file__), "..", "data", "wurth.db")
 
 # ── Configuración editable ───────────────────────────────────────────────────
-# Director → lista de supervisores (por nombre, tal cual figuran en `grupos`).
-# EJEMPLO — reemplazar por la estructura organizacional real.
-DIRECTORES: dict[str, list[str]] = {
+# Director → lista de supervisores (por nombre).
+#
+# Esto es un FALLBACK: si la base ya trae la jerarquía real (columnas `director`
+# y `es_supervisor` en `vendedores`, que pobla inicializar_db.py desde f040.kz3),
+# se usa esa y este diccionario se ignora. Sirve mientras la base no tenga el dato
+# (p.ej. con datos seed) o para forzar un mapeo a mano.
+DIRECTORES_MANUAL: dict[str, list[str]] = {
     "Dirección GBA": [
         "Zerbatto Jose Luis",
         "Kalpokas Gustavo",
@@ -65,18 +69,65 @@ ROL_LABEL = {
 
 
 # ── Resolución ───────────────────────────────────────────────────────────────
+def _tiene_columna(con, tabla: str, columna: str) -> bool:
+    return any(r[1] == columna for r in con.execute(f"PRAGMA table_info({tabla})"))
+
+
 def _supervisores_db() -> list[str]:
-    """Lista de supervisores reales desde la tabla `grupos`."""
+    """
+    Lista de supervisores reales. Une lo que haya en `grupos.supervisor` y en
+    `vendedores.supervisor` (según cómo esté poblada la base) para ser robusto a
+    datos seed y a datos reales.
+    """
     con = sqlite3.connect(_DB)
     try:
-        filas = con.execute(
-            "SELECT DISTINCT supervisor FROM grupos "
-            "WHERE supervisor IS NOT NULL AND supervisor <> '' "
-            "ORDER BY supervisor"
-        ).fetchall()
+        sups: set[str] = set()
+        for tabla in ("grupos", "vendedores"):
+            try:
+                filas = con.execute(
+                    f"SELECT DISTINCT supervisor FROM {tabla} "
+                    f"WHERE supervisor IS NOT NULL AND supervisor <> ''"
+                ).fetchall()
+                sups.update(f[0] for f in filas)
+            except sqlite3.Error:
+                pass
     finally:
         con.close()
-    return [f[0] for f in filas]
+    return sorted(sups)
+
+
+def _directores_db() -> dict[str, list[str]]:
+    """
+    Jerarquía director → [supervisores] derivada de la base real.
+    Cada supervisor (es_supervisor=1) reporta al director de su fila (kz3).
+    Devuelve {} si la base no tiene el dato → el caller usa el fallback manual.
+    """
+    con = sqlite3.connect(_DB)
+    try:
+        if not (_tiene_columna(con, "vendedores", "director")
+                and _tiene_columna(con, "vendedores", "es_supervisor")):
+            return {}
+        filas = con.execute(
+            "SELECT DISTINCT director, supervisor FROM vendedores "
+            "WHERE es_supervisor = 1 AND director <> '' AND supervisor <> ''"
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    finally:
+        con.close()
+    jer: dict[str, list[str]] = {}
+    for director, supervisor in filas:
+        jer.setdefault(director, [])
+        if supervisor not in jer[director]:
+            jer[director].append(supervisor)
+    for sups in jer.values():
+        sups.sort()
+    return jer
+
+
+def _directores() -> dict[str, list[str]]:
+    """Jerarquía efectiva: la real de la base si existe, si no la manual."""
+    return _directores_db() or DIRECTORES_MANUAL
 
 
 def listar_usuarios() -> list[dict]:
@@ -89,7 +140,7 @@ def listar_usuarios() -> list[dict]:
     usuarios: list[dict] = []
     for clave, rol in STAFF.items():
         usuarios.append({"clave": clave, "etiqueta": clave, "rol": rol})
-    for director in DIRECTORES:
+    for director in _directores():
         usuarios.append({"clave": director, "etiqueta": director, "rol": "director"})
     for sup in _supervisores_db():
         usuarios.append({"clave": sup, "etiqueta": sup, "rol": "supervisor"})
@@ -119,9 +170,10 @@ def resolver(clave: Optional[str]) -> Optional[dict]:
                 "supervisores": None, "ve_todo": True}
 
     # Director: ve sus supervisores a cargo.
-    if clave in DIRECTORES:
+    directores = _directores()
+    if clave in directores:
         return {"clave": clave, "rol": "director", "etiqueta": clave,
-                "supervisores": list(DIRECTORES[clave]), "ve_todo": False}
+                "supervisores": list(directores[clave]), "ve_todo": False}
 
     # Supervisor: ve solo su zona. Validar contra la DB.
     if clave in _supervisores_db():

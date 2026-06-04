@@ -92,6 +92,8 @@ scoring al cambiar la conexión.
 | fecha_egreso | TEXT | ISO date, NULL si activo |
 | motivo_egreso | TEXT | 'Renuncia voluntaria', 'Despido', 'Acuerdo mutuo', 'Abandono' |
 | activo | INTEGER | 1=activo, 0=baja |
+| director | TEXT | nombre del director (resuelto de `f040.kz3`), NULL si no aplica |
+| es_supervisor | INTEGER | 1 si `f040.bvertr == vertr` (es supervisor de sí mismo) |
 
 **ventas_mensual** (una fila por vendedor por mes)
 | campo | tipo | descripción |
@@ -315,11 +317,17 @@ selector (se asume la pantalla detrás de un acceso corporativo). La identidad
 viaja en el query param `?usuario=`. El control de acceso es real: `acceso.puede_ver()`
 bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
 
-**Importante para completar con datos reales:** los **supervisores** se generan
-solos desde `grupos` (si Informix trae uno nuevo, aparece). Los **directores** y
-los usuarios de **RRHH/gerencia** NO están en la DB → editar los diccionarios
-`DIRECTORES` y `STAFF` en `src/acceso.py` (hoy tienen un ejemplo plausible
-GBA/Interior, reemplazar por la estructura organizacional real).
+**De dónde sale la jerarquía:** `inicializar_db.py` la lee de `f040`:
+- **supervisor** de cada vendedor = `f040.bvertr` (resuelto a nombre). Un vendedor
+  es supervisor si `bvertr == vertr` (`es_supervisor=1`).
+- **director** de cada supervisor = `f040.kz3` (resuelto a nombre).
+- cuentas especiales `vertr` 1500/7777/9499 se excluyen.
+
+`src/acceso.py` arma la jerarquía director→supervisor **sola** desde `vendedores`
+(`_directores_db()`); si la base todavía no trae esas columnas (datos seed), cae al
+fallback `DIRECTORES_MANUAL`. Los **supervisores** salen de `grupos`/`vendedores`
+automáticamente. Lo único que sigue siendo manual: los usuarios de **RRHH/gerencia**
+(no están en f040) → editar el diccionario `STAFF` en `src/acceso.py`.
 
 ---
 

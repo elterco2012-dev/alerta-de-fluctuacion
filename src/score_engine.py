@@ -40,7 +40,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 # nivel crítico (>=8) detecta ~41% de egresados con ~11% de falsa alarma.
 # La separación real sigue siendo modesta: es alerta temprana sobre datos
 # ruidosos de RRHH, no un oráculo. Si se ajusta, re-correr backfill y CLAUDE.md.
-RIESGO_REFERENCIA = 10.0
+RIESGO_REFERENCIA = 8.0
 
 
 def get_connection():
@@ -288,7 +288,12 @@ def calcular_scores(meses_tendencia: int = 3,
             # cambies aunque el umbral cambie, o rompés esos lookups y la validación.
             # Los umbrales reales (recalibrados 2026) están en la lógica más abajo:
             # caída plan < -50 pp/mes, plan < 55%, días cero > 8, balanza < -60.
-            Señal("caída_plan_3m",        peso=2.5, descripcion="% Plan cayendo 3 meses seguidos"),
+            # DESHABILITADA (peso 0): con umbral <-50 pp/mes (único punto donde no
+            # dispara en el 90%+ de la población) solo alcanza al 1.1% de egresados
+            # y al 0% de activos — muestra estadísticamente tan pequeña que no es
+            # significativa (Δsep=0). La pendiente del %plan no discrimina en este
+            # dataset porque el %plan es muy volátil en toda la fuerza de ventas.
+            Señal("caída_plan_3m",        peso=0.0, descripcion="% Plan cayendo 3 meses seguidos"),
             Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
             Señal("dias_cero_alto",        peso=2.5, descripcion="Días sin venta > 3 en promedio"),
             # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes

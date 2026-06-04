@@ -42,12 +42,15 @@ from datetime import date
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-RIESGO_REFERENCIA = 10.0   # coincide con score_engine.py (calibrado por backtest)
+RIESGO_REFERENCIA = 8.0    # coincide con score_engine.py (calibrado por backtest)
 UMBRAL_RIESGO     = 6.0   # score >= 6 = alto/crítico = "el modelo lo marca"
 
 # ── Pesos ACTUALES (deben coincidir con score_engine.py) ─────────────────────
 PESOS_ACTUAL = {
-    "% Plan cayendo 3 meses seguidos":                              2.5,
+    # Deshabilitada: con umbral <-50 pp/mes dispara en solo 1.1% de egresados
+    # y 0% de activos — muestra insignificante, Δsep=0. El %plan en Würth 2026
+    # es tan volátil que la pendiente no discrimina a ningún umbral razonable.
+    "% Plan cayendo 3 meses seguidos":                              0.0,
     "% Plan < 80% promedio últimos meses":                         2.0,
     "Días sin venta > 3 en promedio":                              2.5,
     # Deshabilitada: Informix reasigna clientes al egreso → histórico queda en 0

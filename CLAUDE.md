@@ -133,7 +133,7 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 ### Señales y pesos actuales (11 activas + 4 deshabilitadas)
 | señal | peso | umbral | estado |
 |---|---|---|---|
-| % Plan en caída fuerte | 2.5 | pendiente < -50 pp/mes | activa |
+| % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
 | Días venta cero altos | 2.5 | promedio > 8 días | activa |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
 | Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
@@ -150,9 +150,15 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | Llamadas bajas (Televentas) | ~~1.5~~ → **0** | — | **deshabilitada** |
 | Visitas bajas (Viajante) | ~~1.5~~ → **0** | — | **deshabilitada** |
 
-> **Señales deshabilitadas (peso=0):** las tres tienen un problema estructural de
-> cobertura de datos en egresados que las invierte (disparan más en activos que en
-> egresados, lift < 1, Δsep positivo al sacarlas):
+> **Señales deshabilitadas (peso=0):** tienen un problema estructural de
+> cobertura de datos en egresados que las invierte o las hace estadísticamente
+> irrelevantes en el dataset real:
+> - **% Plan en caída fuerte (pendiente):** con umbral <-50 pp/mes dispara solo en el
+>   1.1% de los egresados y 0% de los activos — muestra insignificante, Δsep=0. El
+>   %plan de la fuerza de ventas Würth 2026 es tan volátil mes a mes que la pendiente
+>   no discrimina a ningún umbral útil: a <-3 dispara en el 93% de todos; a <-20
+>   todavía en el 92%; a <-50 (el único punto donde no dispara en casi todos) ya
+>   es tan extremo que casi nadie llega. Se deshabilita hasta tener datos más estables.
 > - **Cartera activa baja:** Informix reasigna los clientes al egreso → el histórico
 >   del vendedor que se fue queda con `total_clientes=0` → el fix de dato faltante
 >   desactiva la señal correctamente para egresados, pero sigue activa para el 98%
@@ -214,15 +220,15 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 
 ### Normalización del score (calibración)
 El `riesgo_total` (suma de pesos de señales activas) se normaliza a 1-10 contra
-un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 10.0`:
+un **riesgo de referencia fijo** definido en `RIESGO_REFERENCIA = 8.0`:
 
 ```python
 score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1.0) * 9
 ```
 
-`RIESGO_REFERENCIA = 10` representa un vendedor en deterioro claro (combinación
-de varias señales fuertes: plan cayendo 2.5 + plan<80% 2.0 + días cero 2.5 +
-ventana crítica 1.5 + grupo quemado 1.5 ≈ 10 puntos).
+`RIESGO_REFERENCIA = 8` representa un vendedor en deterioro claro con las
+señales activas actuales: plan<55% (2.0) + ventana crítica 1-3 (1.5) + grupo
+quemado (1.5) + ausencias (2.0) ≈ 7-8 puntos → score 9-10.
 
 **Por qué NO se divide por la suma de todos los pesos (~18):** eso exigía
 activar >50% de las señales a la vez para llegar a score 6, algo que ningún
@@ -230,7 +236,7 @@ vendedor real hace. Resultado: todos los egresados quedaban con score < 6 y la
 pantalla de Precisión mostraba 0% detectado. La calibración por referencia fija
 arregla esto. Si se ajusta el valor, actualizar este archivo.
 
-**Calibración por backtest (cómo se llegó a 10):** la referencia se movió a lo
+**Calibración por backtest (cómo se llegó a 8):** la referencia se movió a lo
 largo de toda la limpieza de señales. El barrido en `scripts/validar_pesos.py`
 (curva detección-vs-falsa-alarma con holdout temporal) define el punto óptimo en
 cada estado del modelo:
@@ -247,9 +253,12 @@ cada estado del modelo:
     de detección out-of-sample con ~25% de falsa alarma (separación ≈ 37, la mejor
     de todo el recorrido). A REF=10 el nivel **crítico (≥8)** detecta ~41% de
     egresados vs ~11% de activos (a REF=16 era 2% vs 0,6%).
-  - La separación real sigue siendo modesta: es alerta temprana sobre datos
-    ruidosos de RRHH, no un oráculo. Detectar ~62% de las fugas con 3 meses de
-    anticipación es valor real.
+  - Tras recalibrar umbrales a datos reales 2026 (ver sección anterior), los scores
+    volvieron a comprimirse (REF=10 daba separación 1.8, detección OOS 4.5%). El
+    barrido re-corrido con umbrales nuevos + pendiente deshabilitada ubica el
+    óptimo en **REF=8**: ~19% de detección OOS con ~11% de falsa alarma (separación
+    ≈ 8.7). La separación sigue siendo modesta: es alerta temprana sobre datos
+    ruidosos de RRHH, no un oráculo, y el historial de egresados aún es corto.
   - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
     operativa sigue siendo por ranking; ver abajo).
 

@@ -190,3 +190,83 @@ def puede_ver(usuario: Optional[dict], supervisor: str) -> bool:
     if usuario["ve_todo"]:
         return True
     return supervisor in (usuario["supervisores"] or [])
+
+
+# ── Helpers de UI (Streamlit) ─────────────────────────────────────────────────
+
+def _selector_st():
+    """Muestra el selector de usuario y detiene la ejecución hasta que elige."""
+    import streamlit as st
+    st.markdown(
+        "<div style='max-width:460px;margin-top:8px;'>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">'
+        "¿Quién está ingresando?</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Cada usuario ve solo el alcance que le corresponde: un supervisor su zona, "
+        "un director sus supervisores, Gerencia toda la empresa."
+    )
+    _users = listar_usuarios()
+    _opts  = {f"{u['etiqueta']}  ·  {ROL_LABEL[u['rol']]}": u["clave"] for u in _users}
+    _sel = st.selectbox(
+        "Ingresá como…", list(_opts.keys()), index=None, placeholder="Elegí tu nombre / rol"
+    )
+    if st.button("Ingresar →", type="primary", disabled=_sel is None):
+        st.query_params["usuario"] = _opts[_sel]
+        st.session_state.pop("_acc_usuario", None)
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+
+def requerir_acceso(roles: Optional[list] = None) -> dict:
+    """
+    Verifica que hay un usuario activo con el rol correcto.
+    - Si no hay usuario (ni en URL ni en session_state) → muestra el selector y detiene.
+    - Si `roles` se pasa y el rol del usuario no está en la lista → muestra error y detiene.
+    - Guarda la clave en session_state para que page-switches sin ?usuario= no fuercen re-login.
+    Retorna el dict del usuario (nunca None).
+    """
+    import streamlit as st
+    # URL param tiene prioridad; si no hay, usar session state (sobrevive st.switch_page).
+    clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
+    usuario = resolver(clave)
+    if usuario is None:
+        _selector_st()   # makes st.stop() internally
+    # Sincronizar URL y session_state.
+    st.session_state["_acc_usuario"] = usuario["clave"]
+    if "usuario" not in st.query_params:
+        st.query_params["usuario"] = usuario["clave"]
+    if roles is not None and usuario["rol"] not in roles:
+        st.warning(
+            f"Esta sección es solo para **{' / '.join(ROL_LABEL[r] for r in roles)}**."
+        )
+        c1, c2 = st.columns([1, 6])
+        with c1:
+            if st.button("← Cambiar usuario"):
+                st.query_params.clear()
+                st.rerun()
+        st.stop()
+    return usuario
+
+
+def barra_usuario_st(usuario: dict) -> None:
+    """Chip con el usuario activo + botón para cambiar identidad."""
+    import streamlit as st
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        st.markdown(
+            f"<div style='font-size:12px;color:#888;margin-bottom:6px;'>Ingresaste como "
+            f"<b style='color:#1a1a2e;'>{usuario['etiqueta']}</b> "
+            f"· {ROL_LABEL[usuario['rol']]}</div>",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        if st.button("Cambiar usuario", key="_acc_logout"):
+            st.query_params.clear()
+            st.session_state.pop("_acc_usuario", None)
+            st.rerun()

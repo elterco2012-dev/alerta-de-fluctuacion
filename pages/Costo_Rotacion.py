@@ -194,6 +194,10 @@ header { display: none; }
 </style>""", unsafe_allow_html=True)
 
 
+# ── Acceso (solo Gerencia) ────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso(roles=["gerencia", "rrhh"])
+
 st.markdown(page_header("💰 Costo de Rotación — Wurth Argentina", "/Costo_Rotacion"),
             unsafe_allow_html=True)
 

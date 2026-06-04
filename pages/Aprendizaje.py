@@ -103,6 +103,10 @@ header { display: none; }
 .cmp-bar  { height:11px; border-radius:3px; min-width:3px; }
 </style>""", unsafe_allow_html=True)
 
+# ── Acceso (solo Gerencia) ────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso(roles=["gerencia", "rrhh"])
+
 # ── Nav ────────────────────────────────────────────────────────────────────────
 st.markdown(page_header("🧠 Aprendizaje del modelo — Wurth Argentina", "/Aprendizaje"),
             unsafe_allow_html=True)

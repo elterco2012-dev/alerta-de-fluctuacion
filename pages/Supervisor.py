@@ -155,7 +155,8 @@ scores_df, grupos_df, sparks, delta_map, _ts_datos = cargar_datos()
 # viaja en el query param ?usuario= para sobrevivir a los reruns y deep-links.
 import acceso
 
-usuario = acceso.resolver(st.query_params.get("usuario", None))
+_clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
+usuario = acceso.resolver(_clave)
 
 if usuario is None:
     # Pantalla de identificación: elegir quién sos antes de ver nada.
@@ -174,9 +175,15 @@ if usuario is None:
     if st.button("Ingresar →", type="primary", disabled=_sel is None):
         st.query_params["usuario"] = _opts[_sel]
         st.query_params.pop("supervisor", None)
+        st.session_state.pop("_acc_usuario", None)
         st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
+
+# Sincronizar sesión y URL.
+st.session_state["_acc_usuario"] = usuario["clave"]
+if "usuario" not in st.query_params:
+    st.query_params["usuario"] = usuario["clave"]
 
 def _barra_usuario():
     """Chip con el usuario activo y botón para cambiar de identidad."""
@@ -190,6 +197,7 @@ def _barra_usuario():
     with c2:
         if st.button("Cambiar usuario", key="logout"):
             st.query_params.clear()
+            st.session_state.pop("_acc_usuario", None)
             st.rerun()
 
 # ── Router ─────────────────────────────────────────────────────────────────────
@@ -380,13 +388,14 @@ else:
 # Tabla
 st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</div>',
             unsafe_allow_html=True)
+_u_qs = f"&usuario={usuario['clave']}"
 rows = ""
 for _, r in df_sup.iterrows():
     vid   = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
     prev  = delta_map.get(vid)
     delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
-      <td><div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+      <td><div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
           <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>

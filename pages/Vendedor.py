@@ -123,6 +123,10 @@ header                      { display: none; }
 .rec-list li { margin-bottom: 4px; }
 </style>""", unsafe_allow_html=True)
 
+# ── Acceso ────────────────────────────────────────────────────────────────────
+import acceso as _acc
+_usuario = _acc.requerir_acceso()
+
 # ── Nav header ────────────────────────────────────────────────────────────────
 st.markdown(page_header("👤 Detalle de vendedor — Wurth Argentina", "/Vendedor"),
             unsafe_allow_html=True)
@@ -190,6 +194,15 @@ def _cargar_vendedor(vid: int):
 
 
 scores_df, v_info_df, ventas_df, score_hist_df = _cargar_vendedor(id_vendedor)
+
+# ── Validar acceso al vendedor ────────────────────────────────────────────────
+if not v_info_df.empty:
+    _sup_del_vendedor = v_info_df.iloc[0].get("supervisor", None)
+    if _sup_del_vendedor and not _acc.puede_ver(_usuario, _sup_del_vendedor):
+        st.error(f"No tenés permiso para ver vendedores de la zona de **{_sup_del_vendedor}**.")
+        if st.button("← Volver"):
+            st.switch_page("pages/Supervisor.py")
+        st.stop()
 
 # ── Validar existencia ────────────────────────────────────────────────────────
 row_score = scores_df[scores_df["id_vendedor"] == id_vendedor]

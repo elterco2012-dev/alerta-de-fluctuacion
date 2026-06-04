@@ -17,10 +17,10 @@ echo  Horario: todos los dias a las 08:00
 echo ============================================================
 echo.
 
-REM /IT = corre en la sesion interactiva (necesario para Outlook COM y DSN ODBC)
-REM /RL LIMITED = privilegios normales (misma integridad que Outlook)
+REM NOTA: hay que abrir este .bat como Administrador (clic derecho > Ejecutar como admin).
+REM Se usa "cmd /c" para lanzar el .bat porque schtasks no acepta .bat directo.
 REM /F = sobrescribe si ya existe
-schtasks /Create /TN "WurthAlertas" /TR "C:\alerta-de-fluctuacion\scripts\sync_y_alertas.bat" /SC DAILY /ST 08:00 /IT /RL LIMITED /F
+schtasks /Create /TN WurthAlertas /TR "cmd /c C:\alerta-de-fluctuacion\scripts\sync_y_alertas.bat" /SC DAILY /ST 08:00 /F
 
 echo.
 if errorlevel 1 goto :error

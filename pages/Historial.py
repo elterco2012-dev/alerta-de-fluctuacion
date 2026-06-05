@@ -283,7 +283,7 @@ else:
         name="Permanencia mediana (bajas)",
         line=dict(color="#4A90D9", width=2.5),
         marker=dict(size=10, color="#4A90D9", line=dict(color="white", width=2)),
-        text=[f"{v:.0f}m<br>({int(n)} bajas)"
+        text=[f"{fmt_num(v, 0)} m<br>({int(n)} bajas)"
               for v, n in zip(medianas, cohorte["n"].values)],
         textposition="top center",
         textfont=dict(size=11, color="#333"),
@@ -373,7 +373,7 @@ if not rot.empty:
         mode="lines+markers+text",
         line=dict(color="#EF9F27", width=2.5),
         marker=dict(size=8, color="#EF9F27"),
-        text=[f"{t:.0f}%" for t in rot_vis["tasa_pct"]],
+        text=[f"{fmt_num(t, 0)}%" for t in rot_vis["tasa_pct"]],
         textposition="top center",
         textfont=dict(size=10),
         hovertemplate="<b>%{x}</b><br>Tasa rotación: %{y:.1f}%<extra></extra>",
@@ -473,7 +473,7 @@ hover_texts = [
     (f"<b>{row['nombre_grupo']}</b><br>"
      f"Supervisor: {row['supervisor_grupo'] or '—'}<br>"
      f"Activos hoy: {row['activos_hoy']}<br>"
-     f"Rotación rápida (&lt;6m): {row['pct_rotacion_rapida']:.1f}%<br>"
+     f"Rotación rápida (&lt;6m): {fmt_num(row['pct_rotacion_rapida'], 1)}%<br>"
      f"Bajas rápidas: {int(row['bajas_rapidas'])}/{int(row['total'])}")
     for _, row in zona_stats_vis.iterrows()
 ]
@@ -483,7 +483,7 @@ fig2.add_trace(go.Bar(
     y=y_labels,
     orientation="h",
     marker_color=colores,
-    text=[f"{p:.0f}% ({int(b)}/{int(t)})"
+    text=[f"{fmt_num(p, 0)}% ({int(b)}/{int(t)})"
           for p, b, t in zip(
               zona_stats_vis["pct_rotacion_rapida"],
               zona_stats_vis["bajas_rapidas"],
@@ -513,9 +513,9 @@ st.plotly_chart(fig2, use_container_width=True)
 with st.expander("Ver tabla completa de zonas"):
     tabla = zona_stats.copy()
     tabla["perm_mediana"] = tabla["perm_mediana"].apply(
-        lambda x: f"{x:.0f} m" if pd.notna(x) else "—"
+        lambda x: f"{fmt_num(x, 0)} m" if pd.notna(x) else "—"
     )
-    tabla["pct_rotacion_rapida"] = tabla["pct_rotacion_rapida"].apply(lambda x: f"{x:.1f}%")
+    tabla["pct_rotacion_rapida"] = tabla["pct_rotacion_rapida"].apply(lambda x: f"{fmt_num(x, 1)}%")
     tabla["supervisor_grupo"] = tabla["supervisor_grupo"].replace("", "—")
     st.dataframe(
         tabla[[

@@ -501,7 +501,7 @@ with col1:
             perm  = g["permanencia_promedio_meses"]
             rb    = g.get("riesgo_base", 0.5)
             nivel = _zona_nivel(rb) if pd.notna(rb) else "medio"
-            perm_str = f"{perm:.1f}m" if pd.notna(perm) else "—"
+            perm_str = fmt_meses(round(perm, 1)) if pd.notna(perm) else "—"
             sup_str = f" · {g['supervisor']}" if pd.notna(g.get('supervisor','')) and g.get('supervisor','') else ""
             cards += f"""
             <div class="zc">
@@ -510,7 +510,7 @@ with col1:
                 <div class="zsb">{int(g['total_vendedores'])} vendedores históricos · duración prom. al egreso: {perm_str}</div>
               </div>
               <div class="zr">
-                <div class="zpct">{g['cumplimiento_plan_promedio']:.0f}% plan</div>
+                <div class="zpct">{fmt_num(g['cumplimiento_plan_promedio'])}% plan</div>
                 {_bdg(nivel)}
               </div>
             </div>"""
@@ -609,7 +609,7 @@ if not onb.empty:
               <td>{r['tipo']}</td>
               <td>{_fmt_antiguedad(r['meses_activo'])}</td>
               <td>{r['nombre_grupo']} {_bdg(z_n, z_l + warn)}</td>
-              <td><b>{r['pct_plan_3m']}%</b></td>
+              <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
               <td>{_bdg(nivel)}</td>
             </tr>"""
         return rows

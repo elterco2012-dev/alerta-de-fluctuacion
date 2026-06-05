@@ -252,7 +252,7 @@ if not supervisor_sel:
         nivel = _zona_nivel(rb)
         cc    = _card_class(nivel)
         perm  = row["permanencia_promedio_meses"]
-        perm_str = f"{perm:.1f}m" if pd.notna(perm) else "—"
+        perm_str = fmt_meses(round(perm, 1)) if pd.notna(perm) else "—"
         c = int(row["criticos"]); a = int(row["altos"])
         if c > 0:
             alerta = f'<span style="color:#E24B4A;font-weight:700;">{c} crítico{"s" if c>1 else ""}</span>'
@@ -350,7 +350,7 @@ n_altos    = len(df_sup[df_sup.nivel_riesgo == "alto"])
 n_onb      = len(df_sup[df_sup.meses_activo <= 3])
 perm_str   = fmt_meses(round(perm_zona, 1)) if perm_zona and pd.notna(perm_zona) else "—"
 diff_perm  = (perm_zona - perm_general) if perm_zona and pd.notna(perm_zona) else None
-diff_str   = (f"{'↑' if diff_perm > 0 else '↓'} {abs(diff_perm):.1f} m vs promedio"
+diff_str   = (f"{'↑' if diff_perm > 0 else '↓'} {fmt_num(abs(diff_perm), 1)} m vs promedio"
               if diff_perm is not None else "")
 
 col_hero, col_stats = st.columns([1, 2.2])
@@ -430,7 +430,7 @@ if not onb.empty:
         ob_rows += f"""<tr>
           <td><b>{r['nombre']}</b> <span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
           <td>{r['tipo']}</td>
-          <td>{_fmt_antiguedad(r['meses_activo'])}</td><td><b>{r['pct_plan_3m']}%</b></td>
+          <td>{_fmt_antiguedad(r['meses_activo'])}</td><td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
           <td>{_bdg(nivel)}</td></tr>"""
     st.markdown(f"""
     <div class="wz-card"><table class="ot">

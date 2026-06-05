@@ -260,8 +260,8 @@ with col_hero:
     st.markdown(hero_kpi(
         "Señal más predictiva",
         mejor["corto"],
-        f"{mejor['pct_leavers']}% de los que se fueron la tenían vs "
-        f"{mejor['pct_stayers']}% de los activos — {fmt_num(mejor['lift'],1)}× más frecuente",
+        f"{fmt_num(mejor['pct_leavers'])}% de los que se fueron la tenían vs "
+        f"{fmt_num(mejor['pct_stayers'])}% de los activos — {fmt_num(mejor['lift'],1)}× más frecuente",
     ), unsafe_allow_html=True)
 with col_stats:
     _s1, _s2, _s3, _s4 = st.columns(4)
@@ -301,10 +301,10 @@ for _, r in res.iterrows():
         '<div class="cmp-bars">'
         f'<div style="display:flex;align-items:center;gap:6px;">'
         f'<div class="cmp-bar" style="width:{wl}%;background:#E24B4A;"></div>'
-        f'<span style="font-size:10px;color:#E24B4A;font-weight:700;">{r["pct_leavers"]}%</span></div>'
+        f'<span style="font-size:10px;color:#E24B4A;font-weight:700;">{fmt_num(r["pct_leavers"])}%</span></div>'
         f'<div style="display:flex;align-items:center;gap:6px;">'
         f'<div class="cmp-bar" style="width:{ws}%;background:#bbb;"></div>'
-        f'<span style="font-size:10px;color:#999;">{r["pct_stayers"]}%</span></div>'
+        f'<span style="font-size:10px;color:#999;">{fmt_num(r["pct_stayers"])}%</span></div>'
         '</div>'
         f'<div style="width:70px;text-align:right;font-size:13px;font-weight:800;'
         f'color:{"#639922" if r["lift"]>=2 else "#EF9F27" if r["lift"]>=1.2 else "#aaa"};">'
@@ -344,8 +344,8 @@ for _, r in res.iterrows():
         f'<td style="font-weight:600;">{_html.escape(r["corto"])}'
         f'{" ⚠️" if r["tenure"] else ""}</td>'
         f'<td>{fmt_num(r["peso"],1)}</td>'
-        f'<td style="color:#E24B4A;font-weight:700;">{r["pct_leavers"]}%</td>'
-        f'<td style="color:#888;">{r["pct_stayers"]}%</td>'
+        f'<td style="color:#E24B4A;font-weight:700;">{fmt_num(r["pct_leavers"])}%</td>'
+        f'<td style="color:#888;">{fmt_num(r["pct_stayers"])}%</td>'
         f'<td style="font-weight:800;">{fmt_num(r["lift"],1)}×</td>'
         f'<td>{_lectura(r)}</td>'
         "</tr>"
@@ -378,15 +378,15 @@ falta_datos = no_tenure[(no_tenure["pct_leavers"] < 5) & (no_tenure["pct_stayers
 sug = []
 for _, r in subir.iterrows():
     sug.append(
-        f'⬆️ <b>{_html.escape(r["corto"])}</b>: aparece en el {r["pct_leavers"]}% de los que '
-        f'se fueron pero solo en el {r["pct_stayers"]}% de los activos '
+        f'⬆️ <b>{_html.escape(r["corto"])}</b>: aparece en el {fmt_num(r["pct_leavers"])}% de los que '
+        f'se fueron pero solo en el {fmt_num(r["pct_stayers"])}% de los activos '
         f'({fmt_num(r["lift"],1)}× más frecuente en fugas). Hoy pesa solo {fmt_num(r["peso"],1)} '
         f'— la evidencia sugiere que debería pesar más.'
     )
 for _, r in bajar.iterrows():
     sug.append(
         f'⬇️ <b>{_html.escape(r["corto"])}</b>: aparece parecido en los que se fueron '
-        f'({r["pct_leavers"]}%) y en los activos ({r["pct_stayers"]}%). '
+        f'({fmt_num(r["pct_leavers"])}%) y en los activos ({fmt_num(r["pct_stayers"])}%). '
         f'Hoy pesa {fmt_num(r["peso"],1)} pero no separa los grupos — candidata a bajar peso.'
     )
 

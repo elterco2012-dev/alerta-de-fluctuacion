@@ -246,12 +246,12 @@ if not bajas.empty:
             st.markdown(stat_kpi("Costo promedio por baja", fmt_pesos_corto(costo_prom_h)),
                         unsafe_allow_html=True)
         with _h2:
-            st.markdown(stat_kpi("Antigüedad prom. al irse", f"{tenure_prom:.1f} meses"),
+            st.markdown(stat_kpi("Antigüedad prom. al irse", f"{fmt_num(tenure_prom, 1)} meses"),
                         unsafe_allow_html=True)
         with _h3:
             _voluntarias = bajas_v["motivo_egreso"].isin(["Renuncia voluntaria", "Abandono"]).sum()
             _pct_vol = (_voluntarias / n_bajas * 100) if n_bajas else 0
-            st.markdown(stat_kpi("Salidas voluntarias", f"{_pct_vol:.0f}%"), unsafe_allow_html=True)
+            st.markdown(stat_kpi("Salidas voluntarias", f"{fmt_num(_pct_vol)}%"), unsafe_allow_html=True)
 
     st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
@@ -505,8 +505,8 @@ La pérdida se calcula sobre el **plan del vendedor que se fue** (no un promedio
 
 | Período | Duración | Pérdida estimada | Ejemplo Televentas vet. |
 |---|---|---|---|
-| Cobertura televentas | {MESES_HASTA_NUEVO:.1f} m | {int(PCT_PERDIDA_COBERTURA*100)}% del plan/mes | {_fmt_pesos(_perd_cob)} |
-| Rampa nuevo vendedor | {MESES_RAMPA_NUEVO:.0f} m | {int(PCT_PERDIDA_RAMPA*100)}% del plan/mes | {_fmt_pesos(_perd_rampa)} |
+| Cobertura televentas | {fmt_num(MESES_HASTA_NUEVO, 1)} m | {fmt_num(PCT_PERDIDA_COBERTURA*100)}% del plan/mes | {_fmt_pesos(_perd_cob)} |
+| Rampa nuevo vendedor | {fmt_num(MESES_RAMPA_NUEVO, 0)} m | {fmt_num(PCT_PERDIDA_RAMPA*100)}% del plan/mes | {_fmt_pesos(_perd_rampa)} |
 | **Pérdida total** | | | **{_fmt_pesos(_perd_cob + _perd_rampa)}** |
 
 *Ajustar PCT\\_PERDIDA\\_COBERTURA y PCT\\_PERDIDA\\_RAMPA según experiencia histórica.*

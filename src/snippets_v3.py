@@ -162,33 +162,81 @@ HIDE_CHROME_CSS = (
 # ─────────────────────────────────────────────────────────────────────────────
 # EXPLICABILIDAD DEL SCORE
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPLICABILIDAD DEL SCORE
+# SIGNAL_PESO mapea etiqueta_corta (de SEÑAL_TAGS) → peso del motor.
+# Mantener sincronizado con los peso= de las Señal() en score_engine.calcular_scores.
+# El motor ya excluye señales deshabilitadas (peso=0) de señales_activas, así que
+# el fallback nunca se usa para ellas — se declaran a 0 por claridad.
+# ─────────────────────────────────────────────────────────────────────────────
 SIGNAL_PESO = {
-    "onboarding": 2.0, "días cero↑": 2.0, "caída 3m": 2.0,
-    "plan<80%": 1.5, "zona quemada": 1.5,
-    "mes 4-6": 1.0, "inactivos↑": 1.0, "cobranza baja": 1.0,
-    "clientes L:0": 0.5, "ticket↓": 0.5,
+    # — 9 señales activas (peso > 0 en score_engine) ——————————————————————————
+    "plan<80%":     2.0,   # plan_bajo_80       → Señal peso=2.0
+    "ausencias↑":   2.0,   # ausencias_tempranas → Señal peso=2.0
+    "onboarding":   1.5,   # ventana_critica_13  → Señal peso=1.5  (era 2.0 ← bug)
+    "zona quemada": 1.5,   # grupo_quemado       → Señal peso=1.5
+    "balanza↓":     1.5,   # balanza_negativa    → Señal peso=1.5  (faltaba ← bug)
+    "mes 4-6":      1.0,   # ventana_critica_46  → Señal peso=1.0
+    "ticket↓":      1.0,   # ticket_cayendo      → Señal peso=1.0  (era 0.5 ← bug)
+    "acomp. bajo":  1.0,   # acomp_bajo          → Señal peso=1.0  (faltaba ← bug)
+    "clientes L:0": 0.5,   # clientes_nuevos_cero → Señal peso=0.5
+    # — 6 señales deshabilitadas (peso=0, nunca aparecen en señales_activas) ——
+    "caída 3m":     0.0,   # caída_plan_3m        → Señal peso=0.0
+    "días cero↑":   0.0,   # dias_cero_alto       → Señal peso=0.0
+    "inactivos↑":   0.0,   # clientes_activos_baja → Señal peso=0.0
+    "cobranza baja":0.0,   # cobranza_baja        → Señal peso=0.0
+    "llamadas↓":    0.0,   # llamadas_bajas       → Señal peso=0.0
+    "visitas↓":     0.0,   # visitas_bajas        → Señal peso=0.0
 }
 
 def score_breakdown_rows(senales):
-    """Devuelve [(label, peso)] ordenado desc."""
+    """
+    [(label, peso)] con Base primero, luego señales ordenadas por peso desc.
+    El fallback es 0.0 (no 0.5): una señal sin peso conocido no inventa
+    contribución — indica que hay que actualizar SIGNAL_PESO.
+    """
     out = [("Base (todos arrancan en 1)", 1.0)]
-    out += sorted([(s, SIGNAL_PESO.get(s, 0.5)) for s in senales],
-                  key=lambda x: -x[1])
+    out += sorted(
+        [(s, SIGNAL_PESO.get(s, 0.0)) for s in senales],
+        key=lambda x: -x[1],
+    )
     return out
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RECOMENDACIÓN DE ACCIÓN
+# MAPEO DE SEÑALES — descripción larga (clave del motor) → etiqueta corta.
+# Fuente ÚNICA: la usan Vendedor.py (pills + desglose) e intervenciones.py
+# (para clasificar el perfil de cada vendedor intervenido). Las claves DEBEN
+# coincidir exactas con los descripcion= de score_engine.py.
 # ─────────────────────────────────────────────────────────────────────────────
-EFECTIVIDAD = {
-    "onboarding_quemada": [("Reunión 1:1", 1.8, 7), ("Acompañamiento en campo", 1.3, 5),
-                           ("Cambio de zona", 1.1, 3), ("Capacitación técnica", 0.4, 4)],
-    "onboarding_normal":  [("Acompañamiento en campo", 1.6, 6), ("Reunión 1:1", 1.2, 8),
-                           ("Capacitación técnica", 0.9, 5)],
-    "senior_caida":       [("Revisión de cartera", 1.5, 4), ("Reunión 1:1", 1.1, 9),
-                           ("Ajuste de objetivos", 0.7, 6)],
-    "default":            [("Reunión 1:1", 1.3, 12), ("Acompañamiento en campo", 1.0, 8),
-                           ("Conversación motivacional", 0.6, 7)],
+SEÑAL_TAGS = {
+    "% Plan cayendo 3 meses seguidos":                ("caída 3m",   "red"),
+    "% Plan < 80% promedio últimos meses":             ("plan<80%",   "orange"),
+    "Días sin venta > 3 en promedio":                  ("días cero↑", "red"),
+    "< 60% de cartera activa":                         ("inactivos↑", "orange"),
+    "Cobranza real < 90% de teórica":                  ("cobranza baja", "orange"),
+    "En ventana crítica mes 1-3":                      ("onboarding", "red"),
+    "En ventana crítica mes 4-6":                      ("mes 4-6",    "orange"),
+    "Grupo con alta rotación histórica":               ("zona quemada", "orange"),
+    "Sin clientes nuevos últimos 2 meses":             ("clientes L:0", "yellow"),
+    "< 70% de llamadas planificadas gestionadas (Televentas)": ("llamadas↓", "red"),
+    "< 70% de visitas planificadas realizadas (Viajante)":     ("visitas↓",  "red"),
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑", "red"),
+    "Balanza clientes negativa 2+ meses consecutivos": ("balanza↓",   "orange"),
+    "Ticket promedio cae > 5% por mes":                ("ticket↓",    "orange"),
+    "Supervisor no acompañó en ventana crítica 1-6":   ("acomp. bajo","yellow"),
 }
+
+def senal_corta(desc):
+    """(etiqueta_corta, color) para una descripción de señal. Fallback seguro."""
+    return SEÑAL_TAGS.get(desc, (desc[:20], "yellow"))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RECOMENDACIÓN DE ACCIÓN
+# El ranking de efectividad sale de DATOS REALES (intervenciones.efectividad_por_perfil),
+# NO de números inventados. Si un perfil no tiene suficientes intervenciones medidas,
+# `recomendar_accion` devuelve ranking vacío y la UI muestra un estado "sin datos"
+# en vez de fabricar una recomendación.
+# ─────────────────────────────────────────────────────────────────────────────
 PERFIL_LABEL = {
     "onboarding_quemada": "nuevos en zona de alta rotación",
     "onboarding_normal": "nuevos en zona normal",
@@ -203,10 +251,18 @@ def perfil_de(meses, riesgo_base, senales):
         return "senior_caida"
     return "default"
 
-def recomendar_accion(meses, riesgo_base, senales):
+def recomendar_accion(meses, riesgo_base, senales, efectividad=None):
+    """
+    (perfil_key, perfil_label, top_accion|None, ranking).
+    `efectividad` = dict real {perfil: [(tipo, impacto_prom, n_casos), ...]}
+    calculado por intervenciones.efectividad_por_perfil(). Si no se pasa, o el
+    perfil no tiene datos, top_accion = None y ranking = [] → la UI NO debe
+    inventar una recomendación: muestra "sin datos suficientes".
+    """
     p = perfil_de(meses, riesgo_base, senales)
-    ranking = EFECTIVIDAD.get(p, EFECTIVIDAD["default"])
-    return p, PERFIL_LABEL[p], ranking[0], ranking
+    ranking = (efectividad or {}).get(p, [])
+    top = ranking[0] if ranking else None
+    return p, PERFIL_LABEL[p], top, ranking
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MATRIZ DE CONFUSIÓN

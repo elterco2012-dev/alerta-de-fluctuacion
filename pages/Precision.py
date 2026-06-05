@@ -302,11 +302,11 @@ if all_señales and total_cd > 0:
               <div style="flex:1;display:flex;flex-direction:column;gap:2px;">
                 <div style="display:flex;align-items:center;gap:4px;">
                   <div class="sig-fill" style="width:{w_det}%;background:#639922;opacity:.85;"></div>
-                  <span style="font-size:10px;color:#639922;font-weight:700;">{r['pct_det']}%</span>
+                  <span style="font-size:10px;color:#639922;font-weight:700;">{fmt_num(r['pct_det'])}%</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:4px;">
                   <div class="sig-fill" style="width:{w_miss}%;background:#ccc;opacity:.7;"></div>
-                  <span style="font-size:10px;color:#999;">{r['pct_miss']}%</span>
+                  <span style="font-size:10px;color:#999;">{fmt_num(r['pct_miss'])}%</span>
                 </div>
               </div>
             </div>"""

@@ -25,7 +25,7 @@ CÓMO COMPLETARLO CON DATOS REALES
 """
 
 from __future__ import annotations
-import sqlite3, os
+import sqlite3, os, json as _json
 from typing import Optional
 
 # Ruta a la DB (misma que usa score_engine por defecto).
@@ -194,9 +194,65 @@ def puede_ver(usuario: Optional[dict], supervisor: str) -> bool:
 
 # ── Helpers de UI (Streamlit) ─────────────────────────────────────────────────
 
+# Clave usada en localStorage del browser para guardar el usuario recordado.
+_LS_KEY = "wurth_usuario"
+
+
+def _js_navegar(clave: Optional[str]) -> str:
+    """
+    Devuelve un fragmento HTML+JS que:
+    - Si clave no es None: guarda en localStorage y navega a ?usuario=<clave>
+    - Si clave es None:    borra localStorage y navega a la URL sin ?usuario=
+    El JS corre en el contexto del browser (iframe srcdoc con allow-same-origin).
+    """
+    if clave is not None:
+        return f"""<script>
+(function(){{
+  localStorage.setItem({_json.dumps(_LS_KEY)}, {_json.dumps(clave)});
+  var p = new URLSearchParams(window.parent.location.search);
+  p.set('usuario', {_json.dumps(clave)});
+  window.parent.location.replace(window.parent.location.pathname + '?' + p.toString());
+}})();
+</script>"""
+    else:
+        return f"""<script>
+(function(){{
+  localStorage.removeItem({_json.dumps(_LS_KEY)});
+  var p = new URLSearchParams(window.parent.location.search);
+  p.delete('usuario');
+  var qs = p.toString();
+  window.parent.location.replace(
+    window.parent.location.pathname + (qs ? '?' + qs : '')
+  );
+}})();
+</script>"""
+
+
 def _selector_st():
-    """Muestra el selector de usuario y detiene la ejecución hasta que elige."""
+    """
+    Muestra el selector de usuario y detiene la ejecución hasta que elige.
+    Primero intenta auto-login desde localStorage: si hay usuario guardado,
+    redirige sin mostrar el formulario (el usuario no tiene que elegir de nuevo).
+    """
     import streamlit as st
+    import streamlit.components.v1 as components
+
+    # ── Auto-login desde localStorage ────────────────────────────────────────
+    # Si el browser tiene un usuario guardado (de una sesión anterior), el JS
+    # redirige a ?usuario=X y Streamlit arranca ya logueado. Si no hay nada en
+    # localStorage, el JS no hace nada y se muestra el selector.
+    components.html(f"""<script>
+(function(){{
+  var u = localStorage.getItem({_json.dumps(_LS_KEY)});
+  if (!u) return;
+  var p = new URLSearchParams(window.parent.location.search);
+  if (p.get('usuario') === u) return;
+  p.set('usuario', u);
+  window.parent.location.replace(window.parent.location.pathname + '?' + p.toString());
+}})();
+</script>""", height=0)
+
+    # ── Formulario de selección ───────────────────────────────────────────────
     st.markdown(
         "<div style='max-width:460px;margin-top:8px;'>",
         unsafe_allow_html=True,
@@ -208,7 +264,8 @@ def _selector_st():
     )
     st.caption(
         "Cada usuario ve solo el alcance que le corresponde: un supervisor su zona, "
-        "un director sus supervisores, Gerencia toda la empresa."
+        "un director sus supervisores, Gerencia toda la empresa. "
+        "Tu elección se recuerda en este navegador."
     )
     _users = listar_usuarios()
     _opts  = {f"{u['etiqueta']}  ·  {ROL_LABEL[u['rol']]}": u["clave"] for u in _users}
@@ -216,9 +273,11 @@ def _selector_st():
         "Ingresá como…", list(_opts.keys()), index=None, placeholder="Elegí tu nombre / rol"
     )
     if st.button("Ingresar →", type="primary", disabled=_sel is None):
-        st.query_params["usuario"] = _opts[_sel]
-        st.session_state.pop("_acc_usuario", None)
-        st.rerun()
+        clave_sel = _opts[_sel]
+        # Guarda en localStorage + navega con ?usuario=X (sin st.rerun para
+        # evitar race condition entre Python y el JS del browser).
+        components.html(_js_navegar(clave_sel), height=0)
+        st.stop()
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
@@ -232,6 +291,7 @@ def requerir_acceso(roles: Optional[list] = None) -> dict:
     Retorna el dict del usuario (nunca None).
     """
     import streamlit as st
+    import streamlit.components.v1 as components
     # URL param tiene prioridad; si no hay, usar session state (sobrevive st.switch_page).
     clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
     usuario = resolver(clave)
@@ -248,15 +308,17 @@ def requerir_acceso(roles: Optional[list] = None) -> dict:
         c1, c2 = st.columns([1, 6])
         with c1:
             if st.button("← Cambiar usuario"):
-                st.query_params.clear()
-                st.rerun()
+                components.html(_js_navegar(None), height=0)
+                st.session_state.pop("_acc_usuario", None)
+                st.stop()
         st.stop()
     return usuario
 
 
 def barra_usuario_st(usuario: dict) -> None:
-    """Chip con el usuario activo + botón para cambiar identidad."""
+    """Chip con el usuario activo + botón para cambiar identidad (borra localStorage)."""
     import streamlit as st
+    import streamlit.components.v1 as components
     c1, c2 = st.columns([5, 1])
     with c1:
         st.markdown(
@@ -267,6 +329,7 @@ def barra_usuario_st(usuario: dict) -> None:
         )
     with c2:
         if st.button("Cambiar usuario", key="_acc_logout"):
-            st.query_params.clear()
+            # Borra localStorage + navega sin ?usuario= → aparece el selector
+            components.html(_js_navegar(None), height=0)
             st.session_state.pop("_acc_usuario", None)
-            st.rerun()
+            st.stop()

@@ -112,6 +112,64 @@ def calcular_impacto(intervenciones: pd.DataFrame,
     return pd.DataFrame(rows)
 
 
+def efectividad_por_perfil(scores_actuales: pd.DataFrame,
+                           intervenciones: pd.DataFrame = None,
+                           min_casos: int = 2) -> dict:
+    """
+    Efectividad REAL de cada tipo de intervención, por perfil de vendedor.
+    Reemplaza el dict EFECTIVIDAD inventado que había en snippets_v3.
+
+    Para cada intervención cuyo vendedor sigue ACTIVO y tiene score actual, mide
+    impacto = score_inicial - score_actual (positivo = el score bajó = mejoró).
+    Agrupa por (perfil × tipo) y promedia.
+
+    El PERFIL sale de perfil_de(meses, riesgo_base, señales) con los valores
+    ACTUALES del vendedor (aprox: su perfil hoy, no necesariamente el del día que
+    se intervino).
+
+    Caveat honesto: solo entran vendedores activos. Una baja no tiene score contra
+    el cual medir, así que una intervención tras la que el vendedor IGUAL se fue no
+    baja el promedio acá → sobreestima la efectividad. Es "cuánto bajó el score de
+    los que se quedaron", no "a cuántos retuvo".
+
+    Devuelve {perfil: [(tipo, impacto_prom, n_casos), ...]} ordenado por impacto
+    desc, incluyendo solo combinaciones con >= min_casos. Perfiles sin datos
+    suficientes no aparecen → la UI muestra "sin datos" en vez de inventar.
+    """
+    from collections import defaultdict
+    from snippets_v3 import perfil_de, senal_corta
+
+    if intervenciones is None:
+        intervenciones = obtener_todas()
+    if (intervenciones is None or intervenciones.empty
+            or scores_actuales is None or scores_actuales.empty):
+        return {}
+
+    score_map = dict(zip(scores_actuales["id_vendedor"], scores_actuales["score"]))
+    meses_map = dict(zip(scores_actuales["id_vendedor"], scores_actuales["meses_activo"]))
+    rb_map    = dict(zip(scores_actuales["id_vendedor"], scores_actuales["grupo_riesgo_base"]))
+    sen_map   = dict(zip(scores_actuales["id_vendedor"], scores_actuales["señales_activas"]))
+
+    acc = defaultdict(list)   # (perfil, tipo) -> [impactos]
+    for _, r in intervenciones.iterrows():
+        vid = r["id_vendedor"]
+        if vid not in score_map:          # baja o sin score actual → no medible
+            continue
+        impacto = r["score_inicial"] - score_map[vid]
+        señales = [senal_corta(s)[0] for s in (sen_map.get(vid) or [])]
+        perfil  = perfil_de(meses_map.get(vid) or 0, rb_map.get(vid) or 0, señales)
+        acc[(perfil, r["tipo"])].append(impacto)
+
+    tabla = defaultdict(list)
+    for (perfil, tipo), imps in acc.items():
+        if len(imps) < min_casos:
+            continue
+        tabla[perfil].append((tipo, round(sum(imps) / len(imps), 1), len(imps)))
+    for perfil in tabla:
+        tabla[perfil].sort(key=lambda x: -x[1])
+    return dict(tabla)
+
+
 def hay_datos_demo() -> bool:
     try:
         _init_table()

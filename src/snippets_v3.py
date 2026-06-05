@@ -162,18 +162,44 @@ HIDE_CHROME_CSS = (
 # ─────────────────────────────────────────────────────────────────────────────
 # EXPLICABILIDAD DEL SCORE
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPLICABILIDAD DEL SCORE
+# SIGNAL_PESO mapea etiqueta_corta (de SEÑAL_TAGS) → peso del motor.
+# Mantener sincronizado con los peso= de las Señal() en score_engine.calcular_scores.
+# El motor ya excluye señales deshabilitadas (peso=0) de señales_activas, así que
+# el fallback nunca se usa para ellas — se declaran a 0 por claridad.
+# ─────────────────────────────────────────────────────────────────────────────
 SIGNAL_PESO = {
-    "onboarding": 2.0, "días cero↑": 2.0, "caída 3m": 2.0,
-    "plan<80%": 1.5, "zona quemada": 1.5,
-    "mes 4-6": 1.0, "inactivos↑": 1.0, "cobranza baja": 1.0,
-    "clientes L:0": 0.5, "ticket↓": 0.5,
+    # — 9 señales activas (peso > 0 en score_engine) ——————————————————————————
+    "plan<80%":     2.0,   # plan_bajo_80       → Señal peso=2.0
+    "ausencias↑":   2.0,   # ausencias_tempranas → Señal peso=2.0
+    "onboarding":   1.5,   # ventana_critica_13  → Señal peso=1.5  (era 2.0 ← bug)
+    "zona quemada": 1.5,   # grupo_quemado       → Señal peso=1.5
+    "balanza↓":     1.5,   # balanza_negativa    → Señal peso=1.5  (faltaba ← bug)
+    "mes 4-6":      1.0,   # ventana_critica_46  → Señal peso=1.0
+    "ticket↓":      1.0,   # ticket_cayendo      → Señal peso=1.0  (era 0.5 ← bug)
+    "acomp. bajo":  1.0,   # acomp_bajo          → Señal peso=1.0  (faltaba ← bug)
+    "clientes L:0": 0.5,   # clientes_nuevos_cero → Señal peso=0.5
+    # — 6 señales deshabilitadas (peso=0, nunca aparecen en señales_activas) ——
+    "caída 3m":     0.0,   # caída_plan_3m        → Señal peso=0.0
+    "días cero↑":   0.0,   # dias_cero_alto       → Señal peso=0.0
+    "inactivos↑":   0.0,   # clientes_activos_baja → Señal peso=0.0
+    "cobranza baja":0.0,   # cobranza_baja        → Señal peso=0.0
+    "llamadas↓":    0.0,   # llamadas_bajas       → Señal peso=0.0
+    "visitas↓":     0.0,   # visitas_bajas        → Señal peso=0.0
 }
 
 def score_breakdown_rows(senales):
-    """Devuelve [(label, peso)] ordenado desc."""
+    """
+    [(label, peso)] con Base primero, luego señales ordenadas por peso desc.
+    El fallback es 0.0 (no 0.5): una señal sin peso conocido no inventa
+    contribución — indica que hay que actualizar SIGNAL_PESO.
+    """
     out = [("Base (todos arrancan en 1)", 1.0)]
-    out += sorted([(s, SIGNAL_PESO.get(s, 0.5)) for s in senales],
-                  key=lambda x: -x[1])
+    out += sorted(
+        [(s, SIGNAL_PESO.get(s, 0.0)) for s in senales],
+        key=lambda x: -x[1],
+    )
     return out
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -273,13 +273,14 @@ with col_señales:
     else:
         pills_html = '<span style="color:#ccc;font-size:12px;">Sin señales de alerta activas</span>'
 
-    # Breakdown table
+    # Breakdown table — muestra los pesos de señal; el score final es la
+    # normalización 1 + min(suma/REF, 1)*9, por eso la suma de filas ≠ score.
     breakdown = score_breakdown_rows(
         [_señal_short(s)[0] for s in señales_activas]
     )
     rows_bd = "".join(
         f'<div class="bd-row"><span class="bd-label">{lbl}</span>'
-        f'<span class="bd-peso">+{peso:.1f}</span></div>'
+        f'<span class="bd-peso">+{fmt_num(peso, 1)}</span></div>'
         for lbl, peso in breakdown
     )
 
@@ -289,8 +290,8 @@ with col_señales:
 <div style="background:#fafafa;border-radius:8px;padding:10px 14px;">
   {rows_bd}
   <div class="bd-row" style="border-bottom:none;margin-top:4px;">
-    <span style="font-weight:700;color:#1a1a2e;">Total</span>
-    <span style="font-weight:800;color:#1a1a2e;">{score_val}</span>
+    <span style="font-weight:700;color:#1a1a2e;">Score final (normalizado 1-10)</span>
+    <span style="font-weight:800;color:#1a1a2e;">{fmt_num(score_val, 1)}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)

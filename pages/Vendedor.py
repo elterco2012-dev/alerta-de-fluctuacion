@@ -18,8 +18,9 @@ from snippets_v3 import (
     banner, hero_kpi, stat_kpi, accion_tag,
     badge, pill, fmt_num, fmt_pct, fmt_meses, fmt_antiguedad,
     score_breakdown_rows, recomendar_accion,
-    NIVEL_LABEL, page_header,
+    NIVEL_LABEL, page_header, SEÑAL_TAGS, senal_corta,
 )
+import intervenciones as _intervenciones
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _zona_nivel(rb):
@@ -33,27 +34,9 @@ def _zona_label(rb):
     return {"critico": "rot. alta", "alto": "rot. alta",
             "medio": "rot. media", "bajo": "rot. baja"}[n]
 
-SEÑAL_TAGS = {
-    "% Plan cayendo 3 meses seguidos":                ("caída 3m",   "red"),
-    "% Plan < 80% promedio últimos meses":             ("plan<80%",   "orange"),
-    "Días sin venta > 3 en promedio":                  ("días cero↑", "red"),
-    "< 60% de cartera activa":                         ("inactivos↑", "orange"),
-    "Cobranza real < 90% de teórica":                  ("cobranza baja", "orange"),
-    "En ventana crítica mes 1-3":                      ("onboarding", "red"),
-    "En ventana crítica mes 4-6":                      ("mes 4-6",    "orange"),
-    "Grupo con alta rotación histórica":               ("zona quemada", "orange"),
-    "Sin clientes nuevos últimos 2 meses":             ("clientes L:0", "yellow"),
-    "< 70% de llamadas planificadas gestionadas (Televentas)": ("llamadas↓", "red"),
-    "< 70% de visitas planificadas realizadas (Viajante)":     ("visitas↓",  "red"),
-    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑", "red"),
-    "Balanza clientes negativa 2+ meses consecutivos": ("balanza↓",   "orange"),
-    "Ticket promedio cae > 5% por mes":                ("ticket↓",    "orange"),
-    "Supervisor no acompañó en ventana crítica 1-6":   ("acomp. bajo","yellow"),
-}
-
-def _señal_short(desc):
-    """Devuelve (etiqueta_corta, color) para una descripción de señal."""
-    return SEÑAL_TAGS.get(desc, (desc[:20], "yellow"))
+# SEÑAL_TAGS y senal_corta viven en snippets_v3 (fuente única, compartida con
+# intervenciones.py). _señal_short queda como alias para no tocar los usos de abajo.
+_señal_short = senal_corta
 
 def _pct_plan_color(v):
     if v >= 90:
@@ -405,30 +388,52 @@ else:
 </div>
 """, unsafe_allow_html=True)
 
-# ── Recomendación de acción ───────────────────────────────────────────────────
+# ── Recomendación de acción (efectividad REAL, no inventada) ──────────────────
+# El ranking sale de las intervenciones ya registradas: cuánto bajó el score en
+# promedio por tipo de acción, para vendedores de este mismo perfil. Si todavía no
+# hay suficientes casos medidos, NO inventamos una recomendación.
+_efectividad = _intervenciones.efectividad_por_perfil(scores_df, min_casos=2)
 perfil_key, perfil_label, top_accion, ranking = recomendar_accion(
     meses_activo, v_riesgo_base,
-    [_señal_short(s)[0] for s in señales_activas]
+    [_señal_short(s)[0] for s in señales_activas],
+    efectividad=_efectividad,
 )
 
 st.markdown('<div class="sec-header">🎯 Acción recomendada</div>', unsafe_allow_html=True)
 
-ranking_items = "".join(
-    f'<li style="margin-bottom:4px;">'
-    f'<b>{a[0]}</b>'
-    f'<span style="color:#aaa;font-size:11px;margin-left:8px;">'
-    f'efectividad {a[1]:.1f} · {a[2]} días promedio</span>'
-    f'</li>'
-    for a in ranking[:4]
-)
-
-st.markdown(f"""
+if ranking:
+    ranking_items = "".join(
+        f'<li style="margin-bottom:4px;">'
+        f'<b>{a[0]}</b>'
+        f'<span style="color:#aaa;font-size:11px;margin-left:8px;">'
+        f'bajó el score {fmt_num(a[1], 1)} en promedio · {a[2]} '
+        f'{"caso" if a[2] == 1 else "casos"}</span>'
+        f'</li>'
+        for a in ranking[:4]
+    )
+    st.markdown(f"""
 <div class="rec-card">
   <div class="rec-title">Perfil: {perfil_label}</div>
   <div class="rec-action">→ {top_accion[0]}</div>
   <ul class="rec-list" style="margin:0;padding-left:18px;color:#444;">
     {ranking_items}
   </ul>
+  <div style="font-size:11px;color:#aaa;margin-top:10px;">
+    Efectividad medida sobre intervenciones reales de vendedores con perfil
+    <b>{perfil_label}</b> que siguen activos (cuánto les bajó el score después).
+  </div>
+</div>
+""", unsafe_allow_html=True)
+else:
+    st.markdown(f"""
+<div class="rec-card">
+  <div class="rec-title">Perfil: {perfil_label}</div>
+  <div style="font-size:13px;color:#666;">
+    Todavía no hay suficientes intervenciones registradas para vendedores de este
+    perfil como para recomendar con datos reales. A medida que se registren
+    intervenciones y se mida su impacto en el score, esta sección va a mostrar
+    qué acción funcionó mejor.
+  </div>
 </div>
 """, unsafe_allow_html=True)
 

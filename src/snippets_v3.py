@@ -177,18 +177,40 @@ def score_breakdown_rows(senales):
     return out
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RECOMENDACIÓN DE ACCIÓN
+# MAPEO DE SEÑALES — descripción larga (clave del motor) → etiqueta corta.
+# Fuente ÚNICA: la usan Vendedor.py (pills + desglose) e intervenciones.py
+# (para clasificar el perfil de cada vendedor intervenido). Las claves DEBEN
+# coincidir exactas con los descripcion= de score_engine.py.
 # ─────────────────────────────────────────────────────────────────────────────
-EFECTIVIDAD = {
-    "onboarding_quemada": [("Reunión 1:1", 1.8, 7), ("Acompañamiento en campo", 1.3, 5),
-                           ("Cambio de zona", 1.1, 3), ("Capacitación técnica", 0.4, 4)],
-    "onboarding_normal":  [("Acompañamiento en campo", 1.6, 6), ("Reunión 1:1", 1.2, 8),
-                           ("Capacitación técnica", 0.9, 5)],
-    "senior_caida":       [("Revisión de cartera", 1.5, 4), ("Reunión 1:1", 1.1, 9),
-                           ("Ajuste de objetivos", 0.7, 6)],
-    "default":            [("Reunión 1:1", 1.3, 12), ("Acompañamiento en campo", 1.0, 8),
-                           ("Conversación motivacional", 0.6, 7)],
+SEÑAL_TAGS = {
+    "% Plan cayendo 3 meses seguidos":                ("caída 3m",   "red"),
+    "% Plan < 80% promedio últimos meses":             ("plan<80%",   "orange"),
+    "Días sin venta > 3 en promedio":                  ("días cero↑", "red"),
+    "< 60% de cartera activa":                         ("inactivos↑", "orange"),
+    "Cobranza real < 90% de teórica":                  ("cobranza baja", "orange"),
+    "En ventana crítica mes 1-3":                      ("onboarding", "red"),
+    "En ventana crítica mes 4-6":                      ("mes 4-6",    "orange"),
+    "Grupo con alta rotación histórica":               ("zona quemada", "orange"),
+    "Sin clientes nuevos últimos 2 meses":             ("clientes L:0", "yellow"),
+    "< 70% de llamadas planificadas gestionadas (Televentas)": ("llamadas↓", "red"),
+    "< 70% de visitas planificadas realizadas (Viajante)":     ("visitas↓",  "red"),
+    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": ("ausencias↑", "red"),
+    "Balanza clientes negativa 2+ meses consecutivos": ("balanza↓",   "orange"),
+    "Ticket promedio cae > 5% por mes":                ("ticket↓",    "orange"),
+    "Supervisor no acompañó en ventana crítica 1-6":   ("acomp. bajo","yellow"),
 }
+
+def senal_corta(desc):
+    """(etiqueta_corta, color) para una descripción de señal. Fallback seguro."""
+    return SEÑAL_TAGS.get(desc, (desc[:20], "yellow"))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RECOMENDACIÓN DE ACCIÓN
+# El ranking de efectividad sale de DATOS REALES (intervenciones.efectividad_por_perfil),
+# NO de números inventados. Si un perfil no tiene suficientes intervenciones medidas,
+# `recomendar_accion` devuelve ranking vacío y la UI muestra un estado "sin datos"
+# en vez de fabricar una recomendación.
+# ─────────────────────────────────────────────────────────────────────────────
 PERFIL_LABEL = {
     "onboarding_quemada": "nuevos en zona de alta rotación",
     "onboarding_normal": "nuevos en zona normal",
@@ -203,10 +225,18 @@ def perfil_de(meses, riesgo_base, senales):
         return "senior_caida"
     return "default"
 
-def recomendar_accion(meses, riesgo_base, senales):
+def recomendar_accion(meses, riesgo_base, senales, efectividad=None):
+    """
+    (perfil_key, perfil_label, top_accion|None, ranking).
+    `efectividad` = dict real {perfil: [(tipo, impacto_prom, n_casos), ...]}
+    calculado por intervenciones.efectividad_por_perfil(). Si no se pasa, o el
+    perfil no tiene datos, top_accion = None y ranking = [] → la UI NO debe
+    inventar una recomendación: muestra "sin datos suficientes".
+    """
     p = perfil_de(meses, riesgo_base, senales)
-    ranking = EFECTIVIDAD.get(p, EFECTIVIDAD["default"])
-    return p, PERFIL_LABEL[p], ranking[0], ranking
+    ranking = (efectividad or {}).get(p, [])
+    top = ranking[0] if ranking else None
+    return p, PERFIL_LABEL[p], top, ranking
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MATRIZ DE CONFUSIÓN

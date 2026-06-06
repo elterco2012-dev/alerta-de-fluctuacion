@@ -427,6 +427,7 @@ else:
     tabla["pérdida cartera"]  = tabla["perdida_venta_estimada"].apply(_fmt_pesos)
     tabla["COSTO TOTAL"]      = tabla["costo_total"].apply(_fmt_pesos)
     tabla["nivel"]            = tabla["nivel_riesgo"].str.upper()
+    tabla["score"]            = tabla["score"].apply(lambda x: fmt_num(x, 1))
 
     st.dataframe(
         tabla[[

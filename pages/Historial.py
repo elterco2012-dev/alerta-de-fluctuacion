@@ -517,6 +517,8 @@ with st.expander("Ver tabla completa de zonas"):
     )
     tabla["pct_rotacion_rapida"] = tabla["pct_rotacion_rapida"].apply(lambda x: f"{fmt_num(x, 1)}%")
     tabla["supervisor_grupo"] = tabla["supervisor_grupo"].replace("", "—")
+    for _col in ["activos_hoy", "total", "bajas", "bajas_rapidas"]:
+        tabla[_col] = tabla[_col].apply(lambda x: fmt_num(int(x), 0) if pd.notna(x) else "—")
     st.dataframe(
         tabla[[
             "nombre_grupo", "supervisor_grupo", "activos_hoy",

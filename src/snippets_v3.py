@@ -125,14 +125,33 @@ NAV_ITEMS = [
 ]
 
 def nav_links(current=""):
-    """Devuelve el bloque HTML de navegación. La página actual va resaltada
-    (no es link). current es el path, ej '/Precision' o '/' para Inicio.
-    Propaga ?usuario= automáticamente si está presente en la URL actual."""
+    """Devuelve el bloque HTML de navegación filtrado por rol del usuario activo.
+    - Gerencia/RRHH: ve todo.
+    - Director: no ve Precisión, Aprendizaje, Costo de rotación.
+    - Supervisor: igual que Director + no ve Inicio ni Historial (ambos lo
+      redirigen a /Supervisor, mostrarlo es confuso).
+    - Sin usuario aún: muestra todo (flash breve antes del selector).
+    Propaga ?usuario= en todos los links para no romper la sesión al navegar."""
     import streamlit as _st
+    from acceso import resolver as _resolver
+
     _u = _st.query_params.get("usuario", "")
     _uq = f"?usuario={_u}" if _u else ""
+
+    _rol = (_resolver(_u) or {}).get("rol")
+    if _rol in ("gerencia", "rrhh"):
+        _ocultas: set = set()
+    elif _rol == "director":
+        _ocultas = {"/Precision", "/Aprendizaje", "/Costo_Rotacion"}
+    elif _rol == "supervisor":
+        _ocultas = {"/Precision", "/Aprendizaje", "/Costo_Rotacion", "/", "/Historial"}
+    else:
+        _ocultas = set()  # usuario desconocido → no ocultar nada
+
     out = []
     for href, label in NAV_ITEMS:
+        if href in _ocultas:
+            continue
         if href == current:
             out.append(f'<span style="color:#1a1a2e;font-weight:700;white-space:nowrap;">{label}</span>')
         else:

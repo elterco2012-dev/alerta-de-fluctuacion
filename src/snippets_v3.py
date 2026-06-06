@@ -94,6 +94,8 @@ def pill(label, color="orange"):
     return f'<span class="wz-pill {color}">{label}</span>'
 
 def accion_tag(nivel):
+    if nivel == "bajo":
+        return '<span class="wz-accion bajo">—</span>'
     return f'<span class="wz-accion {nivel}">{ACCION_TXT[nivel]}</span>'
 
 def score_delta(delta):

@@ -200,30 +200,40 @@ _LS_KEY = "wurth_usuario"
 
 def _js_navegar(clave: Optional[str]) -> str:
     """
-    Devuelve un fragmento HTML+JS que:
-    - Si clave no es None: guarda en localStorage y navega a ?usuario=<clave>
-    - Si clave es None:    borra localStorage y navega a la URL sin ?usuario=
-    El JS corre en el contexto del browser (iframe srcdoc con allow-same-origin).
+    Devuelve un fragmento HTML+JS que guarda en localStorage y navega.
+    El iframe de Streamlit no tiene allow-top-navigation, así que no puede usar
+    window.parent.location directamente. La solución: inyectar un <script> en el
+    documento padre (que corre en el contexto padre, sin restricciones de sandbox)
+    y que ESE script haga la navegación. Con allow-same-origin el iframe puede
+    acceder a window.parent.document y crear/agregar elementos DOM.
     """
     if clave is not None:
-        return f"""<script>
-(function(){{
-  localStorage.setItem({_json.dumps(_LS_KEY)}, {_json.dumps(clave)});
-  var p = new URLSearchParams(window.parent.location.search);
-  p.set('usuario', {_json.dumps(clave)});
-  window.parent.location.replace(window.parent.location.pathname + '?' + p.toString());
-}})();
-</script>"""
+        ls_set = f"localStorage.setItem({_json.dumps(_LS_KEY)}, {_json.dumps(clave)});"
+        nav_expr = (
+            f"var p=new URLSearchParams(window.location.search);"
+            f"p.set('usuario',{_json.dumps(clave)});"
+            f"window.location.replace(window.location.pathname+'?'+p.toString());"
+        )
     else:
-        return f"""<script>
+        ls_set = f"localStorage.removeItem({_json.dumps(_LS_KEY)});"
+        nav_expr = (
+            f"var p=new URLSearchParams(window.location.search);"
+            f"p.delete('usuario');"
+            f"var qs=p.toString();"
+            f"window.location.replace(window.location.pathname+(qs?'?'+qs:''));"
+        )
+    return f"""<script>
 (function(){{
-  localStorage.removeItem({_json.dumps(_LS_KEY)});
-  var p = new URLSearchParams(window.parent.location.search);
-  p.delete('usuario');
-  var qs = p.toString();
-  window.parent.location.replace(
-    window.parent.location.pathname + (qs ? '?' + qs : '')
-  );
+  {ls_set}
+  try {{
+    var s = window.parent.document.createElement('script');
+    s.textContent = {_json.dumps(nav_expr)};
+    window.parent.document.head.appendChild(s);
+    window.parent.document.head.removeChild(s);
+  }} catch(e) {{
+    // Fallback directo (puede fallar si el sandbox lo bloquea)
+    {'window.parent.location.replace(window.parent.location.href);'}
+  }}
 }})();
 </script>"""
 
@@ -238,17 +248,25 @@ def _selector_st():
     import streamlit.components.v1 as components
 
     # ── Auto-login desde localStorage ────────────────────────────────────────
-    # Si el browser tiene un usuario guardado (de una sesión anterior), el JS
-    # redirige a ?usuario=X y Streamlit arranca ya logueado. Si no hay nada en
-    # localStorage, el JS no hace nada y se muestra el selector.
+    # Lee localStorage e inyecta un script en el documento padre para navegar
+    # (el iframe no tiene allow-top-navigation pero sí allow-same-origin, así
+    # que puede modificar el DOM del padre y ejecutar JS en su contexto).
+    nav_code = (
+        "var p=new URLSearchParams(window.location.search);"
+        "p.set('usuario',u);"
+        "window.location.replace(window.location.pathname+'?'+p.toString());"
+    )
     components.html(f"""<script>
 (function(){{
   var u = localStorage.getItem({_json.dumps(_LS_KEY)});
   if (!u) return;
-  var p = new URLSearchParams(window.parent.location.search);
-  if (p.get('usuario') === u) return;
-  p.set('usuario', u);
-  window.parent.location.replace(window.parent.location.pathname + '?' + p.toString());
+  if (new URLSearchParams(window.parent.location.search).get('usuario') === u) return;
+  try {{
+    var s = window.parent.document.createElement('script');
+    s.textContent = 'var u=' + JSON.stringify(u) + ';{nav_code}';
+    window.parent.document.head.appendChild(s);
+    window.parent.document.head.removeChild(s);
+  }} catch(e) {{}}
 }})();
 </script>""", height=0)
 

@@ -97,6 +97,16 @@ campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirek
 # excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
 VERTR_EXCLUIDOS = {1500, 7777, 9499}
 
+# Correcciones manuales de tipo cuando el ERP tiene el dato mal cargado.
+# vart=2 y zone≠TVTAS son igual en Viajantes y Televentas de campo, así que
+# no hay forma automática de distinguirlos. Se documenta el error acá hasta
+# que el área de sistemas corrija el alta en Informix.
+TIPO_MANUAL: dict[int, str] = {
+    5082: "Viajante",  # Pozzolo Nicolas Alejandro   - Grupo 103, error de alta en ERP
+    5088: "Viajante",  # Robles Sosa Santiago Emanuel - Grupo 103, error de alta en ERP
+    5094: "Viajante",  # Ratto Enrique Jose Maria     - Grupo 103, error de alta en ERP
+}
+
 print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  zona={campo_zona}  tipo={campo_tipo}  director={campo_director}")
 
 # Construir SELECT dinámico
@@ -194,6 +204,11 @@ for row in icur.fetchall():
         if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
         idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
+
+    # Override manual para errores de alta en el ERP que no se pueden detectar
+    # automáticamente (mismo vart=2 y zona que Televentas reales de campo).
+    if vid in TIPO_MANUAL:
+        tipo = TIPO_MANUAL[vid]
 
     # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre.
     # Solo si el director NO es cuenta especial y está activo (mismo criterio que

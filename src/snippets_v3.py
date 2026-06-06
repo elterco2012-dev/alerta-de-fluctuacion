@@ -126,13 +126,17 @@ NAV_ITEMS = [
 
 def nav_links(current=""):
     """Devuelve el bloque HTML de navegación. La página actual va resaltada
-    (no es link). current es el path, ej '/Precision' o '/' para Inicio."""
+    (no es link). current es el path, ej '/Precision' o '/' para Inicio.
+    Propaga ?usuario= automáticamente si está presente en la URL actual."""
+    import streamlit as _st
+    _u = _st.query_params.get("usuario", "")
+    _uq = f"?usuario={_u}" if _u else ""
     out = []
     for href, label in NAV_ITEMS:
         if href == current:
             out.append(f'<span style="color:#1a1a2e;font-weight:700;white-space:nowrap;">{label}</span>')
         else:
-            out.append(f'<a href="{href}" target="_self" '
+            out.append(f'<a href="{href}{_uq}" target="_self" '
                         f'style="color:#4A90D9;text-decoration:none;white-space:nowrap;">{label}</a>')
     return ('<div style="font-size:13px; display:flex; gap:16px; flex-wrap:wrap; '
             'justify-content:flex-end;">' + "".join(out) + '</div>')

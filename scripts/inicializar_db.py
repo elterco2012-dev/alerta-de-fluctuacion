@@ -85,9 +85,8 @@ campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","g
 # zone/region son códigos internos (ej: "SUR1500"), no el nombre de grupo visible.
 # Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
-# zone='TVTAS' es la condición real para Televentas en Würth Argentina.
-# vart=2 es un indicador secundario que puede estar mal cargado en el alta
-# (ej: vendedores de campo con vart=2 por error en el ERP).
+# zone='TVTAS' es el ÚNICO criterio para clasificar Televentas en Würth Argentina.
+# vart no se usa: puede tener valores incorrectos por errores de carga en el ERP.
 campo_zona       = next((c for c in cols_f040 if c in ("zone","zona")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
 # kz3 = ID (vertr) del director al que reporta el vendedor/supervisor.
@@ -97,15 +96,9 @@ campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirek
 # excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
 VERTR_EXCLUIDOS = {1500, 7777, 9499}
 
-# Correcciones manuales de tipo cuando el ERP tiene el dato mal cargado.
-# vart=2 y zone≠TVTAS son igual en Viajantes y Televentas de campo, así que
-# no hay forma automática de distinguirlos. Se documenta el error acá hasta
-# que el área de sistemas corrija el alta en Informix.
-TIPO_MANUAL: dict[int, str] = {
-    5082: "Viajante",  # Pozzolo Nicolas Alejandro   - Grupo 103, error de alta en ERP
-    5088: "Viajante",  # Robles Sosa Santiago Emanuel - Grupo 103, error de alta en ERP
-    5094: "Viajante",  # Ratto Enrique Jose Maria     - Grupo 103, error de alta en ERP
-}
+# Correcciones manuales para casos en que la detección automática (zone=TVTAS)
+# no alcanza. Agregar acá si en el futuro aparece algún vendedor mal clasificado.
+TIPO_MANUAL: dict[int, str] = {}
 
 print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  zona={campo_zona}  tipo={campo_tipo}  director={campo_director}")
 
@@ -191,22 +184,12 @@ for row in icur.fetchall():
         zona_raw = str(row[idx]).strip() if row[idx] else ""
         idx += 1
 
-    tipo = "Viajante"
-    if zona_raw == "TVTAS":
-        # Condición real en Würth Argentina: zone='TVTAS' identifica Televentas.
-        # Tiene prioridad sobre vart porque vart puede estar mal cargado en el alta.
-        tipo = "Televentas"
-        if campo_tipo and idx < len(row):
-            idx += 1  # consumir vart igualmente para no correr el índice
-    elif campo_tipo and idx < len(row):
-        raw_tipo = str(row[idx]).strip() if row[idx] else ""
-        # Fallback: vart=2 como Televentas si zone no existe en f040 o está vacío.
-        if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
-            tipo = "Televentas"
-        idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
+    # Solo zone='TVTAS' clasifica como Televentas. vart no se usa: puede tener
+    # valores incorrectos por errores de carga en el ERP.
+    tipo = "Televentas" if zona_raw == "TVTAS" else "Viajante"
+    if campo_tipo and idx < len(row):
+        idx += 1  # consumir vart para no correr el índice hacia director
 
-    # Override manual para errores de alta en el ERP que no se pueden detectar
-    # automáticamente (mismo vart=2 y zona que Televentas reales de campo).
     if vid in TIPO_MANUAL:
         tipo = TIPO_MANUAL[vid]
 

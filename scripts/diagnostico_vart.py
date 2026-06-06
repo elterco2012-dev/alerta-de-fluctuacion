@@ -65,14 +65,8 @@ for vid in sorted(ids_activos):
     i = informix_map.get(vid, {})
     vart = i.get("vart", "N/A")
     zona = str(i.get("zone", "") or "").strip()
-    # Mismo mapeo que inicializar_db.py actualizado:
-    # zone='TVTAS' tiene prioridad sobre vart.
-    if zona == "TVTAS":
-        tipo_erp = "Televentas"
-    elif str(vart).strip() in ("2","T","TV","Televentas","I","Innendienst"):
-        tipo_erp = "Televentas"
-    else:
-        tipo_erp = "Viajante"
+    # Solo zone='TVTAS' clasifica como Televentas (igual que inicializar_db.py).
+    tipo_erp = "Televentas" if zona == "TVTAS" else "Viajante"
     filas_out.append({
         "id_vendedor":  vid,
         "nombre":       s["nombre"],

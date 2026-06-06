@@ -85,6 +85,9 @@ campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","g
 # zone/region son códigos internos (ej: "SUR1500"), no el nombre de grupo visible.
 # Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
+# zone='TVTAS' es el ÚNICO criterio para clasificar Televentas en Würth Argentina.
+# vart no se usa: puede tener valores incorrectos por errores de carga en el ERP.
+campo_zona       = next((c for c in cols_f040 if c in ("zone","zona")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
 # kz3 = ID (vertr) del director al que reporta el vendedor/supervisor.
 campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirektor")), None)
@@ -93,7 +96,11 @@ campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirek
 # excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
 VERTR_EXCLUIDOS = {1500, 7777, 9499}
 
-print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}  director={campo_director}")
+# Correcciones manuales para casos en que la detección automática (zone=TVTAS)
+# no alcanza. Agregar acá si en el futuro aparece algún vendedor mal clasificado.
+TIPO_MANUAL: dict[int, str] = {}
+
+print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  zona={campo_zona}  tipo={campo_tipo}  director={campo_director}")
 
 # Construir SELECT dinámico
 select_campos = ["vertr", "eintrdat", "austrdat"]
@@ -101,6 +108,7 @@ if campo_nombre:     select_campos.append(campo_nombre)
 if campo_grupo_id:   select_campos.append(campo_grupo_id)
 if campo_grupo_nom:  select_campos.append(campo_grupo_nom)
 if campo_supervisor: select_campos.append(campo_supervisor)
+if campo_zona:       select_campos.append(campo_zona)   # antes de vart: se lee en orden
 if campo_tipo:       select_campos.append(campo_tipo)
 if campo_director:   select_campos.append(campo_director)
 
@@ -171,13 +179,19 @@ for row in icur.fetchall():
         and vid in vertr_activo
     )
 
-    tipo = "Viajante"
+    zona_raw = ""
+    if campo_zona and idx < len(row):
+        zona_raw = str(row[idx]).strip() if row[idx] else ""
+        idx += 1
+
+    # Solo zone='TVTAS' clasifica como Televentas. vart no se usa: puede tener
+    # valores incorrectos por errores de carga en el ERP.
+    tipo = "Televentas" if zona_raw == "TVTAS" else "Viajante"
     if campo_tipo and idx < len(row):
-        raw_tipo = str(row[idx]).strip() if row[idx] else ""
-        # vart en Würth: 1=Viajante (Außendienst), 2=Televentas (Innendienst)
-        if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
-            tipo = "Televentas"
-        idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna
+        idx += 1  # consumir vart para no correr el índice hacia director
+
+    if vid in TIPO_MANUAL:
+        tipo = TIPO_MANUAL[vid]
 
     # kz3 = ID (vertr) del director → resolver nombre desde vertr_nombre.
     # Solo si el director NO es cuenta especial y está activo (mismo criterio que
@@ -371,6 +385,19 @@ cur.executemany("""
 """, vendedores_rows)
 con.commit()
 print("OK")
+
+# ── Purgar cuentas especiales que pudieran venir de runs anteriores ───────────
+# VERTR_EXCLUIDOS no se inserta, pero si ya estaba en SQLite de un run previo
+# el INSERT OR REPLACE no lo toca → hay que borrarlo explícitamente.
+if VERTR_EXCLUIDOS:
+    placeholders = ",".join("?" * len(VERTR_EXCLUIDOS))
+    cur.execute(
+        f"DELETE FROM vendedores WHERE id_vendedor IN ({placeholders})",
+        list(VERTR_EXCLUIDOS)
+    )
+    if cur.rowcount:
+        print(f"  Purgados {cur.rowcount} registros de cuentas especiales: {VERTR_EXCLUIDOS}")
+    con.commit()
 
 # ── Completar grupos.supervisor desde los vendedores ──────────────────────────
 # Cada grupo toma como supervisor el nombre del supervisor más frecuente entre

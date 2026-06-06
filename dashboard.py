@@ -54,12 +54,6 @@ header { display: none; }
 .zr  { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .zpct { font-weight: 700; font-size: 13px; color: #1a1a2e; }
 
-.ot { width: 100%; border-collapse: collapse; }
-.ot th { background: #f8f9fa; padding: 10px 14px; text-align: left;
-         font-size: 12px; font-weight: 600; color: #666;
-         border-bottom: 2px solid #e9ecef; }
-.ot td { padding: 11px 14px; border-bottom: 1px solid #f2f2f2;
-         font-size: 13px; vertical-align: middle; }
 </style>""", unsafe_allow_html=True)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -152,9 +146,8 @@ def _spark(vals):
     return f'<div class="wz-spark">{"".join(bars)}</div>'
 
 def _bdg(nivel, label=None):
-    labels = {"critico": "Crítico", "alto": "Alto", "medio": "Medio", "bajo": "Bajo"}
     tip = _ZONA_TOOLTIP.get(nivel, "")
-    return f'<span class="wz-badge {nivel}" title="{tip}">{label or labels[nivel]}</span>'
+    return wz_badge(nivel, label, title=tip)
 
 def _zona_nivel(riesgo_base):
     if riesgo_base > 0.60: return "critico"
@@ -243,7 +236,13 @@ def cargar_datos():
     con.close()
     return scores, grupos, sparks, ventanas, perm_egreso, delta_map, _ts
 
-scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom, delta_map, _ts_datos = cargar_datos()
+try:
+    scores_df, grupos_df, sparks, ventanas_df, perm_egreso_prom, delta_map, _ts_datos = cargar_datos()
+except Exception:
+    st.error("⚠️ No se pudo conectar a la base de datos. "
+             "Los datos pueden estar desactualizados. Reintentá en unos minutos "
+             "o avisá a sistemas si el problema persiste.")
+    st.stop()
 
 # ── Control de acceso por rol ─────────────────────────────────────────────────
 import acceso as _acc
@@ -258,6 +257,10 @@ if not _usuario["ve_todo"] and _usuario["supervisores"]:
     _sups = set(_usuario["supervisores"])
     scores_df  = scores_df[scores_df["supervisor"].isin(_sups)]
     grupos_df  = grupos_df[grupos_df["supervisor"].isin(_sups)]
+
+if len(scores_df) == 0:
+    st.info("No hay vendedores asignados a tu vista todavía.")
+    st.stop()
 
 # ── Estadísticas de supervisores (calculadas desde scores_df) ──────────────────
 _sup_stats = (
@@ -369,17 +372,16 @@ with col_sup:
 
 if sup_sel != "Todos los supervisores":
     df = df[df["supervisor"] == sup_sel]
+_foco_activo = filtro in ("Crítico", "Alto") or sup_sel != "Todos los supervisores"
+
 if busqueda_sc:
     mask = (df["nombre"].str.contains(busqueda_sc, case=False, na=False) |
             df["id_vendedor"].astype(str).str.contains(busqueda_sc, na=False))
-    df_show = df[mask]
-    df_extra = pd.DataFrame()
-elif sup_sel != "Todos los supervisores":
-    df_show = df          # mostrar todos los vendedores del supervisor seleccionado
-    df_extra = pd.DataFrame()
+    df_show, df_extra = df[mask], pd.DataFrame()
+elif _foco_activo:
+    df_show, df_extra = df, pd.DataFrame()
 else:
-    df_show = df.head(5)
-    df_extra = df.iloc[5:]
+    df_show, df_extra = df.head(FOCO_SEMANA), df.iloc[FOCO_SEMANA:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
 def _tabla_rows(subset, delta_map=None, usuario_clave=""):
@@ -408,8 +410,11 @@ def _tabla_rows(subset, delta_map=None, usuario_clave=""):
         <div style="margin-top:3px;">{_bdg(zona_n, zona_l)}</div>
       </td>
       <td>{accion_tag(nivel)}</td>
-      <td>{score_delta(delta)}</td>
-      <td>{_score_circle(r['score'], nivel)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {_score_circle(r['score'], nivel)}{score_delta(delta)}
+        </div>
+      </td>
     </tr>"""
     return rows
 
@@ -424,8 +429,7 @@ def _tabla_html(rows_html):
   <th title="3 barras = % Plan de los últimos 3 meses (izq→der). Verde ≥90% · Naranja ≥70% · Rojo &lt;70%">Tendencia ⓘ</th>
   <th title="Rot. baja: &lt;30% se fue en &lt;6m · Rot. media: 30-45% · Rot. alta: &gt;45%">Zona ⓘ</th>
   <th>Acción sugerida</th>
-  <th title="Variación vs el mes anterior (▲ subió = empeoró, ▼ bajó = mejoró). Vacío si no hay historial guardado.">Δ mes ⓘ</th>
-  <th title="Crítico 8-10: acción inmediata · Alto 6-7: seguimiento activo · Medio 4-5: monitoreo mensual · Bajo 1-3: seguimiento normal">Score ⓘ</th>
+  <th title="Score 1-10 (Crítico 8-10 · Alto 6-7 · Medio 4-5 · Bajo 1-3) y su variación vs el mes anterior (▲ subió = empeoró · ▼ bajó = mejoró · · sin historial)">Score · Δ mes ⓘ</th>
 </tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
@@ -439,10 +443,12 @@ if not df_extra.empty:
 
 if busqueda_sc:
     st.caption(f"{len(df_show)} vendedores encontrados.")
-elif sup_sel != "Todos los supervisores":
-    st.caption(f"{len(df_show)} vendedor{'es' if len(df_show) != 1 else ''} de {sup_sel}.")
+elif _foco_activo:
+    st.caption(f"{len(df_show)} vendedor{'es' if len(df_show) != 1 else ''}" +
+               (f" de {sup_sel}." if sup_sel != "Todos los supervisores" else "."))
 else:
-    st.caption(f"Top 5 de {len(df)} vendedores. Usá el buscador o filtrá por supervisor para ver más.")
+    st.caption(f"Top {min(FOCO_SEMANA, len(df))} de {len(df)} vendedores por score. "
+               f"Filtrá por nivel, supervisor o usá el buscador para ver el resto.")
 
 with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):
     col_e1, col_e2 = st.columns(2)
@@ -619,7 +625,7 @@ if not onb.empty:
 
     st.markdown(f"""
     <div class="wz-card">
-    <table class="ot">
+    <table class="wz-table">
     <thead><tr>
       <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
       <th>Zona asignada</th><th>% Plan 3m</th><th>Riesgo</th>
@@ -632,7 +638,7 @@ if not onb.empty:
         with st.expander(f"Ver {len(resto_onb)} vendedores más en onboarding"):
             st.markdown(f"""
     <div class="wz-card">
-    <table class="ot">
+    <table class="wz-table">
     <thead><tr>
       <th>Vendedor</th><th>Tipo</th><th>Mes en empresa</th>
       <th>Zona asignada</th><th>% Plan 3m</th><th>Riesgo</th>

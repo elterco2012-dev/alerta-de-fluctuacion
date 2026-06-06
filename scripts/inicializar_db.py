@@ -85,6 +85,10 @@ campo_grupo_nom  = next((c for c in cols_f040 if c in ("gebinam","gebietname","g
 # zone/region son códigos internos (ej: "SUR1500"), no el nombre de grupo visible.
 # Si no hay campo específico de nombre, se usa "Grupo {vgrp}" más abajo.
 campo_supervisor = next((c for c in cols_f040 if c in ("bvertr","vorgesetzt","supervisor","supvertr")), None)
+# zone='TVTAS' es la condición real para Televentas en Würth Argentina.
+# vart=2 es un indicador secundario que puede estar mal cargado en el alta
+# (ej: vendedores de campo con vart=2 por error en el ERP).
+campo_zona       = next((c for c in cols_f040 if c in ("zone","zona")), None)
 campo_tipo       = next((c for c in cols_f040 if c in ("vart","vertrtyp","typ","tipo","kategorie")), None)
 # kz3 = ID (vertr) del director al que reporta el vendedor/supervisor.
 campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirektor")), None)
@@ -93,7 +97,7 @@ campo_director   = next((c for c in cols_f040 if c in ("kz3","director","kzdirek
 # excluyen igual que en el reporte de jerarquía de Access (bvertr = vertr).
 VERTR_EXCLUIDOS = {1500, 7777, 9499}
 
-print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  tipo={campo_tipo}  director={campo_director}")
+print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  zona={campo_zona}  tipo={campo_tipo}  director={campo_director}")
 
 # Construir SELECT dinámico
 select_campos = ["vertr", "eintrdat", "austrdat"]
@@ -101,6 +105,7 @@ if campo_nombre:     select_campos.append(campo_nombre)
 if campo_grupo_id:   select_campos.append(campo_grupo_id)
 if campo_grupo_nom:  select_campos.append(campo_grupo_nom)
 if campo_supervisor: select_campos.append(campo_supervisor)
+if campo_zona:       select_campos.append(campo_zona)   # antes de vart: se lee en orden
 if campo_tipo:       select_campos.append(campo_tipo)
 if campo_director:   select_campos.append(campo_director)
 
@@ -171,10 +176,21 @@ for row in icur.fetchall():
         and vid in vertr_activo
     )
 
+    zona_raw = ""
+    if campo_zona and idx < len(row):
+        zona_raw = str(row[idx]).strip() if row[idx] else ""
+        idx += 1
+
     tipo = "Viajante"
-    if campo_tipo and idx < len(row):
+    if zona_raw == "TVTAS":
+        # Condición real en Würth Argentina: zone='TVTAS' identifica Televentas.
+        # Tiene prioridad sobre vart porque vart puede estar mal cargado en el alta.
+        tipo = "Televentas"
+        if campo_tipo and idx < len(row):
+            idx += 1  # consumir vart igualmente para no correr el índice
+    elif campo_tipo and idx < len(row):
         raw_tipo = str(row[idx]).strip() if row[idx] else ""
-        # vart en Würth: 1=Viajante (Außendienst), 2=Televentas (Innendienst)
+        # Fallback: vart=2 como Televentas si zone no existe en f040 o está vacío.
         if raw_tipo in ("2", "T", "TV", "Televentas", "I", "Innendienst"):
             tipo = "Televentas"
         idx += 1   # avanzar SIEMPRE: si no, el director leería esta misma columna

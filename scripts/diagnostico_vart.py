@@ -50,10 +50,10 @@ print("OK")
 in_clause = ",".join(str(v) for v in sorted(ids_activos))
 cur = con_inf.cursor()
 cur.execute(
-    f"SELECT vertr, vart, vgrp FROM f040 "
+    f"SELECT vertr, vart, vgrp, zone FROM f040 "
     f"WHERE firma = {FIRMA} AND vertr IN ({in_clause})"
 )
-informix_map = {r[0]: {"vart": r[1], "vgrp": r[2]} for r in cur.fetchall()}
+informix_map = {r[0]: {"vart": r[1], "vgrp": r[2], "zone": r[3]} for r in cur.fetchall()}
 con_inf.close()
 
 print(f"Registros obtenidos de f040: {len(informix_map)}")
@@ -64,13 +64,21 @@ for vid in sorted(ids_activos):
     s = sqlite_map[vid]
     i = informix_map.get(vid, {})
     vart = i.get("vart", "N/A")
-    # Mismo mapeo que inicializar_db.py
-    tipo_erp = "Televentas" if str(vart).strip() in ("2","T","TV","Televentas","I","Innendienst") else "Viajante"
+    zona = str(i.get("zone", "") or "").strip()
+    # Mismo mapeo que inicializar_db.py actualizado:
+    # zone='TVTAS' tiene prioridad sobre vart.
+    if zona == "TVTAS":
+        tipo_erp = "Televentas"
+    elif str(vart).strip() in ("2","T","TV","Televentas","I","Innendienst"):
+        tipo_erp = "Televentas"
+    else:
+        tipo_erp = "Viajante"
     filas_out.append({
         "id_vendedor":  vid,
         "nombre":       s["nombre"],
         "nombre_grupo": s["nombre_grupo"],
         "vart_erp":     vart,
+        "zone_erp":     zona,
         "tipo_erp":     tipo_erp,
         "tipo_actual":  s["tipo_actual"],
         "ok":           "OK" if tipo_erp == s["tipo_actual"] else "DISCREPANCIA",
@@ -78,7 +86,7 @@ for vid in sorted(ids_activos):
 
 with open(OUT_CSV, "w", newline="", encoding="utf-8-sig") as f:
     w = csv.DictWriter(f, fieldnames=["id_vendedor","nombre","nombre_grupo",
-                                      "vart_erp","tipo_erp","tipo_actual","ok"])
+                                      "vart_erp","zone_erp","tipo_erp","tipo_actual","ok"])
     w.writeheader()
     w.writerows(filas_out)
 

@@ -386,6 +386,19 @@ cur.executemany("""
 con.commit()
 print("OK")
 
+# ── Purgar cuentas especiales que pudieran venir de runs anteriores ───────────
+# VERTR_EXCLUIDOS no se inserta, pero si ya estaba en SQLite de un run previo
+# el INSERT OR REPLACE no lo toca → hay que borrarlo explícitamente.
+if VERTR_EXCLUIDOS:
+    placeholders = ",".join("?" * len(VERTR_EXCLUIDOS))
+    cur.execute(
+        f"DELETE FROM vendedores WHERE id_vendedor IN ({placeholders})",
+        list(VERTR_EXCLUIDOS)
+    )
+    if cur.rowcount:
+        print(f"  Purgados {cur.rowcount} registros de cuentas especiales: {VERTR_EXCLUIDOS}")
+    con.commit()
+
 # ── Completar grupos.supervisor desde los vendedores ──────────────────────────
 # Cada grupo toma como supervisor el nombre del supervisor más frecuente entre
 # sus vendedores (resuelto de bvertr). Así la tabla grupos queda consistente con

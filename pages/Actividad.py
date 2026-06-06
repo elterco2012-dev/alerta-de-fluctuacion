@@ -228,9 +228,11 @@ c1, c2 = st.columns(2)
 with c1:
     st.markdown("**📞 Televentas — Llamadas**")
     if not t_tel.empty:
+        _t = t_tel[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]].copy()
+        for _c in ["plan","ejec","espontaneas","total"]:
+            _t[_c] = _t[_c].apply(lambda x: fmt_num(int(x), 0))
         st.dataframe(
-            t_tel[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]]
-            .rename(columns={
+            _t.rename(columns={
                 "periodo":"Período","n":"Vendedores",
                 "plan":"Planificadas","ejec":"Del plan",
                 "espontaneas":"Espontáneas","total":"Total","cumpl_%":"Cumpl. %"
@@ -243,9 +245,11 @@ with c1:
 with c2:
     st.markdown("**🚗 Viajantes — Visitas**")
     if not t_via.empty:
+        _t = t_via[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]].copy()
+        for _c in ["plan","ejec","espontaneas","total"]:
+            _t[_c] = _t[_c].apply(lambda x: fmt_num(int(x), 0))
         st.dataframe(
-            t_via[["periodo","n","plan","ejec","espontaneas","total","cumpl_%"]]
-            .rename(columns={
+            _t.rename(columns={
                 "periodo":"Período","n":"Vendedores",
                 "plan":"Planificadas","ejec":"Del plan",
                 "espontaneas":"Espontáneas","total":"Total","cumpl_%":"Cumpl. %"
@@ -301,8 +305,11 @@ with tab1:
     if df_rank_tel.empty:
         st.info("Sin datos Televentas para el período.")
     else:
+        _r = df_rank_tel.copy()
+        for _c in ["Planificadas", "Del plan", "Espontáneas", "Total"]:
+            _r[_c] = _r[_c].apply(lambda x: fmt_num(int(x), 0))
         st.dataframe(
-            df_rank_tel.style.map(_color_cumpl, subset=["Cumpl. %"]),
+            _r.style.map(_color_cumpl, subset=["Cumpl. %"]),
             use_container_width=True, hide_index=True,
         )
         st.caption("Rojo = < 25% del plan (señal de alerta en score). Verde = ≥ 70%.")
@@ -312,8 +319,11 @@ with tab2:
     if df_rank_via.empty:
         st.info("Sin datos Viajantes para el período.")
     else:
+        _r = df_rank_via.copy()
+        for _c in ["Planificadas", "Del plan", "Espontáneas", "Total"]:
+            _r[_c] = _r[_c].apply(lambda x: fmt_num(int(x), 0))
         st.dataframe(
-            df_rank_via.style.map(_color_cumpl, subset=["Cumpl. %"]),
+            _r.style.map(_color_cumpl, subset=["Cumpl. %"]),
             use_container_width=True, hide_index=True,
         )
         st.caption("Rojo = < 25% del plan (señal de alerta en score). Verde = ≥ 70%.")

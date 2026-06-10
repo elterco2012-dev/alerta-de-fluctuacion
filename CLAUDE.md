@@ -39,20 +39,46 @@ Esto es un problema **estructural**, no individual.
 ## Estructura del proyecto
 
 ```
-wurth-rotacion/
-├── CLAUDE.md                          ← este archivo
-├── README.md                          ← documentación general
+alerta-de-fluctuacion/
+├── CLAUDE.md                              ← este archivo
+├── README.md
 ├── requirements.txt
-├── dashboard.py                       ← app Streamlit principal
+├── dashboard.py                           ← app Streamlit, pantalla Inicio (gerencia/director)
+├── assets/
+│   └── dashboard-v3.css                  ← estilos únicos, clases wz-* (inyectado una vez)
 ├── src/
-│   └── score_engine.py               ← motor de scoring (1-10 por vendedor)
+│   ├── score_engine.py                   ← motor de scoring 1-10 (NO tocar sin actualizar este archivo)
+│   ├── snippets_v3.py                    ← helpers HTML/formato/navegación (fmt_num, badge, nav_links…)
+│   ├── acceso.py                         ← control de acceso por rol (supervisor/director/gerencia)
+│   ├── intervenciones.py                 ← CRUD de intervenciones + cálculo de impacto
+│   └── alertas.py                        ← envío de email via Outlook COM (no SMTP)
+├── pages/
+│   ├── Supervisor.py                     ← vista por zona (todos los roles)
+│   ├── Vendedor.py                       ← detalle individual + señales activas
+│   ├── Intervenciones.py                 ← registro y seguimiento de intervenciones
+│   ├── Historial.py                      ← evolución histórica de rotación
+│   ├── Actividad.py                      ← llamadas/visitas (Televentas y Viajantes separados)
+│   ├── Costo_Rotacion.py                 ← costo por baja: histórico + exposición futura
+│   ├── Precision.py                      ← precisión del modelo (requiere score_snapshot)
+│   └── Aprendizaje.py                    ← análisis de señales y pesos
 ├── scripts/
-│   ├── sincronizar_informix.py      ← ventas/legajo desde Informix (ERP, solo SELECT)
-│   ├── sincronizar_reactor.py       ← actividad/ausencias desde Reactor (CRM, solo SELECT)
-│   ├── sincronizar_sundb.py         ← cobranza desde SUN (SQL Server, solo SELECT)
-│   └── validar_pesos.py             ← banco de pruebas de pesos/señales (solo lee SQLite)
+│   ├── inicializar_db.py                 ← crea/repobla wurth.db desde Informix (Python 32-bit)
+│   ├── inicializar_db.bat                ← wrapper que llama al Python 32-bit correcto
+│   ├── sincronizar_informix.py           ← sync ventas/legajo desde Informix (solo SELECT)
+│   ├── sincronizar_reactor.py            ← sync actividad/ausencias desde Reactor (solo SELECT)
+│   ├── sincronizar_sundb.py              ← sync cobranza desde SUN SQL Server (solo SELECT)
+│   ├── sincronizar_todo.bat              ← corre los 3 sync en secuencia
+│   ├── backfill_scores.py                ← recalcula score_historico para períodos pasados
+│   ├── enviar_alertas.py                 ← dispara alertas por email para vendedores críticos
+│   ├── sync_y_alertas.bat                ← automatización diaria: sync → snapshot → alertas
+│   ├── programar_alertas.bat             ← registra la tarea diaria en el Programador de Windows
+│   ├── validar_pesos.py                  ← backtest: lift por señal + barrido REF (solo SQLite)
+│   ├── explorar_senales_nuevas.py        ← lift de señales candidatas con holdout temporal
+│   ├── diagnostico_vart.py               ← cruza f040 con SQLite para verificar clasificación TV/VJ
+│   └── diagnostico_valores.py            ← distribución de indicadores (calibrar umbrales)
 └── data/
-    └── wurth.db                      ← SQLite local poblada por los sync (NO commitear)
+    ├── wurth.db                          ← SQLite local (NO commitear — en .gitignore)
+    └── estado_alertas.json               ← timestamps de última alerta por vendedor (NO commitear)
 ```
 
 ---
@@ -417,12 +443,125 @@ arrastran `?usuario=` para no romper la sesión al navegar.
 
 ---
 
+## Clasificación Televentas / Viajante — decisión crítica
+
+**El ÚNICO criterio para clasificar a un vendedor como Televentas es `f040.zone = 'TVTAS'`.**
+
+`vart=2` fue eliminado como fallback porque puede estar cargado incorrectamente en el ERP
+(hay viajantes reales con `vart=2` por errores de alta). La regla en `inicializar_db.py`:
+
+```python
+tipo = "Televentas" if zona_raw == "TVTAS" else "Viajante"
+```
+
+Hay exactamente **3 grupos TVTAS** en producción (971, 972, 973) con ~56 vendedores.
+El resto (~190 activos) son Viajantes, incluyendo todos los grupos 200-209, 119, 901 etc.
+que antes se clasificaban como Televentas por `vart=2` — eso era incorrecto.
+
+**`VERTR_EXCLUIDOS = {1500, 7777, 9499}`**: cuentas especiales (ex-directores, dummies).
+Se excluyen en el INSERT **y** se borran explícitamente post-insert para eliminar registros
+de runs anteriores. Si el diagnóstico muestra a 1500 (Kalpokas) con DISCREPANCIA,
+es porque `inicializar_db.bat` no corrió con el código nuevo.
+
+**Script de verificación:** `scripts/diagnostico_vart.py` cruza f040 de Informix con
+SQLite y exporta `scripts/vart_diagnostico.csv`. Correrlo después de cada `inicializar_db.bat`
+para confirmar 0 discrepancias. Acepta `--inspeccionar-f040` para ver los campos raw.
+
+**`TIPO_MANUAL`** en `inicializar_db.py`: dict vacío por ahora. Si en el futuro aparece
+un vendedor mal clasificado que no se puede corregir automáticamente, agregarlo ahí.
+
+---
+
+## Navegación y login — decisiones técnicas de la UI
+
+**Identidad por query param:** el usuario viaja en `?usuario=NombreUsuario` en todos
+los links. `nav_links()` en `snippets_v3.py` lee `st.query_params` internamente y
+propaga `?usuario=` en todos los hrefs. Es la única fuente de verdad de la navegación.
+
+**Sin login con contraseña:** el usuario elige su nombre en un selector. La identidad
+se guarda en `localStorage` para auto-login en recargas. Se asume que la pantalla está
+detrás de un acceso corporativo.
+
+**Problema de sandbox de Streamlit:** los iframes de `st.components.v1.html()` tienen
+`allow-same-origin allow-scripts` pero NO `allow-top-navigation`. Intentar
+`window.parent.location.replace()` lanza SecurityError. Solución implementada: inyectar
+un `<script>` en `window.parent.document.head` (accesible via `allow-same-origin`);
+ese script corre en el contexto del padre (sin sandbox) y puede navegar libremente.
+
+**Filtrado de nav por rol:** `nav_links()` llama a `acceso.resolver()` y oculta items
+según el rol. Supervisores no ven Inicio, Historial, Precisión, Aprendizaje, Costo.
+Directores no ven Precisión, Aprendizaje, Costo. Gerencia ve todo.
+
+---
+
+## UI — componentes y decisiones de presentación
+
+**CSS único:** `assets/dashboard-v3.css` con clases `wz-*` es la única fuente de verdad
+de estilos. Se inyecta una vez al inicio. El bloque `<style>` inline en cada página
+debe contener solo estilos específicos de esa página (`.zc`, `.sec-header`, etc.).
+NO duplicar en inline lo que ya está en el CSS file.
+
+**Helpers en `src/snippets_v3.py`** (importar desde ahí, no reimplementar):
+- `fmt_num(n, dec)` — formato es-AR (punto miles, coma decimal)
+- `fmt_pesos(n)` / `fmt_pesos_corto(n)` — `$1.400.000` / `$1,4 M`
+- `fmt_meses(n)` — `"4,1 m"`
+- `badge(nivel, label, shape, title)` — badge con forma ▲◆■● para accesibilidad
+- `accion_tag(nivel)` — "Reunión esta semana" / "—" para bajo
+- `score_circle(score, nivel, title)` — círculo coloreado
+- `score_delta(delta)` — `▲ 1.2` (rojo=peor) / `▼ 0.8` (verde=mejor)
+- `banner(emoji, titulo, sub, tono)` — banner de acción del día
+- `hero_kpi(label, valor, sub, red)` — KPI dominante
+- `stat_kpi(label, valor)` — KPI secundario
+- `fresh(ts_str)` — indicador de frescura del dato
+- `nav_links(current)` / `page_header(titulo, current, sub)` — navegación estándar
+- `HIDE_CHROME_CSS` — CSS para ocultar sidebar/header de Streamlit
+- `score_breakdown_rows(senales)` — desglose ponderado del score
+- `recomendar_accion(meses, riesgo_base, senales, efectividad)` — recomendación
+
+**Regla de tablas:** usar `class="wz-table"` en todos lados. La clase `.ot` fue
+eliminada. La tabla principal usa 7 columnas (Score y Δ mes fusionados en una).
+
+**Vista default de la tabla principal:** top 5 en "Todos" sin filtrar. Cuando el
+filtro es Crítico, Alto, hay supervisor seleccionado o hay búsqueda, muestra todo
+sin expander (no esconder accionables detrás de un "Ver más").
+
+---
+
+## Configuración del entorno de ejecución
+
+**Dos entornos de Python coexisten en la misma máquina Windows:**
+
+| Python | Versión | Para qué | Por qué |
+|---|---|---|---|
+| 32-bit | 3.12 | `inicializar_db.py`, `sincronizar_*.py` | ODBC de Informix solo funciona en 32-bit |
+| 64-bit | 3.x | `dashboard.py`, `enviar_alertas.py` | `pywin32` (Outlook COM) requiere 64-bit |
+
+`sync_y_alertas.bat` maneja este split automáticamente.
+
+**Variables de entorno (`.env`, NO commitear):**
+- No hay variables requeridas para el flujo normal (los DSN de ODBC están en el sistema)
+- `INFORMIX_*` opcionales para conexión directa desde `score_engine.py` (no se usa)
+
+**Cómo correr:**
+1. `inicializar_db.bat` → solo la primera vez o cuando cambia la estructura de vendedores
+2. `sincronizar_todo.bat` → sync diario de ventas/cobranza/actividad
+3. `streamlit run dashboard.py` / `iniciar_dashboard.bat`
+4. `sync_y_alertas.bat` → automatización completa (sync + alertas)
+5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
+
+**Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
+
+---
+
 ## Decisiones técnicas tomadas y por qué
 
 - **Streamlit** sobre React/Vue: equipo no tiene frontend developer. Prioridad = velocidad de iteración.
 - **SQLite** como intermedio: no golpear Informix en cada recarga del dashboard.
 - **Reglas con pesos** antes que ML: el modelo de reglas es explicable al supervisor. Un modelo black-box no genera confianza en este contexto.
 - **ML en el futuro**: cuando haya datos reales limpios y el equipo entienda el sistema.
+- **`zone='TVTAS'` como único criterio Televentas**: `vart` puede estar mal cargado en el ERP. Zone es el campo confiable.
+- **Acción por ranking, no por umbral**: en esta población el deterioro es generalizado; ningún score separa limpio. El orden sí tiene señal.
+- **`badge()` con `title=`**: el parámetro es obligatorio en `_bdg()` del dashboard; si se regenera el helper, asegurarse de incluirlo.
 
 ---
 
@@ -496,18 +635,28 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
 
 ---
 
-## Próximos features planeados (en orden de prioridad)
+## Estado de features (actualizado junio 2026)
 
-1. ~~Vista filtrada por supervisor~~ ✅ **hecho** — acceso por rol (supervisor /
-   director / gerencia) en `pages/Supervisor.py` + `src/acceso.py`. La jerarquía
-   director→supervisor sale sola de `f040.kz3`.
-2. ~~Análisis de costo de rotación~~ ✅ **hecho** — `pages/Costo_Rotacion.py`:
-   exposición futura (activos en riesgo) **+ costo histórico** (bajas reales,
-   tendencia mensual y desglose por motivo). Ver metodología abajo.
-3. Conexión real a Informix via pyodbc (ya operativa vía los sync desde Windows)
-4. ~~Alerta por email/Teams cuando un vendedor sube a nivel crítico~~ ✅ **hecho** —
-   `src/alertas.py` + `scripts/enviar_alertas.py`. Detalle abajo.
-5. Modelo ML cuando haya 6+ meses de datos reales
+1. ✅ Vista filtrada por supervisor — acceso por rol en `pages/Supervisor.py` + `src/acceso.py`
+2. ✅ Costo de rotación — `pages/Costo_Rotacion.py` (histórico + exposición futura)
+3. ✅ Conexión real a Informix via pyodbc (sync desde Windows con Python 32-bit)
+4. ✅ Alertas por email — `src/alertas.py` + `scripts/enviar_alertas.py` (Outlook COM)
+5. ✅ Clasificación Televentas/Viajante corregida — solo `zone='TVTAS'`
+6. ✅ Ocultamiento de secciones según rol en la navegación
+7. ✅ Login persistente via localStorage + auto-login sin selector repetido
+8. ✅ Formato es-AR en todas las tablas (`fmt_num`, `fmt_pesos`, `fmt_meses`)
+9. ✅ Badges con forma ▲◆■● para accesibilidad
+10. ✅ Score + Δ mes fusionados, tabla de 7 columnas
+11. ✅ Vista default top 5, sin esconder accionables cuando hay filtro activo
+12. ✅ `try/except` en `cargar_datos()` con mensaje de error amable
+13. ⏳ **Precisión del modelo** — bloqueado hasta tener tabla `score_snapshot`.
+    Ver `queries-v3.sql` (Camino A: snapshot mensual; Camino B: backfill histórico).
+    La pantalla `pages/Precision.py` existe pero usa datos de ejemplo.
+14. ⏳ **Recomendación de acción por perfil** — `recomendar_accion()` en snippets_v3.py
+    existe pero devuelve `None` si no hay datos reales de intervenciones medidas.
+    La query para conectarla está en `queries-v3.sql` (#3 efectividad).
+15. ⏳ **Cohortes de retención** en Historial — query lista en `queries-v3.sql` (#2).
+16. ⏳ **Modelo ML** — cuando haya 6+ meses de datos reales limpios.
 
 ### Alertas (#4) — cómo funciona el envío de email
 
@@ -535,3 +684,40 @@ Automatización: `scripts/sync_y_alertas.bat` corre sync (Python 32-bit, ODBC) �
 snapshot → alertas (Python 64-bit, con pywin32). `scripts/programar_alertas.bat`
 registra la tarea diaria en el Programador de Windows (con `/IT`: corre en la sesión
 interactiva, necesario para Outlook COM y los DSN del usuario).
+
+---
+
+## Problemas conocidos y sus soluciones
+
+### `git pull` falla con "untracked files would be overwritten"
+`scripts/diagnostico_vart.py` puede existir localmente sin estar trackeado si se corrió
+antes de hacer pull. Solución: `del scripts\diagnostico_vart.py && git pull`.
+
+### `badge() got an unexpected keyword argument 'title'`
+`_bdg()` en `dashboard.py` llama a `wz_badge(nivel, label, title=tip)`. Si `badge()`
+en `snippets_v3.py` no tiene el parámetro `title=`, agregar `title=""` a la firma.
+
+### Kalpokas (1500) aparece como Televentas en el diagnóstico
+`inicializar_db.py` lo excluye en el INSERT pero no borraba el registro viejo. Fix ya
+aplicado: hay un DELETE explícito de `VERTR_EXCLUIDOS` post-insert. Si persiste, correr
+`inicializar_db.bat` con el código actualizado (hacer `git pull` primero).
+
+### Score histórico con `[chequeo] != 0`
+Entradas huérfanas en `score_historico` de vendedores que ya no salen del motor.
+`backfill_scores.py` hace un DELETE previo por período. Si aparecen, correr
+`scripts/diagnostico_chequeo.bat` para identificar la fila y re-correr el backfill.
+
+### Dashboard muestra datos viejos
+Verificar que `sync_y_alertas.bat` corrió recientemente. Revisar
+`data/estado_alertas.json` para ver el timestamp. El caché de Streamlit es 5 min (TTL=300).
+
+### Login no navega al hacer click en "Ingresar"
+El iframe de `st.components.v1.html()` bloquea `window.parent.location`. La solución
+implementada inyecta un `<script>` en `window.parent.document.head`. Si vuelve a fallar,
+revisar que el componente en `acceso.py` use la técnica del parent DOM script injection,
+no `window.parent.location.replace()` directo.
+
+### Selector de perfil aparece en cada página
+Ocurre cuando los links de navegación no propagan `?usuario=`. `nav_links()` en
+`snippets_v3.py` lee `st.query_params` y agrega `?usuario=X` a todos los hrefs.
+Si una página genera links propios (fuera de `nav_links`), agregar `?usuario=` manualmente.

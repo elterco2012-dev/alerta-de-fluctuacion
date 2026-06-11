@@ -381,7 +381,7 @@ if busqueda_sc:
 elif _foco_activo:
     df_show, df_extra = df, pd.DataFrame()
 else:
-    df_show, df_extra = df.head(FOCO_SEMANA), df.iloc[FOCO_SEMANA:]
+    df_show, df_extra = df.head(5), df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
 def _tabla_rows(subset, delta_map=None, usuario_clave=""):
@@ -447,7 +447,7 @@ elif _foco_activo:
     st.caption(f"{len(df_show)} vendedor{'es' if len(df_show) != 1 else ''}" +
                (f" de {sup_sel}." if sup_sel != "Todos los supervisores" else "."))
 else:
-    st.caption(f"Top {min(FOCO_SEMANA, len(df))} de {len(df)} vendedores por score. "
+    st.caption(f"Top 5 de {len(df)} vendedores por score. "
                f"Filtrá por nivel, supervisor o usá el buscador para ver el resto.")
 
 with st.expander("¿Cómo se calculan las señales, el % Plan 3m y la tendencia?"):

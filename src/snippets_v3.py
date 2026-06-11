@@ -85,10 +85,11 @@ def score_circle(score, nivel=None):
     nivel = nivel or nivel_de(score)
     return f'<span class="wz-score {nivel}">{score}</span>'
 
-def badge(nivel, label=None, shape=True):
+def badge(nivel, label=None, shape=True, title=""):
     """Badge con forma para accesibilidad (▲◆■●)."""
     shp = f'<span class="shp">{NIVEL_SHAPE.get(nivel,"")}</span>' if shape and nivel in NIVEL_SHAPE else ""
-    return f'<span class="wz-badge {nivel}">{shp}{label or NIVEL_LABEL.get(nivel, nivel)}</span>'
+    t = f' title="{title}"' if title else ""
+    return f'<span class="wz-badge {nivel}"{t}>{shp}{label or NIVEL_LABEL.get(nivel, nivel)}</span>'
 
 def pill(label, color="orange"):
     return f'<span class="wz-pill {color}">{label}</span>'

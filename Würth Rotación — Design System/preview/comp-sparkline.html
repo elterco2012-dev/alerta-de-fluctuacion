@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Sparkline" subtitle="3-bar % Plan trend, per-bar color by value" viewport="700x210" -->
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+</head><body><div class="wrap">
+  <div class="lbl">Tendencia — % Plan últimos 3 meses (oldest → newest)</div>
+  <div class="row" style="margin-top:14px;gap:40px;align-items:flex-end;">
+    <div class="col" style="align-items:center;gap:10px;">
+      <div class="spark"><div class="sb" style="height:21px;background:var(--green-accent);"></div><div class="sb" style="height:18px;background:var(--orange-accent);"></div><div class="sb" style="height:13px;background:var(--red-accent);"></div></div>
+      <div class="hex">falling → at risk</div>
+    </div>
+    <div class="col" style="align-items:center;gap:10px;">
+      <div class="spark"><div class="sb" style="height:20px;background:var(--green-accent);"></div><div class="sb" style="height:22px;background:var(--green-accent);"></div><div class="sb" style="height:21px;background:var(--green-accent);"></div></div>
+      <div class="hex">stable / healthy</div>
+    </div>
+    <div class="col" style="align-items:center;gap:10px;">
+      <div class="spark"><div class="sb" style="height:9px;background:var(--red-accent);"></div><div class="sb" style="height:15px;background:var(--orange-accent);"></div><div class="sb" style="height:21px;background:var(--green-accent);"></div></div>
+      <div class="hex">recovering</div>
+    </div>
+  </div>
+  <div style="margin-top:18px;font:400 12px var(--font-sans);color:var(--ink-500);">9px flex-end bars · 2px top radius. Per-bar color: <b style="color:var(--green-text);">≥90 green</b> · <b style="color:var(--orange-text);">≥70 orange</b> · <b style="color:var(--red-text);">&lt;70 red</b>. The only inline data-viz primitive.</div>
+</div></body></html>

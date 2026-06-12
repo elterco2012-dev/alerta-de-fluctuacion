@@ -1,0 +1,144 @@
+/* ============================================================================
+   Würth Rotación — Design Tokens
+   Harvested verbatim from the Streamlit dashboard source
+   (elterco2012-dev/alerta-de-fluctuacion). All hex values below appear
+   literally in dashboard.py and pages/*.py.
+
+   Import this file, then use the semantic vars (--risk-critico-*, --h1, etc.)
+   in your own components. The raw scale vars are the source of truth.
+   ============================================================================ */
+
+/* Source Sans 3 = Streamlit's default UI font. Roboto Mono = the mono face used
+   for hex/code labels. Both loaded from Google Fonts.
+   If you have licensed copies, drop the .woff2 files in fonts/ and swap the
+   @import for @font-face blocks. */
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Roboto+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ---------------------------------------------------------------------------
+     1. COLOR PRIMITIVES — the four-tier risk system + neutrals
+     The whole product is organized around one idea: every vendedor, zone and
+     KPI carries a risk level, and risk level === color. Memorize these four.
+     --------------------------------------------------------------------------- */
+
+  /* CRÍTICO · red · "act this week" — also the Würth brand red */
+  --red-accent:  #E24B4A;   /* left-borders, score-circle ring, bar fills */
+  --red-bg:      #FDECEA;   /* pill / badge / circle background */
+  --red-text:    #B71C1C;   /* pill / badge text */
+
+  /* ALTO · orange · "active follow-up" */
+  --orange-accent: #EF9F27;
+  --orange-bg:     #FFF3E0;
+  --orange-text:   #E65100;
+
+  /* MEDIO / INFO / LINKS · blue */
+  --blue-accent: #4A90D9;   /* also the only link color in the app */
+  --blue-bg:     #E3F2FD;
+  --blue-text:   #1565C0;
+
+  /* BAJO / GOOD · green */
+  --green-accent: #639922;
+  --green-bg:     #F1F8E9;
+  --green-text:   #2E7D32;
+
+  /* Supporting greens used in charts / impact bars */
+  --green-bright: #27AE60;
+  --green-soft:   #8DB56B;
+  --green-pos-bg: #D4EDDA;  /* "≥70% cumplimiento" cell */
+  --green-pos-tx: #155724;
+
+  /* YELLOW · lowest-severity pill (e.g. "clientes L:0", "ticket↓") */
+  --yellow-bg:   #FFFDE7;
+  --yellow-text: #F57F17;
+
+  /* PURPLE · the one categorical (non-risk) badge: intervention type */
+  --purple-bg:   #F3E8FF;
+  --purple-text: #6B21A8;
+
+  /* Conditional-format cell tints (Actividad rankings) */
+  --cell-warn-bg: #FFF3CD;
+  --cell-warn-tx: #856404;
+  --cell-bad-bg:  #FFE0E0;
+  --cell-bad-tx:  #C0392B;
+
+  /* NEUTRALS — ink ladder (dark → faint) */
+  --ink-900: #1a1a2e;  /* headings, KPI values, vendor names */
+  --ink-700: #333333;  /* KPI labels */
+  --ink-600: #555555;  /* secondary labels */
+  --ink-500: #666666;  /* table headers, captions */
+  --ink-400: #888888;  /* sub-text, parentheticals */
+  --ink-300: #999999;  /* KPI sub-line */
+  --ink-250: #aaaaaa;  /* faint meta */
+  --ink-200: #bbbbbb;  /* hint text */
+  --ink-150: #cccccc;  /* "Sin alertas" placeholder */
+
+  /* SURFACES & LINES */
+  --surface:        #ffffff;  /* every card */
+  --page-bg:        #ffffff;  /* Streamlit canvas (effectively white) */
+  --table-head-bg:  #f8f9fa;
+  --row-hover:      #fafafa;
+  --line-strong:    #e9ecef;  /* 2px header underline */
+  --line:           #eeeeee;  /* top-nav divider */
+  --line-faint:     #f2f2f2;  /* row separators */
+  --border-idle:    #e0e0e0;  /* default KPI left-border (no risk) */
+  --chart-neutral:  #B4B2A9;  /* "month 7-12" bars — stable, de-emphasised */
+
+  /* ---------------------------------------------------------------------------
+     2. TYPOGRAPHY — Source Sans 3. Weight does the heavy lifting (800/700).
+     --------------------------------------------------------------------------- */
+  --font-sans: 'Source Sans 3', 'Source Sans Pro', -apple-system, BlinkMacSystemFont,
+               'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Roboto Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  /* Weight scale */
+  --w-regular: 400;    /* @kind font */
+  --w-semibold: 600;   /* @kind font */ /* table headers, badges */
+  --w-bold:    700;    /* @kind font */ /* labels, section headers, names */
+  --w-black:   800;    /* @kind font */ /* KPI values, page titles, score numbers */
+
+  /* Size scale (px — the dashboard is desktop-only, no rem scaling) */
+  --t-kpi:     30px;   /* hero KPI value */
+  --t-kpi-sm:  26px;   /* secondary KPI value */
+  --t-title:   22px;   /* page H1 */
+  --t-header:  20px;   /* top-bar product name */
+  --t-section: 15px;   /* "📋 Vendedores por score…" section header */
+  --t-body:    14px;
+  --t-table:   13px;   /* table cell / row default */
+  --t-label:   12px;   /* table header, KPI label */
+  --t-sub:     11px;   /* KPI sub-line, pills, badges, meta */
+  --t-hint:    10px;   /* inline column hints */
+
+  /* ---------------------------------------------------------------------------
+     3. SHAPE, ELEVATION & SPACING
+     --------------------------------------------------------------------------- */
+  --radius-card:   12px;
+  --radius-card-sm: 10px;  /* vendor-card */
+  --radius-pill:   10px;
+  --radius-badge:  4px;
+  --radius-circle: 50%;
+
+  --accent-border: 4px;    /* the signature left-border on cards */
+
+  --shadow-card:   0 1px 4px rgba(0,0,0,0.08);
+  --shadow-card-sm: 0 1px 3px rgba(0,0,0,0.07);
+
+  --pad-card:   20px;
+  --pad-card-y: 18px;
+  --pad-card-x: 22px;
+  --pad-page:   2.5rem;   /* block-container padding */
+  --gap-kpi:    14px;
+}
+
+/* ============================================================================
+   SEMANTIC TYPE ROLES — apply these classes directly, or copy the rules.
+   ============================================================================ */
+.ds-page-title { font: var(--w-black) var(--t-title)/1.15 var(--font-sans); color: var(--ink-900); }
+.ds-header     { font: var(--w-black) var(--t-header)/1.2 var(--font-sans); color: var(--ink-900); }
+.ds-section    { font: var(--w-bold) var(--t-section)/1.3 var(--font-sans); color: var(--ink-900);
+                 display: flex; align-items: center; gap: 6px; }
+.ds-kpi-value  { font: var(--w-black) var(--t-kpi)/1.1 var(--font-sans); color: var(--ink-900); }
+.ds-kpi-label  { font: var(--w-bold) var(--t-label) var(--font-sans); color: var(--ink-700); }
+.ds-kpi-sub    { font: var(--w-regular) var(--t-sub) var(--font-sans); color: var(--ink-300); }
+.ds-body       { font: var(--w-regular) var(--t-body)/1.5 var(--font-sans); color: var(--ink-700); }
+.ds-th         { font: var(--w-semibold) var(--t-label) var(--font-sans); color: var(--ink-500); }
+.ds-meta       { font: var(--w-regular) var(--t-sub) var(--font-sans); color: var(--ink-250); }

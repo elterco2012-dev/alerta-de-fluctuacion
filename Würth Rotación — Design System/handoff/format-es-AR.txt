@@ -1,0 +1,61 @@
+FORMATO DE NÚMEROS Y TEXTO — Würth Rotación (es-AR / Rioplatense)
+================================================================
+Una sola fuente de verdad. Aplicá estas reglas en TODA la app. Las funciones que
+las implementan están en snippets-v3.py (fmt_num, fmt_pct, fmt_pesos, etc.).
+
+NÚMEROS
+-------
+• Separador de miles: punto         → 1.400.000
+• Separador decimal: coma           → 5,2
+• Nunca mezclar (jamás "1,400.00").
+• Decimales: los mínimos necesarios. Permanencia y score con 1 decimal (5,2 · 1,8);
+  cantidades enteras sin decimales (47 vendedores).
+
+PESOS
+-----
+• Formato largo (tablas, detalle):  $1.400.000   (sin decimales)
+• Formato corto (titulares, KPIs):  $1,4 M  ·  $980 mil
+• Símbolo $ pegado al número, sin espacio: $1.400.000  (no "$ 1.400.000").
+
+PORCENTAJES
+-----------
+• Número entero + %:                78%        (sin decimales salvo que importe)
+• Pegado, sin espacio:              78%        (no "78 %").
+
+TENDENCIA / DELTA
+-----------------
+• Glifos del producto:  ▲ (sube)   ▼ (baja)   = (sin cambio)
+• OJO con el significado del SCORE: score más alto = más riesgo = PEOR.
+  Por eso ▲ score se pinta ROJO y ▼ score se pinta VERDE.
+• En cumplimiento de plan es al revés (subir es bueno) — usá color según contexto,
+  no según la flecha.
+
+TIEMPO / ANTIGÜEDAD
+-------------------
+• Meses en texto:        3 meses · 1 año y 2 meses   (no "14m" en prosa)
+• Abreviado en chips:    5,2 m · M1 · M4-6
+• Mes de carrera:        M1, M4-6   (siempre con M mayúscula)
+
+SEPARADOR DE META
+-----------------
+• Middot rodeado de espacios:  Viajante · 3 meses · zona quemada
+• No usar " - " ni " | " para esto.
+
+TEXTO / TONO  (español argentino — Rioplatense)
+-----------------------------------------------
+• Imperativo argentino (voseo):  Documentá · Pasá el mouse · Usá el buscador · Ajustá
+  (NUNCA "documenta / pulsa / usa" de España).
+• Te dirigís al usuario de vos: "tu zona", "mis vendedores".
+• Al vendedor lo describís en tercera persona.
+• Sentence case en todo: títulos, labels, botones ("Guardar intervención", no "Guardar Intervención").
+• MAYÚSCULAS solo para un token de énfasis suelto (COSTO TOTAL) o un nivel .upper() (CRÍTICO).
+• El nivel de riesgo mapea a un verbo de acción:
+    Crítico → "reunión esta semana"      Alto → "seguimiento activo"
+    Medio   → "monitoreo mensual"         Bajo → "seguimiento normal"
+• Calmo, sin alarmismo, explicativo. Cada umbral se justifica inline (caption/tooltip).
+
+VOCABULARIO DE DOMINIO (mantener EXACTO)
+----------------------------------------
+vendedor · viajante · televentas · grupo/zona · cartera · score · señales ·
+cumplimiento de plan / % Plan · onboarding/inducción · ventana crítica ·
+zona quemada · rotación/fluctuación · cobranza

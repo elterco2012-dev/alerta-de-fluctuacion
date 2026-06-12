@@ -1,0 +1,42 @@
+PROMPT DE RECONSTRUCCIÓN — Würth Rotación Design System
+========================================================
+Pegá este prompt en otra instancia de Claude Design, adjuntando el archivo
+DESIGN-SYSTEM-FLUCTUACION.md (la fuente única de verdad).
+
+--------------------------------------------------------------------------------
+
+Reconstruí, desde cero y de forma fiel, el design system "Würth Rotación" usando como
+ÚNICA fuente de verdad el documento DESIGN-SYSTEM-FLUCTUACION.md que te adjunto. No
+inventes nada que no esté en el documento; si algo no está, dejalo explícito en vez de
+improvisar.
+
+Contexto: es el lenguaje visual de un dashboard interno de Würth Argentina que detecta
+vendedores con riesgo de rotación. Idea rectora: RIESGO = COLOR, cuatro niveles
+(Crítico rojo / Alto naranja / Medio azul / Bajo verde). Estética: plana, blanca, densa,
+sin gradientes ni imágenes; jerarquía por peso tipográfico (Source Sans 3, 800/700/400);
+firma = borde de 4px de color en las cards; iconografía = emoji + glifos Unicode.
+
+Hacé, en este orden:
+1. colors_and_type.css con TODOS los tokens del documento (§1.4), incluyendo los alias
+   --font / --radius / --radius-sm y los roles .ds-*.
+2. styles.css global que importe colors_and_type.css.
+3. handoff/dashboard-v3.css con TODAS las clases .wz-* del §2.B, verbatim.
+4. ui_kits/dashboard/primitives.jsx con TODOS los primitivos React del §2.A
+   (Card, SectionHeader, ScoreCircle, Pill/Pills, Badge con forma ▲◆■●, Sparkline,
+   KpiCard, TopNav) + helpers de formato es-AR, terminando con Object.assign(window,…).
+5. handoff/snippets-v3.py con los helpers Python del §2.B y el formato es-AR del §3.4.
+6. Una página HTML de showcase que cargue React 18.3.1 (UMD pinneado), Babel, los tokens
+   y primitives.jsx, y muestre cada componente en TODAS sus variantes y estados
+   (hover de fila, vacío "Sin alertas", badge con/ sin forma, score circle por nivel y
+   por tamaño 32/36/44, KPI con cada accent, banner en los 4 tonos, delta peor/mejor/flat,
+   accion_tag que recede en bajo, matriz de confusión good/bad/warn/neutral, tabla normal
+   y .compacto).
+
+Respetá SIN EXCEPCIÓN las convenciones del §3: riesgo=color, número nunca crudo (formato
+es-AR con coma decimal y punto de miles), copy en voseo argentino sentence-case, nivel→verbo
+de acción, accesibilidad por forma+color, y los estados obligatorios (vacío/carga/error).
+No agregues dark mode, gradientes, blur, ni una segunda familia tipográfica. No reproduzcas
+un logo corporativo: la marca es el wordmark de texto "Würth Argentina" + 🔔.
+
+Cuando termines, mostrame la página de showcase y confirmá contra el documento que no falta
+ningún componente ni token.

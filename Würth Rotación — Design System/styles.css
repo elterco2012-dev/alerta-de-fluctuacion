@@ -1,0 +1,11 @@
+/* ============================================================================
+   styles.css — Würth Rotación design system, root entry point.
+
+   Consumers: link THIS file. It pulls in the canonical design tokens
+   (colors, type scale, weights, shape, elevation) from colors_and_type.css.
+
+   Scoped, non-global stylesheets are intentionally NOT imported here:
+     • preview/_card.css        — styles only for the Design-System specimen cards
+     • handoff/dashboard-v3.css — ships to the Streamlit repo (CSS-in-Python), not web
+   ============================================================================ */
+@import url('colors_and_type.css');

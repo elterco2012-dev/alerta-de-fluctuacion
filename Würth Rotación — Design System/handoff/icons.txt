@@ -1,0 +1,49 @@
+ICONOGRAFÍA — Würth Rotación
+============================
+El sistema de iconos es EMOJI + glifos Unicode, tipeados directo. No hay icon-font,
+ni sprite SVG, ni PNGs. Es una decisión deliberada: los emoji son etiquetas de
+orientación, nunca decoración. Mantené este set; NO metas Lucide/Heroicons en el
+dashboard (rompe la voz del producto).
+
+NAVEGACIÓN / SECCIÓN  (mapeo estable — reusá EXACTO)
+---------------------------------------------------
+🔔  el producto (alertas) — page_icon / favicon
+🏠  Inicio
+👤  Por supervisor
+📝  Intervenciones
+📈  Historial
+💰  Costo de rotación
+📞  Actividad (Televentas)
+🚗  Viajantes
+🎯  Precisión del modelo            (pantalla nueva v3)
+📋  tabla ranqueada de vendedores
+📍  zonas de alta rotación
+⏱️  ventanas críticas
+👥  onboarding / cohortes
+📊  charts / detalle
+🧾  detalle / tabla de costos
+✉️  resumen semanal (digest)        (mejora nueva v3)
+📱  vista móvil                     (mejora nueva v3)
+🧩  estados de la interfaz          (mejora nueva v3)
+➕  agregar (formularios)
+💾  guardar (formularios)
+🔍  buscar (placeholder de inputs)
+⚠️  riesgo estructural / advertencia
+🔄  rotación mensual
+
+GLIFOS UNICODE COMO MICRO-ICONOS
+--------------------------------
+↑ ↓     dirección de tendencia (en prosa)
+▲ ▼     delta de score (▲ peor=rojo, ▼ mejor=verde)   ← convención v3
+→ ←     CTA / volver  ("Ver mis vendedores →", "← Todas las zonas")
+·       middot separador de meta
+ⓘ       afordancia de info en headers de tabla
+✓       acierto / OK
+=       sin cambio / sin dato
+▲ ◆ ■ ● FORMA por nivel de riesgo (Crítico/Alto/Medio/Bajo) — #4 accesibilidad,
+        va junto al color en cada badge para no depender solo del color.
+🔴 🟠 🔵 🟢 ⬜  swatches en leyendas de charts
+
+REGLA
+-----
+Nunca dibujar iconos con SVG hecho a mano para imitar esto. Tipeá el emoji/glifo real.

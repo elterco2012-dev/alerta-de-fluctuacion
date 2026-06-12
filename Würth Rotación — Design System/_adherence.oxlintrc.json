@@ -1,0 +1,205 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "ui_kits/dashboard/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Source Sans 3|Roboto Mono))/i]",
+        "message": "Font not provided by the design system. Available: Source Sans 3, Roboto Mono."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {},
+    "tokens": [
+      "--accent-border",
+      "--blue-accent",
+      "--blue-bg",
+      "--blue-text",
+      "--border-idle",
+      "--cell-bad-bg",
+      "--cell-bad-tx",
+      "--cell-warn-bg",
+      "--cell-warn-tx",
+      "--chart-neutral",
+      "--font-mono",
+      "--font-sans",
+      "--gap-kpi",
+      "--green-accent",
+      "--green-bg",
+      "--green-bright",
+      "--green-pos-bg",
+      "--green-pos-tx",
+      "--green-soft",
+      "--green-text",
+      "--ink-150",
+      "--ink-200",
+      "--ink-250",
+      "--ink-300",
+      "--ink-400",
+      "--ink-500",
+      "--ink-600",
+      "--ink-700",
+      "--ink-900",
+      "--line",
+      "--line-faint",
+      "--line-strong",
+      "--orange-accent",
+      "--orange-bg",
+      "--orange-text",
+      "--pad-card",
+      "--pad-card-x",
+      "--pad-card-y",
+      "--pad-page",
+      "--page-bg",
+      "--purple-bg",
+      "--purple-text",
+      "--radius-badge",
+      "--radius-card",
+      "--radius-card-sm",
+      "--radius-circle",
+      "--radius-pill",
+      "--red-accent",
+      "--red-bg",
+      "--red-text",
+      "--row-hover",
+      "--shadow-card",
+      "--shadow-card-sm",
+      "--surface",
+      "--t-body",
+      "--t-header",
+      "--t-hint",
+      "--t-kpi",
+      "--t-kpi-sm",
+      "--t-label",
+      "--t-section",
+      "--t-sub",
+      "--t-table",
+      "--t-title",
+      "--table-head-bg",
+      "--w-black",
+      "--w-bold",
+      "--w-regular",
+      "--w-semibold",
+      "--yellow-bg",
+      "--yellow-text"
+    ],
+    "tokenKinds": {
+      "--red-accent": "color",
+      "--red-bg": "color",
+      "--red-text": "font",
+      "--orange-accent": "color",
+      "--orange-bg": "color",
+      "--orange-text": "font",
+      "--blue-accent": "color",
+      "--blue-bg": "color",
+      "--blue-text": "font",
+      "--green-accent": "color",
+      "--green-bg": "color",
+      "--green-text": "font",
+      "--green-bright": "color",
+      "--green-soft": "color",
+      "--green-pos-bg": "color",
+      "--green-pos-tx": "color",
+      "--yellow-bg": "color",
+      "--yellow-text": "font",
+      "--purple-bg": "color",
+      "--purple-text": "font",
+      "--cell-warn-bg": "color",
+      "--cell-warn-tx": "color",
+      "--cell-bad-bg": "color",
+      "--cell-bad-tx": "color",
+      "--ink-900": "color",
+      "--ink-700": "color",
+      "--ink-600": "color",
+      "--ink-500": "color",
+      "--ink-400": "color",
+      "--ink-300": "color",
+      "--ink-250": "color",
+      "--ink-200": "color",
+      "--ink-150": "color",
+      "--surface": "color",
+      "--page-bg": "color",
+      "--table-head-bg": "color",
+      "--row-hover": "color",
+      "--line-strong": "color",
+      "--line": "color",
+      "--line-faint": "color",
+      "--border-idle": "color",
+      "--chart-neutral": "color",
+      "--font-sans": "font",
+      "--font-mono": "font",
+      "--w-regular": "font",
+      "--w-semibold": "font",
+      "--w-bold": "font",
+      "--w-black": "font",
+      "--t-kpi": "spacing",
+      "--t-kpi-sm": "spacing",
+      "--t-title": "spacing",
+      "--t-header": "spacing",
+      "--t-section": "spacing",
+      "--t-body": "spacing",
+      "--t-table": "spacing",
+      "--t-label": "spacing",
+      "--t-sub": "spacing",
+      "--t-hint": "spacing",
+      "--radius-card": "radius",
+      "--radius-card-sm": "radius",
+      "--radius-pill": "radius",
+      "--radius-badge": "radius",
+      "--radius-circle": "radius",
+      "--accent-border": "spacing",
+      "--shadow-card": "shadow",
+      "--shadow-card-sm": "shadow",
+      "--pad-card": "spacing",
+      "--pad-card-y": "spacing",
+      "--pad-card-x": "spacing",
+      "--pad-page": "spacing",
+      "--gap-kpi": "spacing"
+    },
+    "fontFamilies": [
+      "Roboto Mono",
+      "Source Sans 3"
+    ]
+  }
+}

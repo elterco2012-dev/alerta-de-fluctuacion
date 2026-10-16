@@ -337,7 +337,7 @@ costo_promedio = df[df.nivel_riesgo.isin(["critico", "alto"])]["costo_total"].me
 col_hero, col_stats = st.columns([1, 2.2])
 with col_hero:
     st.markdown(hero_kpi("Exposición nivel crítico", fmt_pesos_corto(costo_criticos),
-                         f"{n_criticos} vendedor{'es' if n_criticos!=1 else ''} en riesgo inmediato",
+                         f"{n_criticos} vendedor{'es' if n_criticos!=1 else ''} en nivel crítico",
                          red=True),
                 unsafe_allow_html=True)
 with col_stats:

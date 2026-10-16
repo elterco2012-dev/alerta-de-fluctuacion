@@ -67,7 +67,7 @@ header { display: none; }
 # motor las filtra — así que no necesitan entrada acá.
 SEÑAL_TAGS = {
     "% Plan cayendo 3 meses seguidos":                              ("caída 3m",     "red"),
-    "% Plan < 80% promedio últimos meses":                          ("plan<80%",     "orange"),
+    "% Plan < 80% promedio últimos meses":                          ("plan<55%",     "orange"),
     "Días sin venta > 3 en promedio":                              ("días cero↑",   "red"),
     "En ventana crítica mes 1-3":                                  ("onboarding",   "red"),
     "En ventana crítica mes 4-6":                                  ("mes 4-6",      "orange"),
@@ -339,9 +339,9 @@ st.markdown(f"""
 # tiene que ver la advertencia. Es la hipótesis central del proyecto.
 if rb > 0.40:
     st.warning(f"⚠️ **{nombre_grupo}** es una zona con alta rotación histórica "
-               f"(riesgo base {rb:.0%}). Los vendedores nuevos aquí tienen mayor "
-               f"probabilidad de irse antes de los 6 meses, incluso sin deterioro "
-               f"individual visible. Priorizá el acompañamiento temprano.")
+               f"({rb:.0%} de los vendedores del grupo se fueron antes de los 6 meses). "
+               f"Históricamente, los ingresantes de esta zona duran menos aun sin "
+               f"deterioro individual visible. Priorizá el acompañamiento temprano.")
 
 # KPIs
 n_activos  = len(df_sup)

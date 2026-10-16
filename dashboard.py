@@ -60,56 +60,56 @@ header { display: none; }
 SEÑAL_TAGS = {
     "% Plan cayendo 3 meses seguidos":
         ("caída 3m", "red",
-         "El % de cumplimiento de plan cayó de forma sostenida los últimos 3 meses (pendiente < −3 pts/mes)"),
+         "(Deshabilitada, no suma al score) El % de plan cae más de 50 pts/mes en los últimos 3 meses"),
     "% Plan < 80% promedio últimos meses":
-        ("plan<80%", "orange",
-         "El promedio de cumplimiento de plan de los últimos 3 meses está por debajo del 80%"),
+        ("plan<55%", "orange",
+         "El promedio de cumplimiento de plan de los últimos 3 meses (solo meses con plan cargado) está por debajo del 55%"),
     "Días sin venta > 3 en promedio":
         ("días cero↑", "red",
-         "Más de 3 días hábiles sin registrar ninguna venta en promedio mensual"),
+         "(Deshabilitada, no suma al score) Más de 8 días hábiles sin ventas en promedio mensual"),
     "< 60% de cartera activa":
         ("inactivos↑", "orange",
-         "Menos del 60% de los clientes de su cartera realizaron alguna compra en el período"),
+         "(Deshabilitada, no suma al score) Menos del 60% de la cartera compró en el período"),
     "Cobranza real < 90% de teórica":
         ("cobranza baja", "orange",
-         "La cobranza cobrada está por debajo del 90% del plan de cobranza (planumsk de vplan)"),
+         "(Deshabilitada, no suma al score) Cobranza real por debajo del 90% del plan de cobranza"),
     "En ventana crítica mes 1-3":
         ("inducción", "red",
-         "El vendedor lleva entre 1 y 3 meses en la empresa — período de mayor riesgo (históricamente >50% de las renuncias ocurren acá)"),
+         "El vendedor lleva entre 1 y 3 meses — período de mayor riesgo de baja según el historial. Suma por antigüedad, no por desempeño"),
     "En ventana crítica mes 4-6":
         ("mes 4-6", "orange",
-         "El vendedor lleva entre 4 y 6 meses — segundo período crítico antes de estabilizarse"),
+         "El vendedor lleva entre 4 y 6 meses — segundo período de riesgo según el historial. Suma por antigüedad, no por desempeño"),
     "Grupo con alta rotación histórica":
         ("zona quemada", "orange",
-         "Más del 60% de los vendedores históricos de este grupo se fueron en menos de 6 meses"),
+         "Más del 40% de los vendedores de este grupo se fueron antes de los 6 meses. Describe al grupo, no al vendedor"),
     "Sin clientes nuevos últimos 2 meses":
         ("clientes L:0", "yellow",
          "No captó ningún cliente nuevo en los últimos 2 meses consecutivos"),
     "< 70% de llamadas planificadas gestionadas (Televentas)":
         ("< 70% llamadas", "orange",
-         "Gestionó menos del 70% de las llamadas planificadas en Reactor CRM (promedio últimos 3 meses)"),
+         "(Deshabilitada, no suma al score) Gestionó menos del 25% de las llamadas planificadas en Reactor"),
     "< 70% de visitas planificadas realizadas (Viajante)":
         ("< 70% visitas", "orange",
-         "Realizó menos del 70% de las visitas planificadas en Reactor CRM (promedio últimos 3 meses)"),
+         "(Deshabilitada, no suma al score) Realizó menos del 25% de las visitas planificadas en Reactor"),
     "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3":
         ("ausencias↑", "red",
-         "Más de 2 días/mes de ausencias no justificadas como vacaciones en los primeros 3 meses"),
+         "Más de 2 días/mes de ausencias no vacacionales (promedio de los meses con ausencias registradas) en los primeros 3 meses"),
     "Balanza clientes negativa 2+ meses consecutivos":
         ("balanza neg.", "orange",
-         "Perdió más clientes de los que ganó en los últimos 2 meses (pérdida neta > 3 clientes)"),
+         "Balanza de clientes negativa en los 2 últimos meses y pérdida neta de más de 60 clientes"),
     "Ticket promedio cae > 5% por mes":
         ("ticket↓", "yellow",
          "El importe promedio por cliente cayó más del 5% mensual en los últimos 3 meses"),
     "Supervisor no acompañó en ventana crítica 1-6":
         ("sin acomp.", "orange",
-         "El supervisor no registró ninguna visita de acompañamiento en Reactor durante los primeros 6 meses del vendedor"),
+         "Menos de 1 visita de acompañamiento del supervisor por mes registrada en Reactor (solo meses 1-6)"),
 }
 
 _NIVEL_TOOLTIP = {
-    "critico": "CRÍTICO (score 8-10): señal de fuga inminente — acción inmediata del supervisor",
-    "alto":    "ALTO (score 6-7): riesgo elevado — seguimiento activo esta semana",
-    "medio":   "MEDIO (score 4-5): riesgo moderado — monitoreo mensual",
-    "bajo":    "BAJO (score 1-3): riesgo bajo — seguimiento normal",
+    "critico": "CRÍTICO (score 8-10): máxima prioridad de conversación. No es una probabilidad: la mayoría de los marcados no se va",
+    "alto":    "ALTO (score 6-7): prioridad alta de seguimiento",
+    "medio":   "MEDIO (score 4-5): prioridad media — monitoreo mensual",
+    "bajo":    "BAJO (score 1-3): prioridad baja — seguimiento normal",
 }
 
 _ZONA_TOOLTIP = {
@@ -472,14 +472,22 @@ Solo se usa la tendencia de los últimos 3 meses, no un dato puntual.
 
 | Señal | Se activa cuando |
 |---|---|
-| `caída 3m` | El % Plan cae de forma sostenida (pendiente < −3 pts/mes) |
-| `plan<80%` | Promedio % Plan últimos 3 meses está por debajo del 80% |
-| `días cero+` | Más de 3 días sin registrar ninguna venta en promedio |
-| `cobranza baja` | Cobranza real < 90% de la cobranza teórica esperada |
-| `onboarding` | Vendedor en sus primeros 3 meses (riesgo muy alto) |
-| `mes 4-6` | Vendedor entre el mes 4 y 6 (riesgo alto) |
-| `zona quemada` | El grupo tiene rotación histórica elevada (> 60%) |
+| `plan<55%` | Promedio % Plan últimos 3 meses (con plan cargado) por debajo del 55% |
+| `ausencias↑` | Más de 2 días/mes de ausencias no vacacionales, solo meses 1-3 |
+| `inducción` | Vendedor en sus primeros 3 meses (por antigüedad, no por desempeño) |
+| `mes 4-6` | Vendedor entre el mes 4 y 6 (por antigüedad, no por desempeño) |
+| `zona quemada` | Más del 40% del grupo se fue antes de los 6 meses (describe al grupo) |
+| `balanza neg.` | Balanza de clientes negativa 2 meses y pérdida neta > 60 clientes |
+| `ticket↓` | Ticket promedio cae más de 5% por mes |
+| `sin acomp.` | Menos de 1 acompañamiento del supervisor por mes, solo meses 1-6 |
 | `clientes L:0` | Cero clientes nuevos en los últimos 2 meses |
+
+Caída de plan, días sin venta, cartera activa, cobranza, llamadas y visitas
+están **deshabilitadas** (no suman al score): con datos reales no distinguían
+a quienes se van de quienes se quedan.
+
+El score ordena prioridades de conversación; **no es una probabilidad de
+renuncia** y la mayoría de los marcados no se va.
 """)
 
 st.markdown("<br>", unsafe_allow_html=True)

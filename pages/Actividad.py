@@ -65,8 +65,8 @@ def cargar_actividad():
 
 df_all = cargar_actividad()
 
-# Filtrar al alcance del usuario.
-if not _usuario["ve_todo"] and _usuario["supervisores"]:
+# Filtrar al alcance del usuario (sin datos → cae al aviso de abajo, no a un KeyError).
+if not df_all.empty and not _usuario["ve_todo"] and _usuario["supervisores"]:
     df_all = df_all[df_all["supervisor"].isin(set(_usuario["supervisores"]))]
 
 if df_all.empty:

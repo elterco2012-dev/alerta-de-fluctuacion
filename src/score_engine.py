@@ -6,8 +6,8 @@ Calcula el score de riesgo de fuga (1-10) por vendedor activo.
 Lógica basada en tendencia de los últimos N meses, NO en foto mensual.
 Cada señal suma puntos de riesgo. El score final se normaliza a 1-10.
 
-Cuando conectes Informix el lunes, solo cambiás get_connection().
-Todo lo demás queda igual.
+Lee siempre data/wurth.db (SQLite), que llenan los scripts sincronizar_*.py.
+El score ordena prioridades de conversación: NO es una probabilidad de renuncia.
 """
 
 import sqlite3
@@ -19,28 +19,72 @@ import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-# Riesgo total de referencia para normalizar el score a 1-10.
-# Representa un vendedor en deterioro claro: combinación realista de señales
-# fuertes (ej: plan cayendo 2.5 + plan<80% 2.0 + cobranza 2.0 + ventana crítica
-# 1.5 + días cero 2.5 ≈ 10.5 puntos).
-# NO se divide por la suma de TODOS los pesos (~23.5): eso exigía activar >50%
-# de las 15 señales a la vez para llegar a score 6, algo que ningún vendedor real
-# hace, y dejaba a todos los egresados con score < 6 (0% detectado). Ver CLAUDE.md.
-#
-# Calibrado en 10.0 por backtest con holdout temporal (scripts/validar_pesos.py).
-# Historia: el primer REF=10 (con las señales rotas activas) daba 69% de falsa
-# alarma. Tras corregir el bug de dato faltante y sincronizar cobranza, la curva
-# honesta dio REF=16 — pero ese 16 estaba inflado por CUATRO señales que no
-# distinguen egresados de activos (cartera/llamadas/visitas, y luego cobranza:
-# lift ~1, disparan casi igual en ambos grupos). A medida que se fueron
-# deshabilitando, los scores bajaron parejo, la falsa alarma se desplomó y el
-# óptimo del barrido fue cayendo: 16 -> 12 -> 10. Con las 4 señales rotas fuera,
-# el barrido honesto ubica el óptimo en REF=10: ~62% de detección out-of-sample
-# con ~25% de falsa alarma (separación ~37, la mejor de todo el recorrido). El
-# nivel crítico (>=8) detecta ~41% de egresados con ~11% de falsa alarma.
-# La separación real sigue siendo modesta: es alerta temprana sobre datos
-# ruidosos de RRHH, no un oráculo. Si se ajusta, re-correr backfill y CLAUDE.md.
+# Riesgo total de referencia para normalizar el score a 1-10:
+#     score = 1 + min(riesgo_total / RIESGO_REFERENCIA, 1) * 9
+# No se divide por la suma de todos los pesos: exigiría activar más de la mitad
+# de las señales para llegar a 6, algo que ningún vendedor real hace.
+# Calibrado en 8 con el barrido de scripts/validar_pesos.py tras recalibrar
+# umbrales a datos 2026 (ver CLAUDE.md). OJO: ese barrido elige REF mirando la
+# misma mitad de egresados que reporta como out-of-sample, así que su detección
+# "OOS" es optimista; scripts/evaluar_ranking.py mide el ranking sin ese sesgo.
+# Si se ajusta: re-correr backfill, validar_pesos.py y evaluar_ranking.py.
 RIESGO_REFERENCIA = 8.0
+
+
+# ── Señales del motor: ÚNICA fuente de nombres, pesos y descripciones ────────
+# (nombre, peso, descripcion). El orden importa: calcular_scores las enciende
+# por índice. Las páginas, validar_pesos.py y los tests leen los pesos de acá
+# (o se verifican contra acá en tests/test_consistencia.py).
+SEÑALES = [
+    # NOTA: la descripción es la CLAVE de la señal en todo el sistema
+    # (dashboard, páginas, alertas, score_historico, validar_pesos). NO la
+    # cambies aunque el umbral cambie, o rompés esos lookups y la validación.
+    # Los umbrales reales (recalibrados 2026) están en la lógica más abajo:
+    # caída plan < -50 pp/mes, plan < 55%, días cero > 8, balanza < -60.
+    # DESHABILITADA (peso 0): con umbral <-50 pp/mes (único punto donde no
+    # dispara en el 90%+ de la población) solo alcanza al 1.1% de egresados
+    # y al 0% de activos — muestra estadísticamente tan pequeña que no es
+    # significativa (Δsep=0). La pendiente del %plan no discrimina en este
+    # dataset porque el %plan es muy volátil en toda la fuerza de ventas.
+    ("caída_plan_3m", 0.0, "% Plan cayendo 3 meses seguidos"),
+    ("plan_bajo_80", 2.0, "% Plan < 80% promedio últimos meses"),
+    # DESHABILITADA (peso 0): tras recalibrar el umbral a > 8 (datos 2026), la
+    # señal se invirtió: dispara más en activos (12.8%) que en egresados (10.2%),
+    # lift 0.80, Δsep +2.7 al sacarla. Mismo problema de cobertura que llamadas/
+    # visitas: los egresados tienen datos incompletos en sus últimos meses →
+    # dias_venta_cero faltante = 0 = no enciende → subcuenta a los que se van.
+    # Con el umbral viejo (>3) quedaba tapado (disparaba en el 99%). Re-evaluar
+    # cuando haya más historial real de egresados con datos completos.
+    ("dias_cero_alto", 0.0, "Días sin venta > 3 en promedio"),
+    # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
+    # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
+    # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.
+    ("clientes_activos_baja", 0.0, "< 60% de cartera activa"),
+    # DESHABILITADA (peso 0): lift 1.07 en datos reales — la cobranza baja
+    # está distribuida uniformemente en la empresa (~48% egresados, ~46% activos),
+    # no concentrada en los que se van. Δsep +3.2 al sacarla: infla scores de todos
+    # por igual sin mejorar la separación. Se deshabilita; re-evaluar si la cobertura
+    # del dato mejora o si futuros datos muestran un lift más claro.
+    ("cobranza_baja", 0.0, "Cobranza real < 90% de teórica"),
+    ("ventana_critica_13", 1.5, "En ventana crítica mes 1-3"),
+    ("ventana_critica_46", 1.0, "En ventana crítica mes 4-6"),
+    ("grupo_quemado", 1.5, "Grupo con alta rotación histórica"),
+    ("clientes_nuevos_cero", 0.5, "Sin clientes nuevos últimos 2 meses"),
+    # DESHABILITADAS (peso 0): los egresados raramente tienen datos de Reactor en sus
+    # últimos meses activos → la señal dispara más en activos (tienen Reactor al día)
+    # que en egresados → invertida (lift < 1, Δsep positivo al sacarlas).
+    ("llamadas_bajas", 0.0, "< 70% de llamadas planificadas gestionadas (Televentas)"),
+    ("visitas_bajas", 0.0, "< 70% de visitas planificadas realizadas (Viajante)"),
+    ("ausencias_tempranas", 2.0, "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
+    ("balanza_negativa", 1.5, "Balanza clientes negativa 2+ meses consecutivos"),
+    ("ticket_cayendo", 1.0, "Ticket promedio cae > 5% por mes"),
+    ("acomp_bajo", 1.0, "Supervisor no acompañó en ventana crítica 1-6"),
+    # Probada y descartada: interacción tenure × grupo quemado (rb>0.30). Su lift
+    # aislado era 2.04, pero la auditoría marginal (validar_pesos.py) dio Δsep +1.7:
+    # mete ruido en vez de señal porque ya está cubierta por "ventana crítica 1-3" +
+    # "grupo quemado". El combo no aporta sobre la suma de sus componentes.
+]
+PESOS = {descripcion: peso for _, peso, descripcion in SEÑALES}
 
 
 def get_connection():
@@ -282,55 +326,7 @@ def calcular_scores(meses_tendencia: int = 3,
         bal_vid   = balanza[balanza["id_vendedor"] == vid].head(meses_tendencia)       if not balanza.empty     else pd.DataFrame()
         acomp_vid = acompanamiento[acompanamiento["id_vendedor"] == vid].head(meses_tendencia) if not acompanamiento.empty else pd.DataFrame()
 
-        señales = [
-            # NOTA: la descripción es la CLAVE de la señal en todo el sistema
-            # (dashboard, páginas, alertas, score_historico, validar_pesos). NO la
-            # cambies aunque el umbral cambie, o rompés esos lookups y la validación.
-            # Los umbrales reales (recalibrados 2026) están en la lógica más abajo:
-            # caída plan < -50 pp/mes, plan < 55%, días cero > 8, balanza < -60.
-            # DESHABILITADA (peso 0): con umbral <-50 pp/mes (único punto donde no
-            # dispara en el 90%+ de la población) solo alcanza al 1.1% de egresados
-            # y al 0% de activos — muestra estadísticamente tan pequeña que no es
-            # significativa (Δsep=0). La pendiente del %plan no discrimina en este
-            # dataset porque el %plan es muy volátil en toda la fuerza de ventas.
-            Señal("caída_plan_3m",        peso=0.0, descripcion="% Plan cayendo 3 meses seguidos"),
-            Señal("plan_bajo_80",          peso=2.0, descripcion="% Plan < 80% promedio últimos meses"),
-            # DESHABILITADA (peso 0): tras recalibrar el umbral a > 8 (datos 2026), la
-            # señal se invirtió: dispara más en activos (12.8%) que en egresados (10.2%),
-            # lift 0.80, Δsep +2.7 al sacarla. Mismo problema de cobertura que llamadas/
-            # visitas: los egresados tienen datos incompletos en sus últimos meses →
-            # dias_venta_cero faltante = 0 = no enciende → subcuenta a los que se van.
-            # Con el umbral viejo (>3) quedaba tapado (disparaba en el 99%). Re-evaluar
-            # cuando haya más historial real de egresados con datos completos.
-            Señal("dias_cero_alto",        peso=0.0, descripcion="Días sin venta > 3 en promedio"),
-            # DESHABILITADA (peso 0): cuando el vendedor se va, Informix reasigna sus clientes
-            # al nuevo vendedor y el histórico queda con total_clientes=0. El fix de dato
-            # faltante la apaga para egresados pero no para activos → lift 0.01, Δsep +13.4.
-            Señal("clientes_activos_baja", peso=0.0, descripcion="< 60% de cartera activa"),
-            # DESHABILITADA (peso 0): lift 1.07 en datos reales — la cobranza baja
-            # está distribuida uniformemente en la empresa (~48% egresados, ~46% activos),
-            # no concentrada en los que se van. Δsep +3.2 al sacarla: infla scores de todos
-            # por igual sin mejorar la separación. Se deshabilita; re-evaluar si la cobertura
-            # del dato mejora o si futuros datos muestran un lift más claro.
-            Señal("cobranza_baja",         peso=0.0, descripcion="Cobranza real < 90% de teórica"),
-            Señal("ventana_critica_13",    peso=1.5, descripcion="En ventana crítica mes 1-3"),
-            Señal("ventana_critica_46",    peso=1.0, descripcion="En ventana crítica mes 4-6"),
-            Señal("grupo_quemado",         peso=1.5, descripcion="Grupo con alta rotación histórica"),
-            Señal("clientes_nuevos_cero",  peso=0.5, descripcion="Sin clientes nuevos últimos 2 meses"),
-            # DESHABILITADAS (peso 0): los egresados raramente tienen datos de Reactor en sus
-            # últimos meses activos → la señal dispara más en activos (tienen Reactor al día)
-            # que en egresados → invertida (lift < 1, Δsep positivo al sacarlas).
-            Señal("llamadas_bajas",        peso=0.0, descripcion="< 70% de llamadas planificadas gestionadas (Televentas)"),
-            Señal("visitas_bajas",         peso=0.0, descripcion="< 70% de visitas planificadas realizadas (Viajante)"),
-            Señal("ausencias_tempranas",   peso=2.0, descripcion="Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"),
-            Señal("balanza_negativa",      peso=1.5, descripcion="Balanza clientes negativa 2+ meses consecutivos"),
-            Señal("ticket_cayendo",        peso=1.0, descripcion="Ticket promedio cae > 5% por mes"),
-            Señal("acomp_bajo",            peso=1.0, descripcion="Supervisor no acompañó en ventana crítica 1-6"),
-            # Probada y descartada: interacción tenure × grupo quemado (rb>0.30). Su lift
-            # aislado era 2.04, pero la auditoría marginal (validar_pesos.py) dio Δsep +1.7:
-            # mete ruido en vez de señal porque ya está cubierta por "ventana crítica 1-3" +
-            # "grupo quemado". El combo no aporta sobre la suma de sus componentes.
-        ]
+        señales = [Señal(n, p, d) for n, p, d in SEÑALES]
 
         riesgo_total = 0.0
         pct_plan_vals  = hist["pct_plan"].values

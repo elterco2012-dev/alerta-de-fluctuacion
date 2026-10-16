@@ -197,7 +197,7 @@ HIDE_CHROME_CSS = (
 # ─────────────────────────────────────────────────────────────────────────────
 SIGNAL_PESO = {
     # — 9 señales activas (peso > 0 en score_engine) ——————————————————————————
-    "plan<80%":     2.0,   # plan_bajo_80       → Señal peso=2.0
+    "plan<55%":     2.0,   # plan_bajo_80       → Señal peso=2.0
     "ausencias↑":   2.0,   # ausencias_tempranas → Señal peso=2.0
     "onboarding":   1.5,   # ventana_critica_13  → Señal peso=1.5  (era 2.0 ← bug)
     "zona quemada": 1.5,   # grupo_quemado       → Señal peso=1.5
@@ -236,7 +236,7 @@ def score_breakdown_rows(senales):
 # ─────────────────────────────────────────────────────────────────────────────
 SEÑAL_TAGS = {
     "% Plan cayendo 3 meses seguidos":                ("caída 3m",   "red"),
-    "% Plan < 80% promedio últimos meses":             ("plan<80%",   "orange"),
+    "% Plan < 80% promedio últimos meses":             ("plan<55%",   "orange"),
     "Días sin venta > 3 en promedio":                  ("días cero↑", "red"),
     "< 60% de cartera activa":                         ("inactivos↑", "orange"),
     "Cobranza real < 90% de teórica":                  ("cobranza baja", "orange"),
@@ -273,7 +273,7 @@ PERFIL_LABEL = {
 def perfil_de(meses, riesgo_base, senales):
     if meses <= 6:
         return "onboarding_quemada" if riesgo_base > 0.45 else "onboarding_normal"
-    if meses > 12 and any(s in ("caída 3m", "plan<80%") for s in senales):
+    if meses > 12 and any(s in ("caída 3m", "plan<55%") for s in senales):
         return "senior_caida"
     return "default"
 

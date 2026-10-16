@@ -37,7 +37,7 @@ def _fmt_ant(m):
 
 SEÑAL_CORTA = {
     "% Plan cayendo 3 meses seguidos":    "caída 3m",
-    "% Plan < 80% promedio últimos meses":"plan<80%",
+    "% Plan < 80% promedio últimos meses":"plan<55%",
     "Días sin venta > 3 en promedio":     "días cero↑",
     "En ventana crítica mes 1-3":         "onboarding",
     "En ventana crítica mes 4-6":         "mes 4-6",

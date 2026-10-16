@@ -371,7 +371,7 @@ def _señales_pills(lista):
         return '<span style="color:#ccc;font-size:11px;">Sin señales</span>'
     pill_colors = {
         "% Plan cayendo 3 meses seguidos":       ("caída 3m",     "#FDECEA","#B71C1C"),
-        "% Plan < 80% promedio últimos meses":    ("plan &lt;80%", "#FFF3E0","#E65100"),
+        "% Plan < 80% promedio últimos meses":    ("plan &lt;55%", "#FFF3E0","#E65100"),
         "Días sin venta > 3 en promedio":         ("días cero↑",   "#FDECEA","#B71C1C"),
         "< 60% de cartera activa":                ("inactivos↑",   "#FFF3E0","#E65100"),
         "Cobranza real < 90% de teórica":         ("cobranza baja","#FFF3E0","#E65100"),
@@ -456,7 +456,7 @@ with tab_miss:
   Los datos de actividad Reactor son clave para Televentas y puede que estén incompletos.
 
 **Lo más accionable:** si hay un patrón en las señales de los no detectados
-(ej. siempre tienen "plan<80%" pero no "caída 3m"), el score_engine podría ajustar
+(ej. siempre tienen "plan<55%" pero no "caída 3m"), el score_engine podría ajustar
 el umbral de la señal 2 o agregar una señal nueva de "plan bajo sostenido sin tendencia".
 """)
 

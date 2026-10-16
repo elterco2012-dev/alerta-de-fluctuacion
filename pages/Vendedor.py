@@ -365,8 +365,8 @@ else:
           <td><b>{periodo_str}</b></td>
           <td><b style="color:{color_plan};">{fmt_pct(pct_plan)}</b></td>
           <td>${fmt_num(venta_total)}</td>
-          <td style="color:{'#B71C1C' if dias_cero > 3 else '#1a1a2e'};font-weight:{'700' if dias_cero > 3 else '400'};">{dias_cero}</td>
-          <td style="color:{'#B71C1C' if pct_cob < 90 else '#2E7D32'};">{fmt_pct(pct_cob)}</td>
+          <td>{dias_cero}</td>
+          <td>{fmt_pct(pct_cob)}</td>
           <td>{fmt_num(cli_activos)}</td>
           <td style="color:{'#aaa' if cli_nuevos == 0 else '#1a1a2e'};">{fmt_num(cli_nuevos)}</td>
         </tr>"""

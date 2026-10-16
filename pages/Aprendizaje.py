@@ -28,28 +28,13 @@ from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, fmt_pct, page_heade
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 
-# Pesos actuales del score_engine (descripción → peso). Para mostrar junto al lift.
-PESOS = {
-    "% Plan cayendo 3 meses seguidos":       2.5,
-    "% Plan < 80% promedio últimos meses":    2.0,
-    "Días sin venta > 3 en promedio":         1.5,
-    "< 60% de cartera activa":                1.5,
-    "Cobranza real < 90% de teórica":         1.0,
-    "En ventana crítica mes 1-3":             1.5,
-    "En ventana crítica mes 4-6":             1.0,
-    "Grupo con alta rotación histórica":      1.5,
-    "Sin clientes nuevos últimos 2 meses":    0.5,
-    "< 70% de llamadas planificadas gestionadas (Televentas)": 1.5,
-    "< 70% de visitas planificadas realizadas (Viajante)":     1.5,
-    "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3": 2.0,
-    "Balanza clientes negativa 2+ meses consecutivos":         1.5,
-    "Ticket promedio cae > 5% por mes":                        1.0,
-    "Supervisor no acompañó en ventana crítica 1-6":           1.0,
-}
+# Pesos actuales: se leen del motor (única fuente). Antes había una copia
+# manual con pesos viejos (2.5/1.5) que distorsionaba las sugerencias.
+from score_engine import PESOS
 # Etiqueta corta para mostrar
 CORTO = {
     "% Plan cayendo 3 meses seguidos":       "Plan cayendo 3m",
-    "% Plan < 80% promedio últimos meses":    "Plan < 80%",
+    "% Plan < 80% promedio últimos meses":    "Plan < 55%",
     "Días sin venta > 3 en promedio":         "Días venta cero ↑",
     "< 60% de cartera activa":                "Cartera activa baja",
     "Cobranza real < 90% de teórica":         "Cobranza baja",

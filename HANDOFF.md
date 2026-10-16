@@ -1,4 +1,10 @@
 # HANDOFF — Würth Argentina: Sistema de Alertas de Rotación
+
+> **Documento histórico (12 jun 2026).** El estado vigente está en `CLAUDE.md`
+> y en `docs/AUDITORIA_2026-10.md` (octubre 2026). Algunas afirmaciones de
+> abajo quedaron desactualizadas (ej. `score_snapshot` no existe: se usa
+> `score_historico`; `sync_y_alertas.bat` está en `scripts/`).
+
 **Fecha:** 12 de junio de 2026  
 **Rama de trabajo:** `claude/sales-turnover-alerts-l8pO6`  
 **Estado:** sesión cerrada por migración de cuenta — todo commiteado y pusheado.

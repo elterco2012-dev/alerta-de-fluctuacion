@@ -59,7 +59,7 @@ alerta-de-fluctuacion/
 │   ├── Historial.py                      ← evolución histórica de rotación
 │   ├── Actividad.py                      ← llamadas/visitas (Televentas y Viajantes separados)
 │   ├── Costo_Rotacion.py                 ← costo por baja: histórico + exposición futura
-│   ├── Precision.py                      ← precisión del modelo (requiere score_snapshot)
+│   ├── Precision.py                      ← detección histórica (lee score_historico del backfill)
 │   └── Aprendizaje.py                    ← análisis de señales y pesos
 ├── scripts/
 │   ├── inicializar_db.py                 ← crea/repobla wurth.db desde Informix (Python 32-bit)
@@ -67,15 +67,19 @@ alerta-de-fluctuacion/
 │   ├── sincronizar_informix.py           ← sync ventas/legajo desde Informix (solo SELECT)
 │   ├── sincronizar_reactor.py            ← sync actividad/ausencias desde Reactor (solo SELECT)
 │   ├── sincronizar_sundb.py              ← sync cobranza desde SUN SQL Server (solo SELECT)
-│   ├── sincronizar_todo.bat              ← corre los 3 sync en secuencia
 │   ├── backfill_scores.py                ← recalcula score_historico para períodos pasados
 │   ├── enviar_alertas.py                 ← dispara alertas por email para vendedores críticos
 │   ├── sync_y_alertas.bat                ← automatización diaria: sync → snapshot → alertas
 │   ├── programar_alertas.bat             ← registra la tarea diaria en el Programador de Windows
 │   ├── validar_pesos.py                  ← backtest: lift por señal + barrido REF (solo SQLite)
+│   ├── evaluar_ranking.py                ← evaluación point-in-time del RANKING (precision@K, lift, AUC)
+│   ├── chequeo_integridad.py             ← conteos de problemas de datos en wurth.db (solo lectura)
 │   ├── explorar_senales_nuevas.py        ← lift de señales candidatas con holdout temporal
 │   ├── diagnostico_vart.py               ← cruza f040 con SQLite para verificar clasificación TV/VJ
 │   └── diagnostico_valores.py            ← distribución de indicadores (calibrar umbrales)
+├── sincronizar_todo.bat                  ← (en la raíz) corre los 3 sync en secuencia
+├── tests/                                ← pytest con SQLite sintéticas (nunca producción)
+├── docs/AUDITORIA_2026-10.md             ← auditoría integral: hallazgos, limitaciones, hoja de ruta
 └── data/
     ├── wurth.db                          ← SQLite local (NO commitear — en .gitignore)
     └── estado_alertas.json               ← timestamps de última alerta por vendedor (NO commitear)
@@ -162,7 +166,6 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
 | Días venta cero altos | ~~2.5~~ → **0** | — | **deshabilitada** |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
-| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
 | Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
 | Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
@@ -296,6 +299,10 @@ cada estado del modelo:
     scores quedan comprimidos). La separación sigue siendo modesta: es alerta
     temprana sobre datos ruidosos de RRHH, no un oráculo, y el historial de
     egresados aún es corto.
+  - **Caveat (auditoría oct 2026):** en todo este recorrido el REF se eligió
+    maximizando la separación sobre la misma mitad de egresados que se reporta
+    como out-of-sample, y `riesgo_base` incluye bajas futuras: las cifras de
+    detección son optimistas. Medir el ranking con `scripts/evaluar_ranking.py`.
   - El nivel **crítico (≥8)** es el indicador visual de mayor urgencia (la acción
     operativa sigue siendo por ranking; ver abajo).
 
@@ -342,24 +349,25 @@ desincronizado, peso `??` (string desincronizado) o una entrada huérfana.
 Decisión de diseño validada con `scripts/validar_pesos.py`. En esta población el
 deterioro es generalizado (cobranza floja, días cero, plan cayendo en casi
 todos), así que **ningún umbral de score separa limpio a los que se van de los
-que se quedan**. La separación detección-vs-falsa-alarma mejoró bastante al
-deshabilitar las señales rotas y bajar a REF=10 (~37, antes ~8), pero sigue sin
-haber un corte que parta limpio: a REF=10 el nivel crítico (≥8) detecta ~41% de
-egresados pero también marca ~11% de activos.
+que se quedan**. Con los umbrales recalibrados a 2026 y REF=8, el barrido de `validar_pesos.py`
+da una separación ≈ 10 (~15% de detección "OOS" con ~4,5% de falsa alarma):
+ningún corte parte limpio. **Caveat (auditoría oct 2026):** esas cifras son
+optimistas (REF elegido sobre la misma mitad que se reporta como OOS,
+`riesgo_base` con bajas futuras, ventanas distintas para egresados y activos).
 
-Lo que SÍ tiene señal es el **orden**: los vendedores de mayor score se van más
-seguido. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
+La hipótesis de diseño es que el **orden** tiene señal: los vendedores de mayor
+score se van más seguido. **Todavía no está medida con un método point-in-time**:
+`scripts/evaluar_ranking.py` (precisión@K, lift vs. azar, comparado contra
+priorizar solo por antigüedad o por plan) es la prueba a correr. Por eso el dashboard NO dice "todos los que pasen de 8 = reunión"; dice
 **"empezá por los de mayor score y bajá según tu capacidad"** (FOCO_SEMANA ≈ 20
 en la vista global; el top de cada zona en la vista por supervisor). Las tablas
 van ordenadas por score descendente. Los niveles crítico/alto quedan como
 indicador visual de color y de urgencia, no como corte accionable rígido.
 
-Por qué REF=10 (y no más alto): tras deshabilitar las cuatro señales que no
-separan (cartera, llamadas, visitas, cobranza), REF=10 da la mejor separación
-del barrido honesto (~37) y mantiene los scores bien distribuidos para el
-ranking. Los REF altos (12-16) sólo hacían falta para contener la falsa alarma
-que metían esas señales rotas; sin ellas, subir el REF sólo apaga detección y el
-nivel crítico. Ver el barrido de niveles en `validar_pesos.py`.
+Por qué REF=8 (y no más alto): con los umbrales 2026 los scores quedaron
+comprimidos y a REF≥10 la detección del barrido colapsa a 0. REF no cambia el
+ORDEN (es una normalización monótona salvo el tope en 10), solo los niveles de
+color; para la acción por ranking lo relevante es `evaluar_ranking.py`.
 
 ### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
 Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar
@@ -549,7 +557,7 @@ sin expander (no esconder accionables detrás de un "Ver más").
 4. `sync_y_alertas.bat` → automatización completa (sync + alertas)
 5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
 
-**Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
+**Git:** rama histórica `claude/sales-turnover-alerts-l8pO6`; cada sesión de trabajo puede usar su propia rama. Nunca pushear `data/wurth.db`, `data/estado_alertas.json`, CSV de diagnóstico ni capturas con datos reales (el repo es **público** a oct 2026: ver auditoría).
 
 ---
 
@@ -610,12 +618,47 @@ cuánta cartera se pierde realmente al irse un vendedor, ajustarlos ahí.
 
 ---
 
+## Auditoría oct 2026 — lo que hay que saber antes de tocar algo
+
+Detalle y evidencia en `docs/AUDITORIA_2026-10.md`. Resumen operativo:
+
+- **Pesos en una sola fuente:** `SEÑALES` / `PESOS` a nivel módulo en
+  `src/score_engine.py`. `pages/Aprendizaje.py` los importa;
+  `scripts/validar_pesos.py` (sin pandas) y `snippets_v3.SIGNAL_PESO` mantienen
+  copias que `tests/test_consistencia.py` verifica. Cambiar un peso = cambiar el
+  motor + las copias (el test avisa).
+- **Etiquetas cortas de UI** con umbrales vigentes (`plan<55%`); las claves
+  `descripcion=` del motor NO cambiaron.
+- **Comportamientos documentados como hallazgo** (hay tests que los fijan;
+  corregirlos cambia scores y requiere aprobación + medición con
+  `evaluar_ranking.py`):
+  - modo vivo toma las 3 filas más recientes, incluido el mes en curso parcial
+    y, si la ingesta las deja, filas de meses futuros (`balanza_clientes` registra
+    "perdidos" a +12 meses de la última compra);
+  - `grupos.riesgo_base` usa todas las bajas (también futuras y la propia) y el
+    backfill lo aplica a meses pasados;
+  - ausencias se promedian sobre las filas existentes (solo meses con ausencias);
+  - sin filas de acompañamiento la señal no enciende.
+- **Ingesta:** el sync diario NO da de alta vendedores nuevos (solo
+  `inicializar_db.py` inserta); un fallo de `vplan` pisa el plan con 0;
+  `motivo_egreso` nunca se carga (las bajas mezclan renuncias y despidos).
+- **Intervenciones:** se escriben SIEMPRE en SQLite (no vía `get_connection()`),
+  sin datos de ejemplo, filtradas al alcance del usuario y con HTML escapado.
+- **Tests:** `python -m pytest tests -q` (SQLite sintéticas; nunca producción ni
+  correos). Correrlos antes de cualquier push.
+- **Medir en la base real (solo lectura):** `scripts\chequeo_integridad.bat` y
+  `scripts\evaluar_ranking.bat`.
+
 ## Lo que NO hacer
 
 - No cambiar la lógica de scoring sin actualizar este archivo
 - No commitear `data/wurth.db` con datos reales de Informix (agregar a .gitignore)
 - No agregar dependencias pesadas sin consultar (el entorno puede ser Windows con pyodbc)
 - No reemplazar el sistema de reglas por ML todavía
+- No usar el score, el nivel ni el ranking para sancionar, excluir o desvincular:
+  prioriza conversaciones de acompañamiento (y la etiqueta histórica mezcla despidos)
+- No commitear capturas de pantalla, CSV ni salidas de diagnóstico con datos reales
+- No escribir en SQLite desde una página antes de `acceso.requerir_acceso()`
 
 ## REGLA ABSOLUTA — Bases de datos externas: SOLO LECTURA
 
@@ -635,7 +678,7 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
 
 ---
 
-## Estado de features (actualizado junio 2026)
+## Estado de features (actualizado octubre 2026)
 
 1. ✅ Vista filtrada por supervisor — acceso por rol en `pages/Supervisor.py` + `src/acceso.py`
 2. ✅ Costo de rotación — `pages/Costo_Rotacion.py` (histórico + exposición futura)
@@ -649,13 +692,18 @@ Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuen
 10. ✅ Score + Δ mes fusionados, tabla de 7 columnas
 11. ✅ Vista default top 5, sin esconder accionables cuando hay filtro activo
 12. ✅ `try/except` en `cargar_datos()` con mensaje de error amable
-13. ⏳ **Precisión del modelo** — bloqueado hasta tener tabla `score_snapshot`.
-    Ver `queries-v3.sql` (Camino A: snapshot mensual; Camino B: backfill histórico).
-    La pantalla `pages/Precision.py` existe pero usa datos de ejemplo.
-14. ⏳ **Recomendación de acción por perfil** — `recomendar_accion()` en snippets_v3.py
-    existe pero devuelve `None` si no hay datos reales de intervenciones medidas.
-    La query para conectarla está en `queries-v3.sql` (#3 efectividad).
-15. ⏳ **Cohortes de retención** en Historial — query lista en `queries-v3.sql` (#2).
+13. ⚠️ **Precisión del modelo** — `pages/Precision.py` lee `score_historico`
+    (generado por `backfill_scores.py` y `snapshot_mensual.py`; no existe una tabla
+    `score_snapshot`). Mide solo detección in-sample (score ≥ 6) y la etiqueta
+    mezcla despidos. `score_historico` se RECALCULA con datos de hoy: no es una
+    foto congelada de lo que vio el supervisor. Evaluación honesta del ranking:
+    `scripts/evaluar_ranking.py`.
+14. ⏳ **Recomendación de acción por perfil** — `recomendar_accion()` +
+    `intervenciones.efectividad_por_perfil()` usan intervenciones reales con
+    mínimo 10 casos por perfil y tipo; es antes/después sin grupo de control
+    (se rotula "no demostrado"). Las queries de referencia están en
+    `Würth Rotación — Design System/handoff/queries-v3.sql`.
+15. ⏳ **Cohortes de retención** en Historial — query en `queries-v3.sql` (#2).
 16. ⏳ **Modelo ML** — cuando haya 6+ meses de datos reales limpios.
 
 ### Alertas (#4) — cómo funciona el envío de email
@@ -682,8 +730,9 @@ alerta}`. Se alerta cuando un vendedor es **nuevo en crítico** o sigue crítico
 
 Automatización: `scripts/sync_y_alertas.bat` corre sync (Python 32-bit, ODBC) →
 snapshot → alertas (Python 64-bit, con pywin32). `scripts/programar_alertas.bat`
-registra la tarea diaria en el Programador de Windows (con `/IT`: corre en la sesión
-interactiva, necesario para Outlook COM y los DSN del usuario).
+registra la tarea diaria en el Programador de Windows (`schtasks /SC DAILY /ST 08:00`,
+sin `/RU`: corre como el usuario actual y necesita su sesión para Outlook COM y los
+DSN). Para probar el envío sin mandar nada: `python scripts\enviar_alertas.py --dry-run`.
 
 ---
 
@@ -708,8 +757,10 @@ Entradas huérfanas en `score_historico` de vendedores que ya no salen del motor
 `scripts/diagnostico_chequeo.bat` para identificar la fila y re-correr el backfill.
 
 ### Dashboard muestra datos viejos
-Verificar que `sync_y_alertas.bat` corrió recientemente. Revisar
-`data/estado_alertas.json` para ver el timestamp. El caché de Streamlit es 5 min (TTL=300).
+Verificar que `sync_y_alertas.bat` corrió recientemente (la salida de la tarea no
+queda en un log todavía). `data/estado_alertas.json` solo se actualiza cuando hubo
+alertas, así que no sirve como indicador de frescura; el "Actualizado" del dashboard
+es la hora de carga del caché, no la del último sync. El caché es 5 min (TTL=300).
 
 ### Login no navega al hacer click en "Ingresar"
 El iframe de `st.components.v1.html()` bloquea `window.parent.location`. La solución

@@ -218,20 +218,47 @@ def test_ausencias_no_aplica_fuera_de_ventana(base):
     assert fila(score_de(base), 1)["señales_activas"] == []
 
 
-def test_ausencias_promedia_solo_meses_con_ausencias(base):
-    """COMPORTAMIENTO ACTUAL — HALLAZGO.
+AUSENCIAS = "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3"
 
-    ausencias_mensual solo tiene filas para meses CON ausencias. El motor
-    promedia esas filas, no los meses del período: 3 días en un solo mes de
-    tres (promedio real 1 día/mes) enciende la señal "> 2 días/mes".
-    """
+
+def test_ausencias_promedia_sobre_los_meses_de_la_ventana(base):
+    """Corregido (oct 2026): ausencias_mensual solo tiene filas en meses CON
+    ausencias. Antes se promediaban esas filas: 3 días en uno de tres meses
+    encendía "> 2 días/mes". Ahora, con dato de Reactor en los 3 meses, el
+    promedio es 1 y la señal no enciende."""
+    base.grupo(1, riesgo_base=0.10)
+    base.vendedor(1, ingreso_con_meses(3))
+    ventas_ultimos(base, 1, [80, 80, 80])
+    for i in range(3):
+        a, m = meses_atras(ANIO, MES, i)
+        base.actividad(1, a, m, visitas=10)      # Reactor tiene al vendedor los 3 meses
+    a, m = meses_atras(ANIO, MES, 2)
+    base.ausencia(1, a, m, 3)                   # los otros dos meses: sin fila (= 0)
+    assert AUSENCIAS not in fila(score_de(base), 1)["señales_activas"]
+
+
+def test_ausencias_mes_sin_dato_de_reactor_es_desconocido(base):
+    """Si el vendedor no tiene NINGÚN dato de Reactor en un mes, ese mes no cuenta
+    como 'cero ausencias': queda fuera del promedio (dato faltante ≠ conducta)."""
     base.grupo(1, riesgo_base=0.10)
     base.vendedor(1, ingreso_con_meses(3))
     ventas_ultimos(base, 1, [80, 80, 80])
     a, m = meses_atras(ANIO, MES, 2)
-    base.ausencia(1, a, m, 3)       # los otros dos meses: sin fila (= 0 ausencias)
-    activas = fila(score_de(base), 1)["señales_activas"]
-    assert "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3" in activas
+    base.ausencia(1, a, m, 3)                   # único mes con dato de Reactor
+    assert AUSENCIAS in fila(score_de(base), 1)["señales_activas"]
+
+
+def test_ausencias_fuera_de_la_ventana_del_score_no_cuentan(base):
+    """Solo cuentan los meses que usa el score (los últimos 3 de ventas)."""
+    base.grupo(1, riesgo_base=0.10)
+    base.vendedor(1, ingreso_con_meses(3))
+    ventas_ultimos(base, 1, [80, 80])
+    for i in range(2):
+        a, m = meses_atras(ANIO, MES, i)
+        base.ausencia(1, a, m, 0)
+    a, m = meses_atras(ANIO, MES, 4)
+    base.ausencia(1, a, m, 9)                   # mes viejo, fuera de la ventana
+    assert AUSENCIAS not in fila(score_de(base), 1)["señales_activas"]
 
 
 def test_ausencias_con_ceros_explicitos_no_enciende(base):

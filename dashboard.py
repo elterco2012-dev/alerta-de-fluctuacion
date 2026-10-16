@@ -93,7 +93,7 @@ SEÑAL_TAGS = {
          "(Deshabilitada, no suma al score) Realizó menos del 25% de las visitas planificadas en Reactor"),
     "Ausencias no vacaciones > 2 días/mes en ventana crítica 1-3":
         ("ausencias↑", "red",
-         "Más de 2 días/mes de ausencias no vacacionales (promedio de los meses con ausencias registradas) en los primeros 3 meses"),
+         "Más de 2 días/mes de ausencias no vacacionales en los primeros 3 meses (promedio de los meses con dato de Reactor)"),
     "Balanza clientes negativa 2+ meses consecutivos":
         ("balanza neg.", "orange",
          "Balanza de clientes negativa en los 2 últimos meses y pérdida neta de más de 60 clientes"),

@@ -342,7 +342,7 @@ def calcular_scores(meses_tendencia: int = 3,
 
         # Actividad Reactor de este vendedor (últimos N meses)
         act_vid   = actividad[actividad["id_vendedor"] == vid].head(meses_tendencia)   if not actividad.empty   else pd.DataFrame()
-        aus_vid   = ausencias[ausencias["id_vendedor"] == vid].head(meses_tendencia)   if not ausencias.empty   else pd.DataFrame()
+        aus_vid   = ausencias[ausencias["id_vendedor"] == vid]                         if not ausencias.empty   else pd.DataFrame()
         bal_vid   = balanza[balanza["id_vendedor"] == vid].head(meses_tendencia)       if not balanza.empty     else pd.DataFrame()
         acomp_vid = acompanamiento[acompanamiento["id_vendedor"] == vid].head(meses_tendencia) if not acompanamiento.empty else pd.DataFrame()
 
@@ -475,10 +475,23 @@ def calcular_scores(meses_tendencia: int = 3,
                         señales[10].activa = True
                         riesgo_total += señales[10].peso
 
-        # Señal 12: ausencias no-vacacionales en ventana crítica mes 1-3
-        if not aus_vid.empty and en_critica_13 and "dias_no_vac" in aus_vid.columns:
-            prom_no_vac = aus_vid["dias_no_vac"].mean()
-            if prom_no_vac > 2:
+        # Señal 12: ausencias no vacacionales en ventana crítica mes 1-3.
+        # Promedio sobre los MESES de la ventana del score (los de `hist`), no sobre
+        # las filas de ausencias_mensual: esa tabla solo tiene filas en meses CON
+        # ausencias, y promediar filas inflaba la señal (3 días en uno de tres meses
+        # daba "3 días/mes"). Un mes sin fila cuenta como 0 si el vendedor tiene
+        # algún dato de Reactor ese mes (actividad, acompañamiento o ausencias); si
+        # no, es desconocido y no entra al promedio (dato faltante ≠ conducta).
+        if en_critica_13 and not aus_vid.empty and "dias_no_vac" in aus_vid.columns:
+            aus_mes = dict(zip(zip(aus_vid["anio"], aus_vid["mes"]), aus_vid["dias_no_vac"]))
+            con_reactor = set(aus_mes)
+            for df_r in (actividad, acompanamiento):
+                if not df_r.empty:
+                    sub = df_r[df_r["id_vendedor"] == vid]
+                    con_reactor.update(zip(sub["anio"], sub["mes"]))
+            conocidos = [aus_mes.get(mm, 0) for mm in zip(hist["anio"], hist["mes"])
+                         if mm in con_reactor]
+            if conocidos and sum(conocidos) / len(conocidos) > 2:
                 señales[11].activa = True
                 riesgo_total += señales[11].peso
 

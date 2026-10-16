@@ -77,6 +77,7 @@ def main():
     print(f"Desde {periodos[-1][0]}-{periodos[-1][1]:02d} hasta {periodos[0][0]}-{periodos[0][1]:02d}\n")
 
     total_filas = 0
+    errores = []
 
     for anio, mes in periodos:
         periodo_str = f"{anio}-{mes:02d}"
@@ -86,6 +87,7 @@ def main():
             df = calcular_scores(meses_tendencia=3, hasta_anio=anio, hasta_mes=mes)
         except Exception as e:
             print(f"ERROR: {e}")
+            errores.append(periodo_str)
             continue
 
         if df.empty:
@@ -131,6 +133,10 @@ def main():
 
     con_local.close()
     print(f"\nListo. {total_filas} registros en score_historico.")
+    if errores:
+        # Antes terminaba con exit 0 aunque fallaran períodos: el .bat no se enteraba.
+        print(f"ERROR: fallaron {len(errores)} período(s): {', '.join(errores)}")
+        sys.exit(1)
     print("Ahora abrí la pantalla 'Precisión del modelo' en el dashboard.")
 
 

@@ -304,6 +304,20 @@ for vid, clientes in historial.items():
 
 print(f"OK — {len(balanza_data)} filas")
 
+def _abortar(motivo):
+    """Fuente obligatoria caída: cortar ANTES de escribir en SQLite.
+
+    Seguir con la fuente vacía pisaba con 0 el plan (o la cartera) de 18 meses
+    de filas y apagaba la señal de plan para todos, sin que nadie se enterara.
+    Todas las lecturas de producción ocurren antes de la primera escritura en
+    SQLite, así que abortar acá no deja la base a medias.
+    """
+    print(f"\nERROR: {motivo}")
+    print("  Se aborta sin escribir en SQLite (exit 1). Los datos de ayer quedan intactos.")
+    icon.close()
+    sys.exit(1)
+
+
 # ── [3b] Plan de ventas y clientes activos (vplan) ────────────────────────────
 print("[3b/4] Plan de ventas vplan...", end=" ", flush=True)
 vplan_data = {}
@@ -328,7 +342,9 @@ try:
             continue
     print(f"OK — {len(vplan_data)} filas")
 except Exception as e:
-    print(f"AVISO: no se pudo leer vplan ({e})")
+    _abortar(f"no se pudo leer vplan ({e})")
+if not vplan_data:
+    _abortar("vplan no devolvió filas (¿vendedores vacío en SQLite? correr inicializar_db.py)")
 
 # ── [3b2/4] Portfolio total por vendedor (kund) ───────────────────────────────
 print("[3b2/4] Portfolio de clientes por vendedor (kund)...", end=" ", flush=True)
@@ -348,7 +364,9 @@ try:
             continue
     print(f"OK — {len(kund_total)} vendedores en kund")
 except Exception as e:
-    print(f"AVISO: no se pudo leer kund ({e})")
+    _abortar(f"no se pudo leer kund ({e})")
+if not kund_total:
+    _abortar("kund no devolvió filas")
 
 # ── [3b3/4] Días con venta por vendedor/mes (sbas, campo fecha auto-detectado) ─
 print("[3b3/4] Días con venta (sbas)...", end=" ", flush=True)

@@ -250,16 +250,16 @@ f040 ───────────inicializar_db.py (manual)─► vendedore
 
 | # | Riesgo | Prioridad | Estado |
 |---|---|---|---|
-| D1 | Repo público con datos personales en historia | P0 | Requiere acción del dueño |
-| D2 | Sin autenticación (`?usuario=`) | P0 | Propuesto (HMAC), requiere aprobación |
-| D3 | Score vivo con meses parciales/futuros | P0 | Propuesto, requiere aprobación |
-| D4 | Altas nuevas no sincronizadas | P0 | Propuesto, requiere aprobación |
-| D5 | Fallo de vplan pisa el plan con ceros; bats sin `errorlevel` | P1 | Propuesto |
+| D1 | Repo público con datos personales en historia | P0 | Capturas quitadas del árbol (`8e0418d`); **falta repo privado + purga del historial** (dueño) |
+| D2 | Sin autenticación (`?usuario=`) | P0 | **Pospuesto por decisión**: por ahora un único link (Gerencia) para gerencia, RRHH y los 3 directores; links personales cuando se sume a los supervisores |
+| D3 | Score vivo con meses parciales/futuros | P0 | **Corregido** (`4c705d0`) |
+| D4 | Altas nuevas no sincronizadas | P0 | **Corregido** (`31d7ad3`) |
+| D5 | Fallo de vplan pisa el plan con ceros; bats sin `errorlevel` | P1 | **Corregido** (`21344ac`) |
 | D6 | Notas de intervenciones visibles entre zonas | P1 | **Corregido** |
 | D7 | Datos de ejemplo escritos en la base real | P1 | **Corregido** (falta limpiar filas existentes: ver chequeo) |
 | D8 | `get_connection()` puede apuntar a Informix y las intervenciones escribían por ahí | P1 | **Corregido** para escrituras; la rama Informix del motor sigue (solo lectura) |
 | D9 | Sin backups/WAL de `wurth.db` | P1 | Propuesto |
-| D10 | Tracebacks visibles, telemetría de Streamlit activa | P2 | Propuesto (`config.toml`) |
+| D10 | Tracebacks visibles, telemetría de Streamlit activa | P2 | **Corregido** (`4ce795f`) |
 | D11 | HTML de nombres del ERP sin escapar en otras páginas | P2 | Pendiente (las observaciones ya se escapan) |
 | D12 | Conexiones ODBC sin `readonly=True` ni usuario de solo lectura | P2 | Propuesto (los scripts solo hacen SELECT, verificado) |
 | D13 | Consultas a producción sin timeout de consulta, ventana completa de 18 meses todos los días | P2 | Propuesto |
@@ -276,28 +276,28 @@ Columna **Estado**: ✅ hecho · 🔒 requiere aprobación · ⏳ pendiente.
 
 | ID | Problema | Prio | Esfuerzo | Archivos | Solución | Criterio verificable de éxito | Estado |
 |---|---|---|---|---|---|---|---|
-| M1 | Datos personales públicos | P0 | Bajo (decisión) | repo, `uploads/` | Privado + `git filter-repo` + borrar `uploads/` | Repo privado; `git log --all -- '*uploads*'` vacío | 🔒 dueño |
-| M2 | Score vivo con meses parciales o futuros | P0 | Bajo | `score_engine.py`, `sincronizar_*.py` | Tope = último mes cerrado; sync sin claves futuras | `chequeo_integridad` sin filas futuras; el test de modo vivo cambia de forma deliberada; `evaluar_ranking` antes y después | 🔒 |
-| M3 | Altas nuevas | P0 | Medio | `sincronizar_informix.py`, `sync_y_alertas.bat` | Upsert de vendedores en el sync diario | "Ingresos últimos 60 días" > 0; ingresantes con score | 🔒 |
-| M4 | Autenticación | P0 | Medio | `acceso.py`, script generador, `.env` | Link firmado HMAC; "Gerencia" fuera del selector | `?usuario=Gerencia` sin token da acceso denegado (test) | 🔒 |
+| M1 | Datos personales públicos | P0 | Bajo (decisión) | repo, `uploads/` | Privado + `git filter-repo` + borrar `uploads/` | Repo privado; `git log --all -- '*uploads*'` vacío | Parcial: `uploads/` quitado ✅ · privado + purga 🔒 dueño |
+| M2 | Score vivo con meses parciales o futuros | P0 | Bajo | `score_engine.py`, `sincronizar_*.py` | Tope = último mes cerrado; sync sin claves futuras | `chequeo_integridad` sin filas futuras; el test de modo vivo cambia de forma deliberada; `evaluar_ranking` antes y después | ✅ `4c705d0` |
+| M3 | Altas nuevas | P0 | Medio | `sincronizar_informix.py`, `sync_y_alertas.bat` | Upsert de vendedores en el sync diario | "Ingresos últimos 60 días" > 0; ingresantes con score | ✅ `31d7ad3` |
+| M4 | Autenticación | P0 | Medio | `acceso.py`, script generador, `.env` | Link firmado HMAC; "Gerencia" fuera del selector | `?usuario=Gerencia` sin token da acceso denegado (test) | Pospuesto (un solo link por ahora) |
 | M5 | Validación optimista | P0 | — | `scripts/evaluar_ranking.py` | Evaluación point-in-time contra criterios simples | Correr sobre la base real y decidir con la regla de C | ✅ (falta correrlo) |
 | M6 | Fuga de `riesgo_base` en el motor | P1 | Medio | `score_engine.py`, backfill | `riesgo_base` point-in-time por corte, con n mínimo | `modelo` = `modelo_grupo_pit` en `evaluar_ranking` | 🔒 (decidir tras M5) |
 | M7 | Etiqueta con despidos | P1 | Medio | `inicializar_db.py` (SELECT a la fuente del motivo) | Cargar `motivo_egreso`; evaluar renuncias aparte | `motivo_egreso` > 90 % cargado en el chequeo | ⏳ (definir fuente con RRHH) |
-| M8 | Fallas silenciosas de la ingesta | P1 | Bajo | `sincronizar_informix.py`, `.bat` | Fail-fast si vplan/kund fallan; `errorlevel` y log; snapshot en 64 bits | Un fallo simulado de vplan termina con exit 1 y no actualiza plan | 🔒 |
-| M9 | Ausencias promediadas sobre filas | P1 | Bajo | `score_engine.py` | Promediar sobre los meses de la ventana | El test `test_ausencias_promedia_…` se invierte; Δ en `evaluar_ranking` | 🔒 |
+| M8 | Fallas silenciosas de la ingesta | P1 | Bajo | `sincronizar_informix.py`, `.bat` | Fail-fast si vplan/kund fallan; `errorlevel` y log; snapshot en 64 bits | Un fallo simulado de vplan termina con exit 1 y no actualiza plan | ✅ `21344ac` |
+| M9 | Ausencias promediadas sobre filas | P1 | Bajo | `score_engine.py` | Promediar sobre los meses de la ventana | El test `test_ausencias_promedia_…` se invierte; Δ en `evaluar_ranking` | ✅ `f3ba7c2` (re-correr backfill) |
 | M10 | Backups/WAL/sync_log | P1 | Bajo | scripts de sync | `con.backup()` rotativo, WAL, tabla `sync_log`; frescura real en la UI | Existe un backup diario; "Actualizado" = último sync OK | ⏳ |
 | M11 | Flujo del supervisor | P1 | Medio | `Supervisor.py`, `Vendedor.py`, `intervenciones.py` | Columnas "en top desde" y "última intervención"; registrar desde el detalle; seguimiento con fecha | Un supervisor registra y ve el seguimiento sin cambiar de página | ⏳ |
 | M12 | Autor de la intervención | P2 | Bajo | `intervenciones.py`, página | Columna `registrado_por` = usuario | Test: el autor queda grabado | ⏳ |
 | M13 | "Reunión esta semana" para todo crítico | P2 | Bajo | `snippets_v3.accion_tag` | Acción por posición en el ranking (top N de la zona) | La etiqueta aparece solo en el top N | ⏳ |
 | M14 | Cortes de "zona quemada" inconsistentes | P2 | Bajo | `dashboard.py`, `Supervisor.py`, `Vendedor.py` | Un solo umbral (0,40) más n mínimo | Badge y señal coinciden | ⏳ |
-| M15 | `config.toml` (errores, telemetría) | P2 | Bajo | `.streamlit/config.toml` | `showErrorDetails="type"`, `gatherUsageStats=false` | Una excepción no muestra el traceback en el navegador | 🔒 |
+| M15 | `config.toml` (errores, telemetría) | P2 | Bajo | `.streamlit/config.toml` | `showErrorDetails="type"`, `gatherUsageStats=false` | Una excepción no muestra el traceback en el navegador | ✅ `4ce795f` |
 | M16 | Rendimiento | P2 | Medio | `score_engine.py`, páginas | `groupby` en vez de filtrar dentro de `iterrows`; caché compartido de scores | Tiempo de `calcular_scores` medido antes y después | ⏳ |
 | M17 | Scripts obsoletos | P3 | Bajo | `check_212.py`, `fix_vendedor_1407.*`, `diagnostico_grupo*`, `diagnostico_dias_venta_cero.py` (roto) | Mover a `scripts/archivo/` o borrar | Inventario de scripts operativos en el README | ⏳ |
 | M18 | Rutas fijas `C:\Users\aarmoa\…` en los .bat | P3 | Bajo | `*.bat` | Variable `PY64`/`PY32` en un `config.bat` | Los .bat corren en otra PC cambiando un solo archivo | ⏳ |
 
 ---
 
-## F. Mejoras implementadas (sin cambio de resultados de scoring)
+## F. Mejoras implementadas
 
 | Commit | Qué | Por qué | Archivos |
 |---|---|---|---|
@@ -306,7 +306,18 @@ Columna **Estado**: ✅ hecho · 🔒 requiere aprobación · ⏳ pendiente.
 | `ed02bf7` | Se elimina `cargar_demo()`; las intervenciones escriben solo en SQLite; filtro de alcance que falla cerrado; HTML escapado; fecha por defecto = hoy; textos de impacto honestos; recomendación con n ≥ 10 y rotulada "no demostrado"; estado de alertas atómico y recuperable; `enviar_alertas.py --dry-run`; con COM ya no se exige `SMTP_PWD`; esquema de ausencias y acompañamiento alineado; `.gitignore` para salidas con datos personales | Integridad, confidencialidad, regla de solo lectura, pruebas sin envíos reales | `pages/Intervenciones.py`, `pages/Vendedor.py`, `src/intervenciones.py`, `src/alertas.py`, `scripts/enviar_alertas.py`, `scripts/inicializar_db.py`, `scripts/sincronizar_reactor.py`, `.gitignore` |
 | `6b15b85` | `SEÑALES`/`PESOS` a nivel módulo (fuente única); Aprendizaje usa los pesos reales; test de sincronía con `validar_pesos` y `snippets_v3`; textos al usuario con los umbrales vigentes y sin lenguaje de probabilidad; fix del `KeyError` de Actividad; smoke de todas las páginas | Explicabilidad correcta; evitar copias desincronizadas | `src/score_engine.py`, `dashboard.py`, `pages/*`, `src/snippets_v3.py`, `src/alertas.py`, tests |
 | `54960ce` | `chequeo_integridad.py` (solo conteos, solo lectura) y los .bat de los dos scripts nuevos | Medir en la base real los problemas de datos | `scripts/chequeo_integridad.*`, `scripts/evaluar_ranking.bat` |
-| (este) | Documentación: README, CLAUDE.md, este informe | Corregir contradicciones | `README.md`, `CLAUDE.md`, `HANDOFF.md`, `docs/` |
+| `01a9fab` | Documentación: README, CLAUDE.md, este informe | Corregir contradicciones | `README.md`, `CLAUDE.md`, `HANDOFF.md`, `docs/` |
+
+**Cambios aprobados el 16/10/2026** (estos SÍ cambian scores o el flujo de datos; cada uno con tests que fallan con el código anterior):
+
+| Commit | Qué | Archivos |
+|---|---|---|
+| `21344ac` | M8: si vplan o kund fallan o vuelven vacíos, el sync aborta antes de escribir en SQLite; `sync_y_alertas.bat` corta ante el primer error, guarda log en `logs\` y corre el snapshot con Python 64-bit; `backfill_scores.py` sale con 1 si falla un período | `scripts/sincronizar_informix.py`, `scripts/sync_y_alertas.bat`, `sincronizar_todo.bat`, `scripts/backfill_scores.py`, `tests/fakes/pyodbc.py` |
+| `31d7ad3` | M3: `inicializar_db.py` corre a diario como paso 1 (altas, bajas, cambios de grupo y supervisor) y aborta sin escribir si `f040` viene incompleto | `scripts/inicializar_db.py`, `.bat` |
+| `4c705d0` | M2: el modo vivo y las sparklines usan solo meses cerrados; Δ mes contra el mes anterior al último cerrado; los sync borran filas de meses futuros en SQLite | `src/score_engine.py`, `dashboard.py`, `pages/Supervisor.py`, `scripts/sincronizar_*.py` |
+| `f3ba7c2` | M9: ausencias promediadas sobre los meses de la ventana con dato de Reactor | `src/score_engine.py` |
+| `4ce795f` | M15: `.streamlit/config.toml` (sin tracebacks en el navegador, sin telemetría) | `.streamlit/config.toml` |
+| `8e0418d` | M1 (parcial): capturas con datos personales quitadas del árbol | `Würth Rotación — Design System/uploads/` |
 
 Lo que **no** se cambió, a propósito:
 
@@ -359,24 +370,25 @@ Lo que **no** se cambió, a propósito:
 **Ahora (esta semana)**
 
 1. M1: repo privado y purga de la historia. Avisar a RRHH/Legales.
-2. Correr `chequeo_integridad.bat` y `evaluar_ranking.bat`, y compartir la salida. No incluye nombres.
-3. Aprobar o rechazar M2 (tope de meses), M3 (altas), M8 (fail-fast) y M4 (link firmado). Son cambios chicos con criterio de éxito definido.
+2. Desplegar los cambios aprobados (`git pull` en la PC de producción) y **re-correr `backfill_scores.bat`** (la señal de ausencias cambió).
+3. Correr `chequeo_integridad.bat` y `evaluar_ranking.bat`, y compartir la salida. No incluye nombres.
+4. Revisar el primer `logs\sync_y_alertas_*.log` de la tarea programada.
 
 **Después (1-2 meses)**
 
-4. Según lo que dé `evaluar_ranking`:
-   - M6 (riesgo de grupo PIT) y M9 (ausencias);
+5. Según lo que dé `evaluar_ranking`:
+   - M6 (riesgo de grupo PIT);
    - o simplificar el modelo si no supera a la antigüedad.
 
    Cada cambio de scoring va por separado, con antes y después.
-5. M7: motivo de egreso y evaluación solo de renuncias.
-6. M10: backups y `sync_log`. M11 y M12: flujo del supervisor (Detección → Revisión → Conversación → Intervención → Seguimiento → Evaluación) usando lo que ya existe.
-7. Congelar de verdad el score mensual que vio el supervisor, en una tabla separada que no se recalcula, para poder auditar el sistema en el futuro.
+6. M7: motivo de egreso y evaluación solo de renuncias.
+7. M10: backups y `sync_log`. M11 y M12: flujo del supervisor (Detección → Revisión → Conversación → Intervención → Seguimiento → Evaluación) usando lo que ya existe.
+8. Congelar de verdad el score mensual que vio el supervisor, en una tabla separada que no se recalcula, para poder auditar el sistema en el futuro.
 
 **Más adelante**
 
-8. Evaluación de intervenciones contra no intervenidos comparables (+60/+90 días, la baja cuenta como fracaso). Recién ahí, recomendaciones por perfil.
-9. M13 a M18 (UX, rendimiento, limpieza de scripts, rutas).
-10. ML solo con 6 meses o más de datos limpios, etiqueta de renuncia voluntaria y un baseline de reglas ya medido con `evaluar_ranking`.
+9. Evaluación de intervenciones contra no intervenidos comparables (+60/+90 días, la baja cuenta como fracaso). Recién ahí, recomendaciones por perfil.
+10. M13 a M18 (UX, rendimiento, limpieza de scripts, rutas).
+11. ML solo con 6 meses o más de datos limpios, etiqueta de renuncia voluntaria y un baseline de reglas ya medido con `evaluar_ranking`.
 
 **Principio rector:** el sistema prioriza conversaciones de acompañamiento. Ningún score, nivel o ranking debe usarse para sancionar, excluir o desvincular. Mientras la etiqueta mezcle despidos, ese riesgo es mayor.

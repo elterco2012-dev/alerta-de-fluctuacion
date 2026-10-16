@@ -62,14 +62,14 @@ alerta-de-fluctuacion/
 │   ├── Precision.py                      ← detección histórica (lee score_historico del backfill)
 │   └── Aprendizaje.py                    ← análisis de señales y pesos
 ├── scripts/
-│   ├── inicializar_db.py                 ← crea/repobla wurth.db desde Informix (Python 32-bit)
+│   ├── inicializar_db.py                 ← esquema + padrón de vendedores desde f040 (corre a diario, Python 32-bit)
 │   ├── inicializar_db.bat                ← wrapper que llama al Python 32-bit correcto
 │   ├── sincronizar_informix.py           ← sync ventas/legajo desde Informix (solo SELECT)
 │   ├── sincronizar_reactor.py            ← sync actividad/ausencias desde Reactor (solo SELECT)
 │   ├── sincronizar_sundb.py              ← sync cobranza desde SUN SQL Server (solo SELECT)
 │   ├── backfill_scores.py                ← recalcula score_historico para períodos pasados
 │   ├── enviar_alertas.py                 ← dispara alertas por email para vendedores críticos
-│   ├── sync_y_alertas.bat                ← automatización diaria: sync → snapshot → alertas
+│   ├── sync_y_alertas.bat                ← automatización diaria: padrón → sync → snapshot → alertas (log en logs/)
 │   ├── programar_alertas.bat             ← registra la tarea diaria en el Programador de Windows
 │   ├── validar_pesos.py                  ← backtest: lift por señal + barrido REF (solo SQLite)
 │   ├── evaluar_ranking.py                ← evaluación point-in-time del RANKING (precision@K, lift, AUC)
@@ -78,7 +78,8 @@ alerta-de-fluctuacion/
 │   ├── diagnostico_vart.py               ← cruza f040 con SQLite para verificar clasificación TV/VJ
 │   └── diagnostico_valores.py            ← distribución de indicadores (calibrar umbrales)
 ├── sincronizar_todo.bat                  ← (en la raíz) corre los 3 sync en secuencia
-├── tests/                                ← pytest con SQLite sintéticas (nunca producción)
+├── tests/                                ← pytest con SQLite sintéticas y pyodbc falso (tests/fakes; nunca producción)
+├── .streamlit/config.toml                ← sin tracebacks en el navegador, sin telemetría
 ├── docs/AUDITORIA_2026-10.md             ← auditoría integral: hallazgos, limitaciones, hoja de ruta
 └── data/
     ├── wurth.db                          ← SQLite local (NO commitear — en .gitignore)
@@ -166,7 +167,7 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
 | Días venta cero altos | ~~2.5~~ → **0** | — | **deshabilitada** |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
-| Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
+| Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac (promedio sobre los meses de la ventana con dato de Reactor) | activa |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
 | Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
 | Balanza clientes muy negativa | 1.5 | 2+ meses + suma < -60 | activa |
@@ -551,10 +552,11 @@ sin expander (no esconder accionables detrás de un "Ver más").
 - `INFORMIX_*` opcionales para conexión directa desde `score_engine.py` (no se usa)
 
 **Cómo correr:**
-1. `inicializar_db.bat` → solo la primera vez o cuando cambia la estructura de vendedores
-2. `sincronizar_todo.bat` → sync diario de ventas/cobranza/actividad
+1. `inicializar_db.bat` → crea la base / actualiza el padrón (idempotente; también
+   corre a diario dentro de `sync_y_alertas.bat`)
+2. `sincronizar_todo.bat` → sync manual: padrón + ventas/cobranza/actividad (corta ante errores)
 3. `streamlit run dashboard.py` / `iniciar_dashboard.bat`
-4. `sync_y_alertas.bat` → automatización completa (sync + alertas)
+4. `scripts\sync_y_alertas.bat` → automatización completa (padrón + sync + snapshot + alertas)
 5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
 
 **Git:** rama histórica `claude/sales-turnover-alerts-l8pO6`; cada sesión de trabajo puede usar su propia rama. Nunca pushear `data/wurth.db`, `data/estado_alertas.json`, CSV de diagnóstico ni capturas con datos reales (el repo es **público** a oct 2026: ver auditoría).
@@ -629,19 +631,30 @@ Detalle y evidencia en `docs/AUDITORIA_2026-10.md`. Resumen operativo:
   motor + las copias (el test avisa).
 - **Etiquetas cortas de UI** con umbrales vigentes (`plan<55%`); las claves
   `descripcion=` del motor NO cambiaron.
-- **Comportamientos documentados como hallazgo** (hay tests que los fijan;
-  corregirlos cambia scores y requiere aprobación + medición con
-  `evaluar_ranking.py`):
-  - modo vivo toma las 3 filas más recientes, incluido el mes en curso parcial
-    y, si la ingesta las deja, filas de meses futuros (`balanza_clientes` registra
-    "perdidos" a +12 meses de la última compra);
+- **Corregido y aprobado (oct 2026)**, cada uno con tests que fallan con el
+  código anterior:
+  - **modo vivo = solo meses cerrados** (`ultimo_mes_cerrado()`): el score del
+    dashboard y de las alertas usa los mismos meses que el backfill; el Δ mes
+    compara contra el snapshot del mes anterior al último cerrado. Los sync
+    borran de SQLite las filas de meses futuros. Consecuencia: un ingresante
+    aparece cuando cierra su primer mes;
+  - **ausencias** promediadas sobre los meses de la ventana del score; un mes
+    sin fila cuenta 0 si el vendedor tiene algún dato de Reactor ese mes, si no
+    es desconocido. Tras desplegar: **re-correr `backfill_scores.bat`**;
+  - **padrón diario:** `inicializar_db.py` corre como paso 1 del sync (altas,
+    bajas, cambios de grupo/supervisor) y aborta sin escribir si f040 viene
+    incompleto;
+  - **sync que no falla en silencio:** si vplan o kund fallan/vuelven vacíos,
+    `sincronizar_informix.py` aborta antes de escribir; `sync_y_alertas.bat`
+    corta ante el primer error (ese día no hay alertas) y guarda log.
+- **Comportamientos documentados como hallazgo, todavía SIN corregir** (hay
+  tests que los fijan; corregirlos cambia scores y requiere aprobación +
+  medición con `evaluar_ranking.py`):
   - `grupos.riesgo_base` usa todas las bajas (también futuras y la propia) y el
     backfill lo aplica a meses pasados;
-  - ausencias se promedian sobre las filas existentes (solo meses con ausencias);
   - sin filas de acompañamiento la señal no enciende.
-- **Ingesta:** el sync diario NO da de alta vendedores nuevos (solo
-  `inicializar_db.py` inserta); un fallo de `vplan` pisa el plan con 0;
-  `motivo_egreso` nunca se carga (las bajas mezclan renuncias y despidos).
+- **Ingesta:** `motivo_egreso` nunca se carga (las bajas mezclan renuncias y
+  despidos).
 - **Intervenciones:** se escriben SIEMPRE en SQLite (no vía `get_connection()`),
   sin datos de ejemplo, filtradas al alcance del usuario y con HTML escapado.
 - **Tests:** `python -m pytest tests -q` (SQLite sintéticas; nunca producción ni
@@ -728,8 +741,10 @@ Estado y re-alerta: `data/estado_alertas.json` guarda `{id_vendedor: timestamp �
 alerta}`. Se alerta cuando un vendedor es **nuevo en crítico** o sigue crítico hace
 **≥ 7 días** (`DIAS_REALERTA`). Probar el canal: `scripts/test_email.bat`.
 
-Automatización: `scripts/sync_y_alertas.bat` corre sync (Python 32-bit, ODBC) →
-snapshot → alertas (Python 64-bit, con pywin32). `scripts/programar_alertas.bat`
+Automatización: `scripts/sync_y_alertas.bat` corre padrón + sync (Python 32-bit,
+ODBC) → snapshot → alertas (Python 64-bit, con pandas y pywin32). Corta ante el
+primer error (código de salida = paso que falló, ese día no salen alertas) y deja
+toda la salida en `logs/sync_y_alertas_AAAAMMDD_HHMM.log`. `scripts/programar_alertas.bat`
 registra la tarea diaria en el Programador de Windows (`schtasks /SC DAILY /ST 08:00`,
 sin `/RU`: corre como el usuario actual y necesita su sesión para Outlook COM y los
 DSN). Para probar el envío sin mandar nada: `python scripts\enviar_alertas.py --dry-run`.
@@ -757,8 +772,8 @@ Entradas huérfanas en `score_historico` de vendedores que ya no salen del motor
 `scripts/diagnostico_chequeo.bat` para identificar la fila y re-correr el backfill.
 
 ### Dashboard muestra datos viejos
-Verificar que `sync_y_alertas.bat` corrió recientemente (la salida de la tarea no
-queda en un log todavía). `data/estado_alertas.json` solo se actualiza cuando hubo
+Revisar el último `logs/sync_y_alertas_*.log`: dice en qué paso se cortó, si se
+cortó. `data/estado_alertas.json` solo se actualiza cuando hubo
 alertas, así que no sirve como indicador de frescura; el "Actualizado" del dashboard
 es la hora de carga del caché, no la del último sync. El caché es 5 min (TTL=300).
 

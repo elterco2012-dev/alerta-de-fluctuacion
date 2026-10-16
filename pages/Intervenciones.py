@@ -7,6 +7,7 @@ Registro y seguimiento de intervenciones sobre vendedores en riesgo.
 import streamlit as st
 import pandas as pd
 from datetime import date
+from html import escape as _esc
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -14,7 +15,6 @@ from score_engine import calcular_scores, resumen_grupos, get_connection
 from snippets_v3 import banner, hero_kpi, stat_kpi, fmt_num, page_header
 from intervenciones import (
     TIPOS, registrar, obtener_todas, calcular_impacto,
-    hay_datos_demo, cargar_demo,
 )
 
 st.set_page_config(
@@ -106,18 +106,22 @@ def cargar_scores():
 
 scores_df = cargar_scores()
 
-# Demo data si la tabla está vacía
-if not hay_datos_demo():
-    cargar_demo(scores_df)
-    st.cache_data.clear()
-
 # ── Acceso ────────────────────────────────────────────────────────────────────
 import acceso as _acc
 _usuario = _acc.requerir_acceso()
 
-# Filtrar scores al alcance del usuario.
-if not _usuario["ve_todo"] and _usuario["supervisores"]:
-    scores_df = scores_df[scores_df["supervisor"].isin(set(_usuario["supervisores"]))]
+# Filtrar al alcance del usuario. Falla cerrado: sin ve_todo, solo sus zonas
+# (lista vacía = no ve nada), tanto scores como intervenciones y observaciones.
+_alcance = None if _usuario["ve_todo"] else set(_usuario["supervisores"] or [])
+if _alcance is not None:
+    scores_df = scores_df[scores_df["supervisor"].isin(_alcance)]
+
+
+def intervenciones_visibles() -> pd.DataFrame:
+    df = obtener_todas()
+    if _alcance is not None and not df.empty:
+        df = df[df["supervisor_zona"].isin(_alcance)]
+    return df
 
 st.markdown(page_header("📝 Intervenciones — Wurth Argentina", "/Intervenciones"),
             unsafe_allow_html=True)
@@ -132,7 +136,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── KPIs de impacto ────────────────────────────────────────────────────────────
-todas = obtener_todas()
+todas = intervenciones_visibles()
 if not todas.empty:
     con_impacto = calcular_impacto(todas, scores_df)
     mejoraron  = len(con_impacto[con_impacto["impacto"].fillna(0) > 0.4])
@@ -144,7 +148,7 @@ if not todas.empty:
     col_hero, col_stats = st.columns([1, 2.2])
     with col_hero:
         _eff_pct = round(mejoraron / total_int * 100) if total_int > 0 else 0
-        st.markdown(hero_kpi("Con mejora de score", mejoraron,
+        st.markdown(hero_kpi("Con baja de score", mejoraron,
                              f"{_eff_pct}% de {total_int} intervenciones registradas",
                              red=False),
                     unsafe_allow_html=True)
@@ -153,7 +157,7 @@ if not todas.empty:
         with _s1:
             st.markdown(stat_kpi("Total registradas", fmt_num(total_int)), unsafe_allow_html=True)
         with _s2:
-            st.markdown(stat_kpi("Sin mejora / igual", fmt_num(empeoraron)), unsafe_allow_html=True)
+            st.markdown(stat_kpi("Con suba de score", fmt_num(empeoraron)), unsafe_allow_html=True)
         with _s3:
             st.markdown(stat_kpi("Vendedor dio baja", fmt_num(bajas)), unsafe_allow_html=True)
 
@@ -161,9 +165,11 @@ if not todas.empty:
 
     # Banner
     if mejoraron > 0:
-        st.markdown(banner("✅",
-            f"{mejoraron} intervención{'es con impacto positivo' if mejoraron!=1 else ' con impacto positivo'}",
-            f"Score bajó en {mejoraron} de {total_int} vendedores intervenidos.", "green"),
+        st.markdown(banner("📋",
+            f"Score bajó en {mejoraron} de {total_int} vendedores intervenidos",
+            "Comparación antes/después sin grupo de control: no demuestra que la intervención "
+            "haya causado la baja (el score también baja solo al pasar los meses 1-3 y 4-6) "
+            "y no cuenta como fracaso a quien igual se fue.", "blue"),
             unsafe_allow_html=True)
     elif total_int > 0:
         st.markdown(banner("📋",
@@ -203,7 +209,7 @@ else:
             }
             vendedor_label = st.selectbox("Vendedor en riesgo", list(opciones_vendedor.keys()))
             tipo = st.selectbox("Tipo de intervención", TIPOS)
-            fecha = st.date_input("Fecha", value=date(2025, 1, 24))
+            fecha = st.date_input("Fecha", value=date.today(), max_value=date.today())
 
         with col2:
             supervisor = st.selectbox("Supervisor que intervino", supervisores,
@@ -240,7 +246,7 @@ st.markdown('<div class="sec-header">📊 Historial de intervenciones e impacto<
             unsafe_allow_html=True)
 st.caption("El impacto se mide comparando el score al momento de intervenir con el score actual.")
 
-todas = obtener_todas()
+todas = intervenciones_visibles()
 if todas.empty:
     st.info("Todavía no hay intervenciones registradas.")
 else:
@@ -257,16 +263,16 @@ else:
         nivel_i = r["nivel_inicial"]
         nivel_a = r.get("nivel_actual") or "baja"
         score_a = r.get("score_actual")
-        obs = (r["observaciones"] or "")[:80] + ("…" if len(r["observaciones"] or "") > 80 else "")
+        obs = _esc((r["observaciones"] or "")[:80]) + ("…" if len(r["observaciones"] or "") > 80 else "")
 
         rows += f"""<tr>
           <td style="color:#aaa;font-size:12px;">{r['fecha']}</td>
           <td>
             <div style="font-weight:700;">ID {int(r['id_vendedor'])}</div>
-            <div style="color:#aaa;font-size:11px;">{r['tipo_vendedor']} · {r['nombre_grupo']}</div>
+            <div style="color:#aaa;font-size:11px;">{_esc(str(r['tipo_vendedor']))} · {_esc(str(r['nombre_grupo']))}</div>
           </td>
-          <td><span class="bdg bdg-tipo">{r['tipo']}</span></td>
-          <td>{r['supervisor']}</td>
+          <td><span class="bdg bdg-tipo">{_esc(str(r['tipo']))}</span></td>
+          <td>{_esc(str(r['supervisor']))}</td>
           <td style="text-align:center;">{_sc(r['score_inicial'], nivel_i)}</td>
           <td style="text-align:center;">{_sc(score_a, nivel_a) if score_a else _bdg('baja', r['estado'].capitalize())}</td>
           <td>{_impacto_html(r.get('impacto'), r.get('estado',''))}</td>
@@ -291,7 +297,7 @@ else:
     st.markdown('<div class="sec-header">📈 Efectividad por tipo de intervención</div>',
                 unsafe_allow_html=True)
 
-    todas_imp = calcular_impacto(obtener_todas(), scores_df)
+    todas_imp = calcular_impacto(intervenciones_visibles(), scores_df)
     activas   = todas_imp[todas_imp["estado"] == "activo"]
     if not activas.empty:
         resumen = activas.groupby("tipo").agg(
@@ -331,7 +337,8 @@ else:
         <tbody>{res_rows}</tbody>
         </table></div>
         """, unsafe_allow_html=True)
-        st.caption("Impacto = score_inicial − score_actual. Positivo = riesgo bajó = intervención efectiva.")
+        st.caption("Impacto = score_inicial − score_actual (positivo = el score bajó). Es una "
+                   "comparación antes/después sin grupo de control: orienta, no demuestra efectividad.")
 
-st.markdown("<br>")
+st.markdown("<br>", unsafe_allow_html=True)
 st.caption("Wurth Argentina · Sistema de alertas de rotación")

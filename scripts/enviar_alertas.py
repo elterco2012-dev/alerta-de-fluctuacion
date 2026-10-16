@@ -40,16 +40,28 @@ smtp_pwd      = os.getenv("SMTP_PWD", "")
 alert_to      = [e.strip() for e in os.getenv("ALERT_TO", "").split(",") if e.strip()]
 teams_webhook = os.getenv("TEAMS_WEBHOOK", "").strip()
 
-tiene_email  = bool(smtp_user and smtp_pwd and alert_to)
+# --dry-run: calcula y muestra a quién se alertaría, sin enviar nada ni tocar
+# data/estado_alertas.json. Usarlo para probar (nunca mandar correos reales en pruebas).
+DRY_RUN = "--dry-run" in sys.argv
+
+try:
+    import win32com.client  # noqa: F401 — Outlook COM no necesita contraseña
+    _hay_com = True
+except ImportError:
+    _hay_com = False
+
+# Con Outlook COM la contraseña no se usa (y no conviene guardarla en .env).
+tiene_email  = bool(alert_to and (_hay_com or (smtp_user and smtp_pwd)))
 tiene_teams  = bool(teams_webhook)
 
-if not tiene_email and not tiene_teams:
+if not DRY_RUN and not tiene_email and not tiene_teams:
     print("Sin canales de alerta configurados.")
-    print("Creá el archivo .env (ver .env.example) con SMTP_USER, SMTP_PWD y ALERT_TO.")
+    print("Creá el archivo .env (ver .env.example) con ALERT_TO (y SMTP_USER/SMTP_PWD "
+          "solo si no hay Outlook COM).")
     sys.exit(0)
 
 print("=" * 55)
-print("ALERTAS — Wurth Argentina")
+print("ALERTAS — Wurth Argentina" + ("  [DRY RUN: no se envía nada]" if DRY_RUN else ""))
 print("=" * 55)
 
 scores = calcular_scores(meses_tendencia=3)
@@ -74,6 +86,10 @@ else:
         print(f"  · {nombre} ({int(r['id_vendedor'])}) — Score {r['score']:.1f} — {r['supervisor']}")
 
     alertados_ids = set()
+
+    if DRY_RUN:
+        print("\nDRY RUN: no se envió ningún mensaje ni se actualizó el estado.")
+        sys.exit(0)
 
     if tiene_teams:
         from alertas import enviar_teams

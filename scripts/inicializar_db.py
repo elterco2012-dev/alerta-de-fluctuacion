@@ -313,6 +313,8 @@ CREATE TABLE IF NOT EXISTS acompanamiento_mensual (
     anio            INTEGER,
     mes             INTEGER,
     acompaniamientos INTEGER DEFAULT 0,
+    visitas_sup_planificadas INTEGER DEFAULT 0,
+    visitas_sup_realizadas   INTEGER DEFAULT 0,
     PRIMARY KEY (id_vendedor, anio, mes)
 );
 
@@ -321,6 +323,7 @@ CREATE TABLE IF NOT EXISTS ausencias_mensual (
     anio            INTEGER,
     mes             INTEGER,
     dias_ausente    INTEGER DEFAULT 0,
+    dias_no_vac     INTEGER DEFAULT 0,
     PRIMARY KEY (id_vendedor, anio, mes)
 );
 
@@ -351,6 +354,11 @@ print("Verificando esquema...", flush=True)
 _asegurar_columna("vendedores", "director",      "TEXT")
 _asegurar_columna("vendedores", "es_supervisor", "INTEGER DEFAULT 0")
 _asegurar_columna("grupos",     "supervisor",    "TEXT")
+# Columnas que usan el motor (señales de ausencias y acompañamiento) y
+# sincronizar_reactor.py; deben existir aunque la base se cree desde acá.
+_asegurar_columna("ausencias_mensual",      "dias_no_vac",              "INTEGER DEFAULT 0")
+_asegurar_columna("acompanamiento_mensual", "visitas_sup_planificadas", "INTEGER DEFAULT 0")
+_asegurar_columna("acompanamiento_mensual", "visitas_sup_realizadas",   "INTEGER DEFAULT 0")
 con.commit()
 
 # ── Insertar grupos ───────────────────────────────────────────────────────────

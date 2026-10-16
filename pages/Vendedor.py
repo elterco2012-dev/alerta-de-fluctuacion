@@ -393,7 +393,8 @@ else:
 # El ranking sale de las intervenciones ya registradas: cuánto bajó el score en
 # promedio por tipo de acción, para vendedores de este mismo perfil. Si todavía no
 # hay suficientes casos medidos, NO inventamos una recomendación.
-_efectividad = _intervenciones.efectividad_por_perfil(scores_df, min_casos=2)
+# Mínimo 10 casos por (perfil, tipo): con 2 casos el promedio es ruido puro.
+_efectividad = _intervenciones.efectividad_por_perfil(scores_df, min_casos=10)
 perfil_key, perfil_label, top_accion, ranking = recomendar_accion(
     meses_activo, v_riesgo_base,
     [_señal_short(s)[0] for s in señales_activas],
@@ -415,13 +416,15 @@ if ranking:
     st.markdown(f"""
 <div class="rec-card">
   <div class="rec-title">Perfil: {perfil_label}</div>
-  <div class="rec-action">→ {top_accion[0]}</div>
+  <div class="rec-action">→ {top_accion[0]} <span style="font-size:11px;color:#888;font-weight:400;">(registrado con perfiles similares; no demostrado)</span></div>
   <ul class="rec-list" style="margin:0;padding-left:18px;color:#444;">
     {ranking_items}
   </ul>
   <div style="font-size:11px;color:#aaa;margin-top:10px;">
-    Efectividad medida sobre intervenciones reales de vendedores con perfil
-    <b>{perfil_label}</b> que siguen activos (cuánto les bajó el score después).
+    Promedio de cuánto bajó el score después de intervenciones reales en vendedores con
+    perfil <b>{perfil_label}</b> que siguen activos. Es un antes/después sin grupo de
+    control: no cuenta a los que igual se fueron y el score baja solo al pasar los
+    meses 1-3 y 4-6. Usalo como referencia, no como prueba de efectividad.
   </div>
 </div>
 """, unsafe_allow_html=True)

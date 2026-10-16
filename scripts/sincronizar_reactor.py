@@ -606,6 +606,16 @@ lcur.execute("""
     )
 """)
 
+# Si las tablas las creó inicializar_db.py con un esquema anterior, faltan estas
+# columnas y los INSERT de abajo fallarían: el sync de Reactor se cortaría y las
+# señales de ausencias y acompañamiento quedarían apagadas sin aviso.
+for tabla, col in (("acompanamiento_mensual", "visitas_sup_planificadas"),
+                   ("acompanamiento_mensual", "visitas_sup_realizadas"),
+                   ("ausencias_mensual", "dias_no_vac")):
+    if col not in [r[1] for r in lcur.execute(f"PRAGMA table_info({tabla})")]:
+        lcur.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} INTEGER DEFAULT 0")
+        print(f"  + columna {tabla}.{col}")
+
 # Tabla: referencia de motivos de ausencia
 lcur.execute("""
     CREATE TABLE IF NOT EXISTS motivos_ausencia (

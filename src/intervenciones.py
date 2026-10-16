@@ -5,9 +5,22 @@ Registro y seguimiento de intervenciones sobre vendedores en riesgo.
 Cierra el ciclo: alerta → acción → impacto medido.
 """
 
+import sqlite3
+
 import pandas as pd
 from datetime import date, datetime
-from score_engine import get_connection
+
+import score_engine
+
+
+def get_connection():
+    """Las intervenciones viven SIEMPRE en la SQLite local (data/wurth.db).
+
+    No usa score_engine.get_connection(): esa función puede devolver una
+    conexión a Informix si hay variables INFORMIX_* en .env, y este módulo
+    escribe (CREATE TABLE / INSERT). Las bases de producción son solo lectura.
+    """
+    return sqlite3.connect(score_engine.DB_PATH)
 
 TIPOS = [
     "Reunión 1:1",
@@ -168,40 +181,3 @@ def efectividad_por_perfil(scores_actuales: pd.DataFrame,
     for perfil in tabla:
         tabla[perfil].sort(key=lambda x: -x[1])
     return dict(tabla)
-
-
-def hay_datos_demo() -> bool:
-    try:
-        _init_table()
-        con = get_connection()
-        n = con.execute("SELECT COUNT(*) FROM intervenciones").fetchone()[0]
-        con.close()
-        return n > 0
-    except Exception:
-        return False
-
-
-def cargar_demo(scores: pd.DataFrame):
-    """Inserta intervenciones de ejemplo para los vendedores en riesgo."""
-    from datetime import timedelta
-    hoy = date(2025, 1, 24)
-
-    demo = [
-        (10008, "Reunión 1:1",           "Kalpokas Gustavo",   9.3, "critico",
-         "Revisamos objetivos del mes. Vendedor muy desmotivado, dice que la zona está muy trabajada.", "2025-01-10"),
-        (10002, "Acompañamiento en campo","Kalpokas Gustavo",   9.3, "critico",
-         "Salida de campo con 4 clientes. Detectamos problemas de presentación del producto.", "2025-01-08"),
-        (10006, "Conversación motivacional","Zerbatto Jose Luis",8.3, "critico",
-         "Charla informal sobre expectativas. Vendedor tiene problemas personales que afectan rendimiento.", "2025-01-15"),
-        (10004, "Revisión de cartera",    "Kalpokas Gustavo",   8.6, "critico",
-         "Depuramos clientes inactivos y reasignamos 15 cuentas nuevas.", "2025-01-05"),
-        (10011, "Ajuste de objetivos",    "Zerbatto Jose Luis", 8.3, "critico",
-         "Bajamos el plan un 15% para los próximos 2 meses mientras se adapta.", "2025-01-12"),
-        (10015, "Reunión 1:1",            "Galla Gabriel Isaac",7.9, "alto",
-         "Primera reunión formal. El vendedor no tenía claro cómo priorizar la cartera.", "2025-01-18"),
-        (10009, "Capacitación técnica",   "Torres Miguel",      7.4, "alto",
-         "Capacitación sobre nuevos productos de fijación. Muy receptivo.", "2025-01-07"),
-    ]
-
-    for vid, tipo, sup, score, nivel, obs, fecha in demo:
-        registrar(vid, tipo, sup, score, nivel, obs, fecha)

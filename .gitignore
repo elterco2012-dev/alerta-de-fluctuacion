@@ -13,3 +13,19 @@ data/estado_alertas.json
 
 # Base de datos local — nunca commitear datos reales de Informix
 data/wurth.db
+
+# Archivos auxiliares de SQLite y respaldos de la base
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/*.bak
+data/backups/
+data/estado_alertas.json.*
+
+# Salidas de diagnóstico/exploración: pueden contener nombres y datos de empleados
+*.csv
+!data/dias_habiles.csv
+*_estructura.txt
+output_*.txt
+*.log
+logs/

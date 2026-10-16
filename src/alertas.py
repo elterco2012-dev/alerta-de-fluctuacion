@@ -55,11 +55,22 @@ SEÑAL_CORTA = {
 # La clave es el id_vendedor (str), el valor es el timestamp de la ÚLTIMA alerta enviada.
 
 def cargar_estado() -> dict:
-    """Lee el estado de la última ejecución."""
+    """Lee el estado de la última ejecución.
+
+    Si el archivo está corrupto (ej. un corte a mitad de escritura en una versión
+    anterior), lo renombra a .corrupto y arranca de cero en vez de cortar todas
+    las alertas futuras con una excepción.
+    """
     if not os.path.exists(ESTADO_PATH):
         return {"criticos": {}, "ultima_ejecucion": None}
-    with open(ESTADO_PATH) as f:
-        estado = json.load(f)
+    try:
+        with open(ESTADO_PATH, encoding="utf-8") as f:
+            estado = json.load(f)
+    except (ValueError, OSError) as e:
+        respaldo = ESTADO_PATH + ".corrupto"
+        os.replace(ESTADO_PATH, respaldo)
+        print(f"AVISO: estado de alertas ilegible ({e}); se movió a {respaldo} y se reinicia.")
+        return {"criticos": {}, "ultima_ejecucion": None}
     # Migración: formato viejo era una lista, nuevo es un dict con timestamps.
     if isinstance(estado.get("criticos"), list):
         estado["criticos"] = {str(v): None for v in estado["criticos"]}
@@ -92,8 +103,11 @@ def guardar_estado(scores: pd.DataFrame, alertados_ids: set) -> None:
         "ultima_ejecucion": ahora_ts,
     }
     os.makedirs(os.path.dirname(ESTADO_PATH), exist_ok=True)
-    with open(ESTADO_PATH, "w") as f:
+    # Escritura atómica: un corte a mitad de escritura no deja el JSON corrupto.
+    tmp = ESTADO_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(estado, f, indent=2)
+    os.replace(tmp, ESTADO_PATH)
 
 
 # ── Detección ──────────────────────────────────────────────────────────────────

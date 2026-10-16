@@ -1,0 +1,14 @@
+# Configuración de Streamlit para el dashboard (se lee al correr
+# `streamlit run dashboard.py` desde la raíz del proyecto).
+
+[client]
+# No mostrar tracebacks en el navegador: exponían rutas, SQL y datos.
+# "type" muestra solo el tipo de error y un mensaje genérico; el detalle
+# completo sigue saliendo en la consola donde corre Streamlit.
+# Requiere una versión de Streamlit que acepte valores de texto en esta opción
+# (las actuales). Verificar con:  python -m streamlit config show
+showErrorDetails = "type"
+
+[browser]
+# No enviar estadísticas de uso a Streamlit: la app maneja datos de empleados.
+gatherUsageStats = false

@@ -73,8 +73,8 @@ def chequear(con, hoy):
                                     f"(quedan FUERA del score): {sin_ventas}"))
         out.append((nuevos_ult_60 == 0,
                     f"vendedores con ingreso en los últimos 60 días: {nuevos_ult_60} "
-                    "(si es 0, probablemente el sync diario no está dando de alta a los nuevos: "
-                    "solo inicializar_db.py inserta vendedores)"))
+                    "(si es 0, revisar que el paso 1 de sync_y_alertas.bat —padrón con "
+                    "inicializar_db.py— esté corriendo: es el único que da de alta vendedores)"))
         inconsist = uno(con, """SELECT COUNT(*) FROM vendedores
             WHERE (activo=1 AND fecha_egreso IS NOT NULL) OR (activo=0 AND fecha_egreso IS NULL)""")
         out.append((inconsist > 0, f"vendedores con activo/fecha_egreso inconsistentes: {inconsist}"))

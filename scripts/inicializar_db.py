@@ -1,8 +1,15 @@
 """
 inicializar_db.py
 ------------------
-Crea el schema de wurth.db desde cero y lo pobla con datos reales de Informix.
-Ejecutar UNA VEZ cuando la base no existe o quedó vacía.
+Crea el schema de wurth.db y carga/actualiza el padrón de vendedores desde f040.
+Es idempotente (upsert): además de la primera vez, corre TODOS LOS DÍAS como
+paso 1 de scripts/sync_y_alertas.bat, para que las altas nuevas, las bajas y
+los cambios de grupo/supervisor entren solos (el sync de Informix solo
+actualiza vendedores que ya están en SQLite).
+
+Si f040 no expone las columnas clave o falla la lectura de nombres, aborta
+SIN escribir: un upsert con datos incompletos pisaría el grupo y el
+supervisor de todos los vendedores.
 
 Ejecutar con Python 32 bits:
     C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\inicializar_db.py
@@ -64,8 +71,15 @@ if "name1" in cols_f040:
             _aus = str(row[2])[:10] if row[2] else None
             if not _aus or _aus[:4] in ("0001", "0000", "1900"):
                 vertr_activo.add(_vid)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"\nERROR: no se pudieron leer los nombres de f040 ({e}).")
+        print("  Se aborta sin escribir: los supervisores quedarían como números.")
+        icon.close()
+        sys.exit(1)
+if not vertr_nombre:
+    print("\nERROR: f040 no devolvió nombres (columna name1). Se aborta sin escribir.")
+    icon.close()
+    sys.exit(1)
 
 # ── Leer todos los vendedores de f040 ─────────────────────────────────────────
 print("\nLeyendo vendedores de f040...", end=" ", flush=True)
@@ -99,6 +113,14 @@ VERTR_EXCLUIDOS = {1500, 7777, 9499}
 # Correcciones manuales para casos en que la detección automática (zone=TVTAS)
 # no alcanza. Agregar acá si en el futuro aparece algún vendedor mal clasificado.
 TIPO_MANUAL: dict[int, str] = {}
+
+_faltan = [n for n, c in (("nombre", campo_nombre), ("grupo", campo_grupo_id),
+                          ("supervisor", campo_supervisor), ("zona", campo_zona)) if not c]
+if _faltan:
+    print(f"\nERROR: f040 no expone columnas clave {_faltan} (¿falló la lectura de metadatos?).")
+    print("  Se aborta sin escribir: el upsert dejaría sin grupo/supervisor a todos.")
+    icon.close()
+    sys.exit(1)
 
 print(f"\n  nombre={campo_nombre}  grupo_id={campo_grupo_id}  grupo_nom={campo_grupo_nom}  superv={campo_supervisor}  zona={campo_zona}  tipo={campo_tipo}  director={campo_director}")
 
@@ -226,6 +248,9 @@ for row in icur.fetchall():
 
 print(f"OK — {len(vendedores_rows)} vendedores, {len(grupos_set)} grupos")
 icon.close()
+if not vendedores_rows:
+    print("ERROR: f040 no devolvió vendedores. Se aborta sin escribir.")
+    sys.exit(1)
 
 # ── Mostrar muestra ────────────────────────────────────────────────────────────
 print("\nMuestra (primeros 5):")
@@ -433,5 +458,5 @@ print(f"\nResumen:")
 print(f"  Activos: {activos}")
 print(f"  Bajas:   {bajas}")
 print(f"  Grupos:  {len(grupos_set)}")
-print(f"\nBase inicializada. Ahora ejecutar sincronizar_todo.bat para cargar ventas.")
+print(f"\nPadrón de vendedores actualizado. Para cargar ventas: sincronizar_todo.bat.")
 con.close()

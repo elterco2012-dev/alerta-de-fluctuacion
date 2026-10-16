@@ -1,7 +1,7 @@
 @echo off
 echo ============================================================
-echo  INICIALIZACION wurth.db (ejecutar solo cuando la base
-echo  esta vacia o fue borrada)
+echo  PADRON DE VENDEDORES / INICIALIZACION wurth.db
+echo  (idempotente: tambien corre a diario dentro de sync_y_alertas.bat)
 echo ============================================================
 echo.
 C:\Users\aarmoa\AppData\Local\Programs\Python\Python312-32\python.exe scripts\inicializar_db.py

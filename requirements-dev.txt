@@ -1,0 +1,3 @@
+# Dependencias solo para desarrollo / tests (no hacen falta para correr el dashboard)
+-r requirements.txt
+pytest>=8.0

@@ -172,9 +172,11 @@ def cargar_datos():
     grupos_risk = pd.read_sql("SELECT nombre_grupo, riesgo_base FROM grupos", con)
 
     # Score del mes anterior para calcular Δ
-    _hoy = _date.today()
-    _pm  = _hoy.month - 1 or 12
-    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    # El score en vivo usa datos hasta el último mes cerrado (M-1): el Δ se mide
+    # contra el snapshot del mes anterior a ese (M-2), no contra el mismo mes.
+    from score_engine import ultimo_mes_cerrado
+    _uc = ultimo_mes_cerrado()
+    _py, _pm = ultimo_mes_cerrado(_date(_uc[0], _uc[1], 1))
     _periodo_prev = f"{_py}-{_pm:02d}"
     try:
         _prev = pd.read_sql(

@@ -717,9 +717,19 @@ for k, d in distancia_data.items():
         WHERE id_vendedor=? AND anio=? AND mes=?
     """, (d["km_total"], d["km_prom_dia"], d["dias_con_ruta"], vid, anio, mes))
 
+# ── Descartar meses futuros (solo en SQLite) ──────────────────────────────────
+# Visitas de supervisor planificadas, agenda y ausencias cargadas a futuro
+# (ej. vacaciones) creaban filas de meses que todavía no ocurrieron.
+_mes_actual = hoy.year * 100 + hoy.month
+_borradas = 0
+for _tabla in ("actividad_mensual", "acompanamiento_mensual", "ausencias_mensual"):
+    lcur.execute(f"DELETE FROM {_tabla} WHERE anio * 100 + mes > ?", (_mes_actual,))
+    _borradas += lcur.rowcount
+
 lcon.commit()
 lcon.close()
 
+print(f"\nFilas de meses futuros descartadas: {_borradas}")
 print(f"\n✓ {insertados} filas insertadas/actualizadas en actividad_mensual")
 print("\nResumen por fuente:")
 print(f"  Vendedores con gestiones (cm)     : {len({k[0] for k in gestion_data})}")

@@ -120,6 +120,16 @@ def get_connection():
     return sqlite3.connect(DB_PATH)
 
 
+def ultimo_mes_cerrado(hoy=None):
+    """(anio, mes) del último mes completo. El modo vivo no usa el mes en curso
+    (ventas parciales contra el plan del mes entero) ni filas de meses futuros
+    que pueda dejar la ingesta: así el score que ve el supervisor es el mismo
+    que se valida con el backfill (que corta en meses cerrados)."""
+    import datetime
+    hoy = hoy or datetime.date.today()
+    return (hoy.year, hoy.month - 1) if hoy.month > 1 else (hoy.year - 1, 12)
+
+
 @dataclass
 class Señal:
     nombre: str
@@ -152,6 +162,9 @@ def calcular_scores(meses_tendencia: int = 3,
     """
     Retorna DataFrame con score de riesgo de todos los vendedores activos.
     meses_tendencia: cuántos meses hacia atrás mirar (mínimo 2, recomendado 3).
+
+    Modo vivo (sin hasta_*): usa solo meses CERRADOS (hasta ultimo_mes_cerrado()),
+    igual que el backfill; la antigüedad se calcula a hoy.
 
     hasta_anio / hasta_mes: si se especifican, simula el score como si fuera
     el fin de ese mes. Incluye vendedores que estaban activos en esa fecha
@@ -235,6 +248,8 @@ def calcular_scores(meses_tendencia: int = 3,
 
     else:
         today = pd.Timestamp(datetime.date.today())
+        _a, _m = ultimo_mes_cerrado()
+        tope = _a * 100 + _m   # solo meses cerrados (ver ultimo_mes_cerrado)
 
         vendedores = pd.read_sql("""
             SELECT v.id_vendedor,
@@ -252,53 +267,58 @@ def calcular_scores(meses_tendencia: int = 3,
               )
         """, con)
 
-        ventas = pd.read_sql("""
+        ventas = pd.read_sql(f"""
             SELECT vm.*
             FROM ventas_mensual vm
             JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
             WHERE v.activo = 1
+              AND (vm.anio * 100 + vm.mes) <= {tope}
             ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
         """, con)
 
         try:
-            actividad = pd.read_sql("""
+            actividad = pd.read_sql(f"""
                 SELECT am.*
                 FROM actividad_mensual am
                 JOIN vendedores v ON am.id_vendedor = v.id_vendedor
                 WHERE v.activo = 1
+                  AND (am.anio * 100 + am.mes) <= {tope}
                 ORDER BY am.id_vendedor, am.anio DESC, am.mes DESC
             """, con)
         except Exception:
             actividad = pd.DataFrame()
 
         try:
-            ausencias = pd.read_sql("""
+            ausencias = pd.read_sql(f"""
                 SELECT au.*
                 FROM ausencias_mensual au
                 JOIN vendedores v ON au.id_vendedor = v.id_vendedor
                 WHERE v.activo = 1
+                  AND (au.anio * 100 + au.mes) <= {tope}
                 ORDER BY au.id_vendedor, au.anio DESC, au.mes DESC
             """, con)
         except Exception:
             ausencias = pd.DataFrame()
 
         try:
-            balanza = pd.read_sql("""
+            balanza = pd.read_sql(f"""
                 SELECT bc.*
                 FROM balanza_clientes bc
                 JOIN vendedores v ON bc.id_vendedor = v.id_vendedor
                 WHERE v.activo = 1
+                  AND (bc.anio * 100 + bc.mes) <= {tope}
                 ORDER BY bc.id_vendedor, bc.anio DESC, bc.mes DESC
             """, con)
         except Exception:
             balanza = pd.DataFrame()
 
         try:
-            acompanamiento = pd.read_sql("""
+            acompanamiento = pd.read_sql(f"""
                 SELECT ac.*
                 FROM acompanamiento_mensual ac
                 JOIN vendedores v ON ac.id_vendedor = v.id_vendedor
                 WHERE v.activo = 1
+                  AND (ac.anio * 100 + ac.mes) <= {tope}
                 ORDER BY ac.id_vendedor, ac.anio DESC, ac.mes DESC
             """, con)
         except Exception:
@@ -595,13 +615,16 @@ def resumen_grupos() -> pd.DataFrame:
 
 
 def obtener_sparklines(meses: int = 3) -> dict:
-    """Retorna {id_vendedor: [pct_plan_mes_viejo, ..., pct_plan_mes_reciente]} para activos."""
+    """{id_vendedor: [pct_plan viejo, ..., reciente]} para activos, solo meses cerrados
+    (los mismos que usa el score en vivo)."""
+    _a, _m = ultimo_mes_cerrado()
     con = get_connection()
-    df = pd.read_sql("""
+    df = pd.read_sql(f"""
         SELECT vm.id_vendedor, vm.pct_plan
         FROM ventas_mensual vm
         JOIN vendedores v ON vm.id_vendedor = v.id_vendedor
         WHERE v.activo = 1
+          AND (vm.anio * 100 + vm.mes) <= {_a * 100 + _m}
         ORDER BY vm.id_vendedor, vm.anio DESC, vm.mes DESC
     """, con)
     con.close()

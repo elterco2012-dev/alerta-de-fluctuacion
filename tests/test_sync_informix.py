@@ -90,3 +90,26 @@ def test_vplan_vacio_aborta(proyecto):
     r = correr(proyecto, datos)
     assert r.returncode == 1, r.stdout
     assert planes(proyecto) == []
+
+
+def test_no_quedan_filas_de_meses_futuros(proyecto):
+    """vplan con planes futuros y 'perdidos' a +12 meses de la última compra
+    creaban filas de meses que no ocurrieron; el sync ahora las descarta."""
+    hoy = dt.date.today()
+    con = sqlite3.connect(proyecto / "data" / "wurth.db")
+    fa, fm = meses_atras(hoy.year, hoy.month, -4)       # basura futura de un sync viejo
+    con.execute("INSERT INTO balanza_clientes (id_vendedor, anio, mes, balanza) VALUES (1,?,?,-50)",
+                (fa, fm))
+    con.commit()
+    con.close()
+    r = correr(proyecto, _datos_base(hoy, futuros_vplan=3))
+    assert r.returncode == 0, r.stdout + r.stderr
+    tope = hoy.year * 100 + hoy.month
+    con = sqlite3.connect(proyecto / "data" / "wurth.db")
+    futuras = {t: con.execute(f"SELECT COUNT(*) FROM {t} WHERE anio*100+mes > ?", (tope,)).fetchone()[0]
+               for t in ("ventas_mensual", "balanza_clientes")}
+    pasadas = con.execute("SELECT COUNT(*) FROM ventas_mensual WHERE anio*100+mes <= ?",
+                          (tope,)).fetchone()[0]
+    con.close()
+    assert futuras == {"ventas_mensual": 0, "balanza_clientes": 0}
+    assert pasadas == 3

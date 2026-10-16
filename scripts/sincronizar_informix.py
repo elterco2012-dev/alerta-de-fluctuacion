@@ -641,6 +641,18 @@ for k in sorted(todas_keys_vm):
 lcon.commit()
 print(f"OK — {vm_count} filas en ventas_mensual")
 
+# ── Descartar meses futuros (solo en SQLite) ──────────────────────────────────
+# Los "perdidos" se registran 12 meses después de la última compra y vplan puede
+# traer planes ya cargados para meses que no ocurrieron: esas filas futuras
+# hacían que el score en vivo tomara meses inexistentes como "los últimos 3".
+_mes_actual = hoy.year * 100 + hoy.month
+_borradas = 0
+for _tabla in ("balanza_clientes", "ventas_mensual"):
+    lcur.execute(f"DELETE FROM {_tabla} WHERE anio * 100 + mes > ?", (_mes_actual,))
+    _borradas += lcur.rowcount
+lcon.commit()
+print(f"\nFilas de meses futuros descartadas: {_borradas}")
+
 # ── [4/4] Actualizar fechas reales de vendedores desde f040 ──────────────────
 print("\n[4/4] Actualizando fechas ingreso/egreso en vendedores (f040)...", end=" ", flush=True)
 actualiz = 0

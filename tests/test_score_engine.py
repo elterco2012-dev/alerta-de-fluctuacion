@@ -385,14 +385,10 @@ def test_backfill_incluye_solo_activos_al_corte(base):
     assert list(score_de(base)["id_vendedor"]) == [2]
 
 
-def test_modo_vivo_incluye_mes_en_curso_parcial(base):
-    """COMPORTAMIENTO ACTUAL — HALLAZGO (diferencia vivo vs backfill).
-
-    En modo vivo el motor toma las 3 filas más recientes, incluida la del mes
-    en curso, que tiene ventas parciales contra el plan del mes completo. Con
-    70/70 en meses cerrados y 10% en el mes que recién empieza, el promedio
-    (50) enciende "plan bajo"; el backfill del mes anterior (70/70) no.
-    """
+def test_modo_vivo_usa_solo_meses_cerrados(base):
+    """Corregido (oct 2026): antes el modo vivo tomaba las 3 filas más recientes,
+    incluido el mes en curso con ventas parciales (70/70/10 encendía "plan bajo").
+    Ahora corta en el último mes cerrado y coincide con el backfill de ese mes."""
     hoy = dt.date.today()
     base.grupo(1, riesgo_base=0.10)
     base.vendedor(1, (hoy - dt.timedelta(days=24 * 30)).isoformat())
@@ -403,7 +399,37 @@ def test_modo_vivo_incluye_mes_en_curso_parcial(base):
     base.venta(1, hoy.year, hoy.month, pct_plan=10)   # mes en curso, parcial
 
     vivo = fila(score_engine.calcular_scores(meses_tendencia=3), 1)
-    assert "% Plan < 80% promedio últimos meses" in vivo["señales_activas"]
-
     cerrado = fila(score_engine.calcular_scores(meses_tendencia=3, hasta_anio=a1, hasta_mes=m1), 1)
-    assert cerrado["señales_activas"] == []
+    assert vivo["señales_activas"] == cerrado["señales_activas"] == []
+    assert vivo["pct_plan_3m"] == cerrado["pct_plan_3m"] == 70.0
+
+
+def test_modo_vivo_ignora_filas_de_meses_futuros(base):
+    """Los 'perdidos' a +12 meses dejaban filas futuras de balanza muy negativas."""
+    hoy = dt.date.today()
+    base.grupo(1, riesgo_base=0.10)
+    base.vendedor(1, (hoy - dt.timedelta(days=24 * 30)).isoformat())
+    for i in (1, 2, 3):
+        a, m = meses_atras(hoy.year, hoy.month, i)
+        base.venta(1, a, m, pct_plan=80)
+        base.balanza(1, a, m, balanza=5, ticket_promedio=100)
+    for i in (1, 2):                                   # meses que todavía no ocurrieron
+        a, m = meses_atras(hoy.year, hoy.month, -i)
+        base.venta(1, a, m, pct_plan=0, plan=1000)
+        base.balanza(1, a, m, balanza=-90, ticket_promedio=0)
+    assert fila(score_engine.calcular_scores(meses_tendencia=3), 1)["señales_activas"] == []
+
+
+def test_ultimo_mes_cerrado():
+    assert score_engine.ultimo_mes_cerrado(dt.date(2026, 10, 16)) == (2026, 9)
+    assert score_engine.ultimo_mes_cerrado(dt.date(2026, 1, 1)) == (2025, 12)
+
+
+def test_sparklines_usan_los_mismos_meses_que_el_score(base):
+    hoy = dt.date.today()
+    base.grupo(1, riesgo_base=0.10)
+    base.vendedor(1, (hoy - dt.timedelta(days=24 * 30)).isoformat())
+    for i, pct in ((3, 60), (2, 70), (1, 80), (0, 5), (-1, 0)):
+        a, m = meses_atras(hoy.year, hoy.month, i)
+        base.venta(1, a, m, pct_plan=pct)
+    assert score_engine.obtener_sparklines(3)[1] == [60, 70, 80]

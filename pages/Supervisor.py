@@ -130,9 +130,10 @@ def cargar_datos():
 
     from datetime import datetime as _dt
     _ts = _dt.now().strftime("%d/%m/%Y %H:%M")
-    _hoy = _date.today()
-    _pm  = _hoy.month - 1 or 12
-    _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
+    # Score en vivo = datos hasta el último mes cerrado (M-1); Δ contra M-2.
+    from score_engine import ultimo_mes_cerrado
+    _uc = ultimo_mes_cerrado()
+    _py, _pm = ultimo_mes_cerrado(_date(_uc[0], _uc[1], 1))
     try:
         _prev = pd.read_sql(
             f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_py}-{_pm:02d}'",

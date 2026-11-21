@@ -28,7 +28,7 @@ except ImportError:
 # ── Configuración de conexión ──────────────────────────────────────────────────
 # Usando el DSN ya configurado en Windows (el más simple)
 DSN      = os.getenv("INFORMIX_DSN", "MSPA")
-UID      = os.getenv("INFORMIX_UID", "aarmoa")
+UID      = os.getenv("INFORMIX_UID", "")
 PWD      = os.getenv("INFORMIX_PWD", "")         # cargar desde .env, no hardcodear
 
 CONN_STR = f"DSN={DSN};UID={UID};PWD={PWD};"

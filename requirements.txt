@@ -1,7 +1,12 @@
-pandas>=2.0
-numpy>=1.24
-streamlit>=1.32
-plotly>=5.18
-requests>=2.28
-# pyodbc se agrega cuando conecten Informix (requiere también packages.txt con unixodbc-dev)
+# Versiones fijadas para reproducibilidad.
+# Para actualizar: activar el venv de producción y correr:
+#   pip freeze | grep -E "pandas|numpy|streamlit|plotly|requests" >> requirements.txt
+#
+# NOTA: pyodbc se agrega cuando conecten Informix (requiere también packages.txt con unixodbc-dev).
+# En Windows con Python 32-bit para los sync scripts, instalar por separado.
 
+pandas==2.2.3
+numpy==1.26.4
+streamlit==1.40.2
+plotly==5.24.1
+requests==2.32.3

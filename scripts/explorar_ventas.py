@@ -19,7 +19,7 @@ except ImportError:
 import pyodbc
 
 DSN = os.getenv("INFORMIX_DSN", "MSPA")
-UID = os.getenv("INFORMIX_UID", "aarmoa")
+UID = os.getenv("INFORMIX_UID", "")
 PWD = os.getenv("INFORMIX_PWD", "")
 
 print("Conectando...", end=" ")

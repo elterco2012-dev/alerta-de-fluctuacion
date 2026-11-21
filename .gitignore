@@ -13,3 +13,7 @@ data/estado_alertas.json
 
 # Base de datos local — nunca commitear datos reales de Informix
 data/wurth.db
+
+# Autenticación — usuarios y claves hasheadas (no van en repo)
+data/auth.json
+data/auth_fails.json

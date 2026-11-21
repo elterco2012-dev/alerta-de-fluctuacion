@@ -303,6 +303,7 @@ def _selector_st():
 def requerir_acceso(roles: Optional[list] = None) -> dict:
     """
     Verifica que hay un usuario activo con el rol correcto.
+    - Si no hay sesión autenticada → muestra el formulario de login y detiene.
     - Si no hay usuario (ni en URL ni en session_state) → muestra el selector y detiene.
     - Si `roles` se pasa y el rol del usuario no está en la lista → muestra error y detiene.
     - Guarda la clave en session_state para que page-switches sin ?usuario= no fuercen re-login.
@@ -310,6 +311,16 @@ def requerir_acceso(roles: Optional[list] = None) -> dict:
     """
     import streamlit as st
     import streamlit.components.v1 as components
+    from src.auth import formulario_login_st
+
+    # Paso 1: autenticación con usuario + contraseña.
+    formulario_login_st()   # no-op si ya está autenticado (_auth_ok en session_state)
+
+    # Paso 2: resolución de rol/alcance.
+    # Si venimos de un login exitoso, usar la clave_acceso guardada por auth.
+    if not st.session_state.get("_acc_usuario") and st.session_state.get("_auth_clave_acceso"):
+        st.session_state["_acc_usuario"] = st.session_state["_auth_clave_acceso"]
+
     # URL param tiene prioridad; si no hay, usar session state (sobrevive st.switch_page).
     clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
     usuario = resolver(clave)
@@ -346,8 +357,6 @@ def barra_usuario_st(usuario: dict) -> None:
             unsafe_allow_html=True,
         )
     with c2:
-        if st.button("Cambiar usuario", key="_acc_logout"):
-            # Borra localStorage + navega sin ?usuario= → aparece el selector
-            components.html(_js_navegar(None), height=0)
-            st.session_state.pop("_acc_usuario", None)
-            st.stop()
+        if st.button("Cerrar sesión", key="_acc_logout"):
+            from src.auth import cerrar_sesion_st
+            cerrar_sesion_st()

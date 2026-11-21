@@ -178,8 +178,9 @@ def cargar_datos():
     _periodo_prev = f"{_py}-{_pm:02d}"
     try:
         _prev = pd.read_sql(
-            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_periodo_prev}'",
+            "SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = ?",
             con,
+            params=(_periodo_prev,),
         )
         delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
     except Exception:

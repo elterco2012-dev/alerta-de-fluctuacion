@@ -135,8 +135,9 @@ def cargar_datos():
     _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
     try:
         _prev = pd.read_sql(
-            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_py}-{_pm:02d}'",
+            "SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = ?",
             con,
+            params=(f"{_py}-{_pm:02d}",),
         )
         delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
     except Exception:

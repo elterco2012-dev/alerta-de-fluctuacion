@@ -17,3 +17,11 @@ data/wurth.db
 # Autenticación — usuarios y claves hasheadas (no van en repo)
 data/auth.json
 data/auth_fails.json
+
+# Salidas de scripts de diagnóstico/exploración — pueden contener estructura
+# interna del ERP o datos reales del negocio
+scripts/vart_diagnostico.csv
+scripts/*.txt
+scripts/output_*.txt
+*.txt
+data/*.csv

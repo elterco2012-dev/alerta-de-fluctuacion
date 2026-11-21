@@ -414,7 +414,7 @@ st.markdown('<div class="sec-header">🎯 Acción recomendada</div>', unsafe_all
 if ranking:
     ranking_items = "".join(
         f'<li style="margin-bottom:4px;">'
-        f'<b>{a[0]}</b>'
+        f'<b>{_esc(str(a[0]))}</b>'
         f'<span style="color:#aaa;font-size:11px;margin-left:8px;">'
         f'bajó el score {fmt_num(a[1], 1)} en promedio · {a[2]} '
         f'{"caso" if a[2] == 1 else "casos"}</span>'
@@ -423,21 +423,21 @@ if ranking:
     )
     st.markdown(f"""
 <div class="rec-card">
-  <div class="rec-title">Perfil: {perfil_label}</div>
-  <div class="rec-action">→ {top_accion[0]}</div>
+  <div class="rec-title">Perfil: {_esc(perfil_label)}</div>
+  <div class="rec-action">→ {_esc(str(top_accion[0]))}</div>
   <ul class="rec-list" style="margin:0;padding-left:18px;color:#444;">
     {ranking_items}
   </ul>
   <div style="font-size:11px;color:#aaa;margin-top:10px;">
     Efectividad medida sobre intervenciones reales de vendedores con perfil
-    <b>{perfil_label}</b> que siguen activos (cuánto les bajó el score después).
+    <b>{_esc(perfil_label)}</b> que siguen activos (cuánto les bajó el score después).
   </div>
 </div>
 """, unsafe_allow_html=True)
 else:
     st.markdown(f"""
 <div class="rec-card">
-  <div class="rec-title">Perfil: {perfil_label}</div>
+  <div class="rec-title">Perfil: {_esc(perfil_label)}</div>
   <div style="font-size:13px;color:#666;">
     Todavía no hay suficientes intervenciones registradas para vendedores de este
     perfil como para recomendar con datos reales. A medida que se registren

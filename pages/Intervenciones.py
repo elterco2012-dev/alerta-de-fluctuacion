@@ -308,7 +308,7 @@ else:
             bar_w = min(100, max(0, int(abs(imp) / 3 * 100)))
             bar_color = "#639922" if imp > 0 else "#E24B4A"
             res_rows += f"""<tr>
-              <td><span class="bdg bdg-tipo">{r['tipo']}</span></td>
+              <td><span class="bdg bdg-tipo">{_html.escape(str(r['tipo'] or ''))}</span></td>
               <td style="text-align:center;">{int(r['cantidad'])}</td>
               <td style="text-align:center;">{int(r['mejoraron'])}</td>
               <td>

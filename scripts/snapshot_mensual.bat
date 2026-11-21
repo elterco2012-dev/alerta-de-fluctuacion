@@ -1,8 +1,9 @@
 @echo off
+CALL "%~dp0python_paths.bat"
 cd /d C:\alerta-de-fluctuacion
 
 echo Guardando snapshot de scores del mes anterior...
-"C:\Users\aarmoa\AppData\Local\Programs\Python\Python312\python.exe" scripts\snapshot_mensual.py
+%PY64% scripts\snapshot_mensual.py
 if errorlevel 1 (
     echo ERROR en snapshot_mensual.py
     exit /b 1

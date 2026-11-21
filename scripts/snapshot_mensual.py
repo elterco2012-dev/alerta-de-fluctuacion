@@ -4,8 +4,8 @@ snapshot_mensual.py
 Guarda el score del mes anterior (completo) en score_historico de wurth.db.
 Ejecutar a principios de cada mes, idealmente el mismo día que sync_y_alertas.bat.
 
-Ejecutar con Python 32-bit (el que tiene ODBC):
-    C:\\...\\Python312-32\\python.exe scripts\\snapshot_mensual.py
+Ejecutar con Python 64-bit (lee solo SQLite, no necesita ODBC):
+    python scripts\\snapshot_mensual.py
 
 Tiempo estimado: 15-30 segundos (una sola llamada a calcular_scores).
 """

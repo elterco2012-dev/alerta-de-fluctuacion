@@ -537,3 +537,126 @@ with st.expander("Ver tabla completa de zonas"):
         use_container_width=True,
         hide_index=True,
     )
+
+
+# ── Gráfico 3: Cohortes de retención ──────────────────────────────────────────
+st.markdown('<div class="sec-header">📐 Cohortes de retención — ¿cuántos siguen activos mes a mes?</div>',
+            unsafe_allow_html=True)
+st.caption(
+    "Cada línea = cohorte de ingreso (mes-año). El eje X muestra los meses de carrera. "
+    "El eje Y muestra el porcentaje de esa cohorte que sigue activo. "
+    "Una caída abrupta en mes 1-2 indica problemas de onboarding; "
+    "una pendiente sostenida indica deterioro estructural."
+)
+
+
+@st.cache_data(ttl=600)
+def cargar_cohortes():
+    con = get_connection()
+    raw = pd.read_sql("""
+        SELECT
+            strftime('%Y-%m', fecha_ingreso)  AS cohorte,
+            id_vendedor,
+            activo,
+            CAST(
+              ( julianday(COALESCE(fecha_egreso, date('now'))) - julianday(fecha_ingreso) )
+              / 30.4375 AS INTEGER
+            ) AS tenure_meses
+        FROM vendedores
+        WHERE fecha_ingreso IS NOT NULL
+          AND (fecha_egreso IS NULL OR fecha_egreso != fecha_ingreso)
+          AND fecha_ingreso >= date('now', '-18 months')
+        ORDER BY cohorte, id_vendedor
+    """, con)
+    con.close()
+    return raw
+
+
+coh_raw = cargar_cohortes()
+
+# Filtrar por zonas del director si aplica
+if not _usuario["ve_todo"] and _usuario["supervisores"]:
+    _sups = set(_usuario["supervisores"])
+    # necesitamos el supervisor de cada vendedor — lo traemos del df principal
+    _sup_map_v = df.set_index("id_vendedor")["supervisor"].to_dict()
+    coh_raw = coh_raw[coh_raw["id_vendedor"].map(_sup_map_v).isin(_sups)]
+
+MESES_MAX = 6   # curva hasta el mes 6
+
+if coh_raw.empty or coh_raw["cohorte"].nunique() < 2:
+    st.info("No hay suficientes cohortes en los últimos 18 meses para mostrar la curva.")
+else:
+    cohortes_ord = sorted(coh_raw["cohorte"].unique())
+
+    # Paleta: cohortes más recientes en colores más intensos
+    _palette = [
+        "#bdd7ee", "#9dc3e6", "#70a9d6", "#4A90D9", "#2e6fad",
+        "#1a4f80", "#0d2f52", "#07192e", "#E24B4A", "#b53030",
+        "#7a1a1a", "#4a0a0a", "#EF9F27", "#b87a1b", "#7a4e0a",
+        "#4a2e00", "#27AE60", "#1a7a3f", "#0d4a24", "#072e15",
+    ]
+    color_map = {c: _palette[i % len(_palette)] for i, c in enumerate(cohortes_ord)}
+
+    fig3 = go.Figure()
+
+    for coh_name in cohortes_ord:
+        g = coh_raw[coh_raw["cohorte"] == coh_name]
+        total = len(g)
+        if total < 3:   # cohorte demasiado pequeña — no la mostramos
+            continue
+        meses = list(range(0, MESES_MAX + 1))
+        ret_pct = [round((g["tenure_meses"] >= n).sum() / total * 100, 1) for n in meses]
+        # Truncar en el mes donde la cohorte todavía no pudo llegar (todos activos = 100%)
+        # Si el último valor es 100% y los activos = total, la cohorte no ha madurado allí
+        label = f"{coh_name} (n={total})"
+        fig3.add_trace(go.Scatter(
+            x=meses,
+            y=ret_pct,
+            mode="lines+markers",
+            name=label,
+            line=dict(color=color_map[coh_name], width=2),
+            marker=dict(size=6),
+            hovertemplate=f"<b>{coh_name}</b><br>Mes %{{x}}: %{{y:.0f}}% activos<extra></extra>",
+        ))
+
+    fig3.add_hline(
+        y=50, line_dash="dot", line_color="#E24B4A", line_width=1,
+        annotation_text="50% — mitad de la cohorte todavía activa",
+        annotation_position="bottom right",
+        annotation_font_size=10,
+        annotation_font_color="#E24B4A",
+    )
+
+    # Zonas de riesgo de fondo
+    fig3.add_vrect(x0=0.5, x1=3.5, fillcolor="#fdecea", opacity=0.25,
+                   layer="below", line_width=0,
+                   annotation_text="Ventana crítica 1-3", annotation_position="top left",
+                   annotation_font_size=10, annotation_font_color="#E24B4A")
+    fig3.add_vrect(x0=3.5, x1=6.5, fillcolor="#fff8e7", opacity=0.25,
+                   layer="below", line_width=0,
+                   annotation_text="Ventana 4-6", annotation_position="top left",
+                   annotation_font_size=10, annotation_font_color="#EF9F27")
+
+    fig3.update_layout(
+        height=420,
+        margin=dict(l=0, r=0, t=40, b=0),
+        xaxis=dict(
+            title="Meses de carrera",
+            tickmode="linear", dtick=1,
+            range=[-0.3, MESES_MAX + 0.3],
+        ),
+        yaxis=dict(title="% de la cohorte activo", range=[0, 105]),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(
+            orientation="v", yanchor="top", y=1, xanchor="left", x=1.01,
+            font=dict(size=11),
+        ),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+    st.caption(
+        "Las cohortes más recientes tienen datos incompletos (ej. una cohorte de hace 2 meses "
+        "no puede mostrar el mes 6 todavía). Las líneas que llegan al 100% al final "
+        "indican que nadie de esa cohorte se fue aún en ese tramo — no que tengan retención perfecta."
+    )

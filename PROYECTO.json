@@ -4,8 +4,8 @@
   "actualizado": "2026-11-21",
   "repositorio": "elterco2012-dev/alerta-de-fluctuacion",
   "ramas": {
-    "produccion": "claude/sales-turnover-alerts-l8pO6",
-    "en_revision": "claude/busy-johnson-r5fhqc (PR #82 abierto, pendiente de merge)"
+    "produccion": "claude/sales-turnover-alerts-l8pO6 (sin cambios en GitHub desde 12/06; lo nuevo está en PR #82, todavía no mergeado)",
+    "en_revision": "claude/busy-johnson-r5fhqc (PR #82: seguridad + features + mantenimiento, pendiente de merge)"
   },
   "vm": "DASHBOARD-DANIE. Corre con el Python del perfil del usuario (no SYSTEM); lo exige Outlook COM para el mail.",
   "carpetas": [
@@ -18,10 +18,9 @@
     {
       "puerto": 8501,
       "que": "tablero Streamlit",
-      "uso": "sin fijar: puerto por defecto de Streamlit",
-      "escucha": "todas las interfaces (Streamlit por defecto)",
-      "publicado": "no (red interna)",
-      "pendiente": "fijar fuera de 8763-8769 y escuchar solo en 127.0.0.1 (coordinado con cobranza)"
+      "uso": "producción — fijado con --server.port 8501 --server.headless true",
+      "escucha": "todas las interfaces de la red interna (gerencia y supervisores se conectan desde sus PCs)",
+      "publicado": "no: el firewall debe tener el 8501 abierto solo para la red interna de Würth (pedirlo a Sistemas); nunca publicar en internet"
     }
   ],
   "tareas": [
@@ -29,7 +28,10 @@
       "nombre": "WurthAlertas",
       "cuenta": "la del usuario interactivo (schtasks /IT — necesario para Outlook COM y los DSN del usuario)",
       "cuando": "todos los días a las 08:00",
-      "que_hace": "sync Informix + Reactor + SUN → snapshot de scores → alertas por mail"
+      "que_hace": "sync Informix + Reactor + SUN → snapshot de scores → alertas por mail",
+      "dependencia": "requiere que la sesión del usuario esté abierta a las 08:00: un reinicio antes de esa hora deja ese día sin alertas. Informar a Sistemas.",
+      "recrear": "schtasks /Create está bloqueado por la protección anti-persistencia de la VM; usar Register-ScheduledTask de PowerShell para recrearla si se borra",
+      "script": "scripts\\sync_y_alertas.bat"
     }
   ],
   "bases": [

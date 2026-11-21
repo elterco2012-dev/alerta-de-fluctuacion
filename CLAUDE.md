@@ -727,6 +727,10 @@ Si una página genera links propios (fuera de `nav_links`), agregar `?usuario=` 
 
 ---
 
+## Reglas de sesión
+
+- **Responderle al usuario siempre en español** (lo pidió el 21/11): también los resúmenes, los avisos y los mensajes cortos
+
 ## Conocimiento compartido (desde el 21/11/2026)
 
 Lo que sabemos de SUN, MSPA, Reactor, la VM, el hosting, el negocio y las reglas comunes

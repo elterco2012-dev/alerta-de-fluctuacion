@@ -84,7 +84,7 @@
     },
     {
       "fecha": "2026-11-21",
-      "que": "El puerto 8501 todavía no está fijado; pendiente coordinarlo con cobranza para quedar fuera de 8763-8769 y escuchar solo en 127.0.0.1",
+      "que": "El puerto 8501 está fijado y queda fuera del rango 8763-8769 reservado por cobranza. Pendiente: configurarlo para escuchar solo en 127.0.0.1 (hoy escucha en todas las interfaces de la red interna).",
       "afecta_a": ["cobranza"]
     },
     {
@@ -95,7 +95,7 @@
   ],
   "pendientes_con_otros": [
     {
-      "que": "Fijar el puerto del tablero (fuera de 8763-8769) y escuchar solo en 127.0.0.1",
+      "que": "Configurar el tablero para escuchar solo en 127.0.0.1 (el puerto 8501 ya está fijado y queda fuera del rango 8763-8769)",
       "con": "cobranza"
     }
   ]

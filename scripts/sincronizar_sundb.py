@@ -83,7 +83,7 @@ except Exception as e:
     print("\nVerificá:")
     print("  1. Estás usando Python 32 bits")
     print("  2. El DSN 'SUNDB' está configurado en ODBC de 32 bits")
-    print("  3. El servidor CONTABLE2024 es accesible")
+    print("  3. El servidor de SUN es accesible (ver DSN 'SUNDB')")
     sys.exit(1)
 
 scur_sun = sun.cursor()

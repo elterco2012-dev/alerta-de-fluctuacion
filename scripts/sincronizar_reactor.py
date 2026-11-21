@@ -156,7 +156,7 @@ except Exception as e:
     print("\nVerificá:")
     print("  - DSN configurado: 'Wurth Reactor Produccion'")
     print("  - MySQL ODBC driver instalado")
-    print("  - Server 10.60.18.51:3306 accesible")
+    print("  - El servidor de Reactor es accesible (ver DSN 'Wurth Reactor Produccion')")
     sys.exit(1)
 
 # ── Modo diagnóstico ──────────────────────────────────────────────────────────

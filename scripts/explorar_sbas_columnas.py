@@ -10,7 +10,7 @@ Solo LECTURA sobre Informix (DSN=MSPA). Solo SELECT y lectura de catálogo.
 No escribe en ninguna base.
 
 Ejecutar con Python 32 bits (ODBC):
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\explorar_sbas_columnas.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\explorar_sbas_columnas.py
 """
 
 import sys

@@ -16,7 +16,7 @@ Lógica de balanza (por vendedor/mes):
 REGLA ABSOLUTA: solo lectura de Informix. Nunca INSERT/UPDATE/DELETE en MSPA.
 
 Ejecutar con Python 32 bits:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_informix.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_informix.py
 
 Opciones:
     --dry-run     Muestra totales sin escribir en SQLite

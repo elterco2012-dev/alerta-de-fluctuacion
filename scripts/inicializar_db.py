@@ -5,7 +5,7 @@ Crea el schema de wurth.db desde cero y lo pobla con datos reales de Informix.
 Ejecutar UNA VEZ cuando la base no existe o quedó vacía.
 
 Ejecutar con Python 32 bits:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\inicializar_db.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\inicializar_db.py
 """
 
 import sys

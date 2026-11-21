@@ -3,7 +3,7 @@ explorar_sundb2.py
 ------------------
 Guarda la estructura completa de SUNDB en un archivo de texto.
 Ejecutar con:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_sundb2.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_sundb2.py
 
 Genera: sundb_estructura.txt en la carpeta actual.
 """

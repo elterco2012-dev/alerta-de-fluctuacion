@@ -13,7 +13,7 @@ la pantalla Tag Info 2 (Daily Info 2 Sales):
   - Venta diaria
 
 Ejecutar con Python 32 bits (mismo DSN que Informix):
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_taginfo.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_taginfo.py
 
 Genera: taginfo_estructura.txt
 """

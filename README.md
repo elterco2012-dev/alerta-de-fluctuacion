@@ -51,8 +51,8 @@ scripts\usuarios.bat lista                                         :: ver todos 
 
 Ejemplos:
 ```bat
-scripts\usuarios.bat alta daniel MiClave123 "Gerencia"
-scripts\usuarios.bat alta jsup ClaveSegura "Zerbatto Jose Luis"
+scripts\usuarios.bat alta rrhh MiClave123 "Gerencia"
+scripts\usuarios.bat alta sup1 ClaveSegura "Nombre Apellido del Supervisor"
 ```
 
 ---

@@ -5,7 +5,7 @@ ETL: lee datos de SUNDB (SQL Server, sistema SUN) y actualiza cobranza_real
 en data/wurth.db (SQLite).
 
 IMPORTANTE: Ejecutar con Python 32 bits (mismo requisito que Informix).
-   C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_sundb.py
+   C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_sundb.py
 
 Flujo:
   - Lee SALFLDGRAN (+ SALFLDGRAN2) donde ACCNT_CODE empieza en '1130'

@@ -8,7 +8,7 @@ Probar primero con Python 64 bits:
     python scripts\\explorar_reactor.py
 
 Si falla con error de arquitectura, usar Python 32 bits:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor.py
 
 Genera: reactor_estructura.txt en la carpeta actual.
 """

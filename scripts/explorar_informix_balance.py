@@ -7,7 +7,7 @@ y la variedad de productos:
   - sbas     (historial de ventas por cliente — para reactivados/perdidos y productos)
 
 Ejecutar con Python 32 bits:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_informix_balance.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_informix_balance.py
 
 Genera: informix_balance_estructura.txt
 """

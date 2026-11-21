@@ -26,6 +26,7 @@ CÓMO COMPLETARLO CON DATOS REALES
 
 from __future__ import annotations
 import sqlite3, os, json as _json
+from html import escape as _esc
 from typing import Optional
 
 # Ruta a la DB (misma que usa score_engine por defecto).
@@ -352,7 +353,7 @@ def barra_usuario_st(usuario: dict) -> None:
     with c1:
         st.markdown(
             f"<div style='font-size:12px;color:#888;margin-bottom:6px;'>Ingresaste como "
-            f"<b style='color:#1a1a2e;'>{usuario['etiqueta']}</b> "
+            f"<b style='color:#1a1a2e;'>{_esc(usuario['etiqueta'])}</b> "
             f"· {ROL_LABEL[usuario['rol']]}</div>",
             unsafe_allow_html=True,
         )

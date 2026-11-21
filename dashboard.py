@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import sys, os
+from html import escape as _esc
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
@@ -400,8 +401,8 @@ def _tabla_rows(subset, delta_map=None, usuario_clave=""):
         rows += f"""
     <tr>
       <td>
-        <div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-        <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])}</div>
+        <div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+        <div class="wz-vsb">{_esc(r['tipo'])} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
@@ -612,10 +613,10 @@ if not onb.empty:
             warn  = " ⚠️" if z_n in ("critico", "alto") else ""
             rows += f"""
             <tr>
-              <td><b>{r['nombre']}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
-              <td>{r['tipo']}</td>
+              <td><b>{_esc(r['nombre'])}</b><br><span style="color:#888;font-size:11px;">({int(r['id_vendedor'])})</span></td>
+              <td>{_esc(r['tipo'])}</td>
               <td>{_fmt_antiguedad(r['meses_activo'])}</td>
-              <td>{r['nombre_grupo']} {_bdg(z_n, z_l + warn)}</td>
+              <td>{_esc(r['nombre_grupo'])} {_bdg(z_n, z_l + warn)}</td>
               <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
               <td>{_bdg(nivel)}</td>
             </tr>"""

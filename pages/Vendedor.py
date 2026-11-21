@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import json
 import sys
 import os
+from html import escape as _esc
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
@@ -176,16 +177,24 @@ def _cargar_vendedor(vid: int):
     return scores, v_info, ventas, score_hist
 
 
-scores_df, v_info_df, ventas_df, score_hist_df = _cargar_vendedor(id_vendedor)
+# ── Validar acceso ANTES de cargar datos ─────────────────────────────────────
+# Chequeo liviano: solo la columna supervisor, sin cargar todo el historial.
+if not _usuario["ve_todo"]:
+    _con_check = get_connection()
+    _sup_check = pd.read_sql(
+        "SELECT supervisor FROM vendedores WHERE id_vendedor = ? LIMIT 1",
+        _con_check, params=(id_vendedor,),
+    )
+    _con_check.close()
+    if not _sup_check.empty:
+        _sup_val = _sup_check.iloc[0]["supervisor"]
+        if _sup_val and not _acc.puede_ver(_usuario, _sup_val):
+            st.error(f"No tenés permiso para ver vendedores de la zona de **{_sup_val}**.")
+            if st.button("← Volver"):
+                st.switch_page("pages/Supervisor.py")
+            st.stop()
 
-# ── Validar acceso al vendedor ────────────────────────────────────────────────
-if not v_info_df.empty:
-    _sup_del_vendedor = v_info_df.iloc[0].get("supervisor", None)
-    if _sup_del_vendedor and not _acc.puede_ver(_usuario, _sup_del_vendedor):
-        st.error(f"No tenés permiso para ver vendedores de la zona de **{_sup_del_vendedor}**.")
-        if st.button("← Volver"):
-            st.switch_page("pages/Supervisor.py")
-        st.stop()
+scores_df, v_info_df, ventas_df, score_hist_df = _cargar_vendedor(id_vendedor)
 
 # ── Validar existencia ────────────────────────────────────────────────────────
 row_score = scores_df[scores_df["id_vendedor"] == id_vendedor]
@@ -242,14 +251,14 @@ zona_badge = badge(zona_nivel, zona_label, shape=False)
 st.markdown(f"""
 <div class="vd-card">
   <div>
-    <span class="vd-name">{v_nombre}</span>
+    <span class="vd-name">{_esc(v_nombre)}</span>
     <span class="vd-id">#{id_vendedor}</span>
     &nbsp; {tipo_badge}
   </div>
   <div class="vd-meta">
-    <span>📍 <b>{v_grupo}</b> &nbsp;{zona_badge}</span>
-    <span>👤 Supervisor: <b>{v_supervisor}</b></span>
-    <span>📅 Ingreso: <b>{fi}</b> · {fmt_antiguedad(meses_activo)} de antigüedad</span>
+    <span>📍 <b>{_esc(v_grupo)}</b> &nbsp;{zona_badge}</span>
+    <span>👤 Supervisor: <b>{_esc(v_supervisor)}</b></span>
+    <span>📅 Ingreso: <b>{_esc(fi)}</b> · {fmt_antiguedad(meses_activo)} de antigüedad</span>
   </div>
 </div>
 """, unsafe_allow_html=True)

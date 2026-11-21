@@ -1,0 +1,100 @@
+{
+  "proyecto": "alerta-de-fluctuacion",
+  "que_es": "Detección temprana de riesgo de fuga de vendedores. Score 1-10 por vendedor, alertas por mail, dashboard Streamlit para gerencia y supervisores.",
+  "actualizado": "2026-11-21",
+  "repositorio": "elterco2012-dev/alerta-de-fluctuacion",
+  "ramas": {
+    "produccion": "claude/sales-turnover-alerts-l8pO6",
+    "en_revision": "claude/busy-johnson-r5fhqc (PR #82 abierto, pendiente de merge)"
+  },
+  "vm": "DASHBOARD-DANIE. Corre con el Python del perfil del usuario (no SYSTEM); lo exige Outlook COM para el mail.",
+  "carpetas": [
+    {
+      "ruta": "C:\\alerta-de-fluctuacion",
+      "uso": "producción — la que usa la tarea WurthAlertas"
+    }
+  ],
+  "puertos": [
+    {
+      "puerto": 8501,
+      "que": "tablero Streamlit",
+      "uso": "sin fijar: puerto por defecto de Streamlit",
+      "escucha": "todas las interfaces (Streamlit por defecto)",
+      "publicado": "no (red interna)",
+      "pendiente": "fijar fuera de 8763-8769 y escuchar solo en 127.0.0.1 (coordinado con cobranza)"
+    }
+  ],
+  "tareas": [
+    {
+      "nombre": "WurthAlertas",
+      "cuenta": "la del usuario interactivo (schtasks /IT — necesario para Outlook COM y los DSN del usuario)",
+      "cuando": "todos los días a las 08:00",
+      "que_hace": "sync Informix + Reactor + SUN → snapshot de scores → alertas por mail"
+    }
+  ],
+  "bases": [
+    {
+      "base": "MSPA (Informix)",
+      "como": "DSN MSPA, Python 32-bit, pyodbc",
+      "acceso": "solo lectura (SELECT)",
+      "cuando": "08:00 (tarea WurthAlertas)"
+    },
+    {
+      "base": "SUN (SQL Server)",
+      "como": "DSN SUNDB, Python 32-bit, pyodbc",
+      "acceso": "solo lectura (SELECT)",
+      "cuando": "08:00"
+    },
+    {
+      "base": "Reactor (MySQL)",
+      "como": "DSN Wurth Reactor Produccion, Python 32-bit, pyodbc",
+      "acceso": "solo lectura (SELECT)",
+      "cuando": "08:00"
+    },
+    {
+      "base": "data/wurth.db (SQLite local)",
+      "como": "sqlite3, Python 64-bit",
+      "acceso": "lectura y escritura (es nuestra base propia)",
+      "cuando": "el sync escribe, el dashboard y los scripts de análisis leen"
+    }
+  ],
+  "servicios_externos": [
+    {
+      "que": "Correo",
+      "como": "Outlook COM (win32com) sobre Outlook clásico — no SMTP (el tenant tiene SMTP AUTH deshabilitado)",
+      "cuando": "al final de WurthAlertas si hay vendedores críticos nuevos o sin realerta en 7 días",
+      "cuenta": "la sesión de Outlook del usuario — sin credencial separada"
+    }
+  ],
+  "escribe_en": [],
+  "lee_de": [],
+  "mata_procesos": "no mata procesos de otros proyectos; la tarea WurthAlertas corre los scripts y termina sola",
+  "archivos_con_claves": [
+    ".env (si se usa — gitignoreado)",
+    "data/auth.json (contraseñas hasheadas PBKDF2 de los usuarios del dashboard — gitignoreado)"
+  ],
+  "archivos_entre_proyectos": [],
+  "decisiones": [
+    {
+      "fecha": "2026-11-21",
+      "que": "No escanea la red desde DASHBOARD-DANIE ni en horario de trabajo; espera la autorización escrita de Sistemas (qué redes y equipos, en qué horario, solo descubrimiento)",
+      "afecta_a": ["todos"]
+    },
+    {
+      "fecha": "2026-11-21",
+      "que": "El puerto 8501 todavía no está fijado; pendiente coordinarlo con cobranza para quedar fuera de 8763-8769 y escuchar solo en 127.0.0.1",
+      "afecta_a": ["cobranza"]
+    },
+    {
+      "fecha": "2026-11-21",
+      "que": "Las tres bases externas (Informix, SUN, Reactor) son solo lectura en este proyecto — nunca INSERT, UPDATE, DELETE ni DDL",
+      "afecta_a": ["todos"]
+    }
+  ],
+  "pendientes_con_otros": [
+    {
+      "que": "Fijar el puerto del tablero (fuera de 8763-8769) y escuchar solo en 127.0.0.1",
+      "con": "cobranza"
+    }
+  ]
+}

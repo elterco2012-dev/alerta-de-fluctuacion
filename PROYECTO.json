@@ -11,7 +11,11 @@
   "carpetas": [
     {
       "ruta": "C:\\alerta-de-fluctuacion",
-      "uso": "producción — la que usa la tarea WurthAlertas"
+      "uso": "producción — la que usa la tarea WurthAlertas y el tablero en 8501"
+    },
+    {
+      "ruta": "C:\\alerta-test",
+      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502"
     }
   ],
   "puertos": [
@@ -21,9 +25,31 @@
       "uso": "producción — fijado con --server.port 8501 --server.headless true",
       "escucha": "todas las interfaces de la red interna (gerencia y supervisores se conectan desde sus PCs)",
       "publicado": "no: el firewall debe tener el 8501 abierto solo para la red interna de Würth (pedirlo a Sistemas); nunca publicar en internet"
+    },
+    {
+      "puerto": 8502,
+      "que": "tablero Streamlit (testing)",
+      "uso": "testing — C:\\alerta-test, arrancado manualmente con scripts\\iniciar_dashboard_test.bat",
+      "escucha": "todas las interfaces de la red interna",
+      "publicado": "no: solo para el equipo de desarrollo"
     }
   ],
   "tareas": [
+    {
+      "nombre": "WurthDashboard",
+      "cuenta": "la del usuario interactivo (ONLOGON)",
+      "cuando": "al iniciar sesión Windows (con 1 minuto de demora)",
+      "que_hace": "arranca el tablero Streamlit en el puerto 8501",
+      "recrear": "scripts\\programar_dashboard.bat (como administrador)"
+    },
+    {
+      "nombre": "WurthDashboard-Vigilante",
+      "cuenta": "SYSTEM",
+      "cuando": "cada 2 minutos",
+      "que_hace": "comprueba que el tablero responde en 127.0.0.1:8501/_stcore/health; si no, lo reinicia",
+      "log": "data\\vigilante.log",
+      "recrear": "scripts\\programar_dashboard.bat (como administrador)"
+    },
     {
       "nombre": "WurthAlertas",
       "cuenta": "la del usuario interactivo (schtasks /IT — necesario para Outlook COM y los DSN del usuario)",

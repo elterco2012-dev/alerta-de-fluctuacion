@@ -11,7 +11,7 @@ en 32 bits en este entorno. Hay que correrlo con el Python de 32 bits, igual
 que los scripts de Informix. Con Python 64 bits da el error:
     IM014 — La arquitectura del DSN no coincide entre el controlador y la app
 
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\sincronizar_reactor.py --full
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\sincronizar_reactor.py --full
 
 Tablas de origen:
   customer_management   → gestiones realizadas (llamada hecha, sin importar resultado)
@@ -156,7 +156,7 @@ except Exception as e:
     print("\nVerificá:")
     print("  - DSN configurado: 'Wurth Reactor Produccion'")
     print("  - MySQL ODBC driver instalado")
-    print("  - Server 10.60.18.51:3306 accesible")
+    print("  - El servidor de Reactor es accesible (ver DSN 'Wurth Reactor Produccion')")
     sys.exit(1)
 
 # ── Modo diagnóstico ──────────────────────────────────────────────────────────

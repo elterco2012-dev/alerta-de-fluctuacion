@@ -10,7 +10,7 @@ Explora las tablas nuevas de Reactor CRM que alimentarán las nuevas señales:
   - visits_route_calculation  (distancia recorrida por vendedor/día)
 
 Ejecutar con Python 32 bits:
-    C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor_nuevas.py
+    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor_nuevas.py
 
 Genera: reactor_nuevas_estructura.txt
 """

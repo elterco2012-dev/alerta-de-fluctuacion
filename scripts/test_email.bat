@@ -1,4 +1,5 @@
 @echo off
+CALL "%~dp0python_paths.bat"
 cd /d C:\alerta-de-fluctuacion
 
 echo ============================================================
@@ -10,7 +11,7 @@ echo  Si falla con "pywin32 no instalado":
 echo    pip install pywin32
 echo ============================================================
 echo.
-"C:\Users\aarmoa\AppData\Local\Programs\Python\Python312\python.exe" scripts\test_email.py
+%PY64% scripts\test_email.py
 echo.
 echo ============================================================
 echo  Si dice "Email enviado via Outlook COM" = todo OK.

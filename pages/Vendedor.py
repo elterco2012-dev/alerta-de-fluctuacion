@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import json
 import sys
 import os
+from html import escape as _esc
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, get_connection
@@ -176,16 +177,24 @@ def _cargar_vendedor(vid: int):
     return scores, v_info, ventas, score_hist
 
 
-scores_df, v_info_df, ventas_df, score_hist_df = _cargar_vendedor(id_vendedor)
+# ── Validar acceso ANTES de cargar datos ─────────────────────────────────────
+# Chequeo liviano: solo la columna supervisor, sin cargar todo el historial.
+if not _usuario["ve_todo"]:
+    _con_check = get_connection()
+    _sup_check = pd.read_sql(
+        "SELECT supervisor FROM vendedores WHERE id_vendedor = ? LIMIT 1",
+        _con_check, params=(id_vendedor,),
+    )
+    _con_check.close()
+    if not _sup_check.empty:
+        _sup_val = _sup_check.iloc[0]["supervisor"]
+        if _sup_val and not _acc.puede_ver(_usuario, _sup_val):
+            st.error(f"No tenés permiso para ver vendedores de la zona de **{_sup_val}**.")
+            if st.button("← Volver"):
+                st.switch_page("pages/Supervisor.py")
+            st.stop()
 
-# ── Validar acceso al vendedor ────────────────────────────────────────────────
-if not v_info_df.empty:
-    _sup_del_vendedor = v_info_df.iloc[0].get("supervisor", None)
-    if _sup_del_vendedor and not _acc.puede_ver(_usuario, _sup_del_vendedor):
-        st.error(f"No tenés permiso para ver vendedores de la zona de **{_sup_del_vendedor}**.")
-        if st.button("← Volver"):
-            st.switch_page("pages/Supervisor.py")
-        st.stop()
+scores_df, v_info_df, ventas_df, score_hist_df = _cargar_vendedor(id_vendedor)
 
 # ── Validar existencia ────────────────────────────────────────────────────────
 row_score = scores_df[scores_df["id_vendedor"] == id_vendedor]
@@ -242,14 +251,14 @@ zona_badge = badge(zona_nivel, zona_label, shape=False)
 st.markdown(f"""
 <div class="vd-card">
   <div>
-    <span class="vd-name">{v_nombre}</span>
+    <span class="vd-name">{_esc(v_nombre)}</span>
     <span class="vd-id">#{id_vendedor}</span>
     &nbsp; {tipo_badge}
   </div>
   <div class="vd-meta">
-    <span>📍 <b>{v_grupo}</b> &nbsp;{zona_badge}</span>
-    <span>👤 Supervisor: <b>{v_supervisor}</b></span>
-    <span>📅 Ingreso: <b>{fi}</b> · {fmt_antiguedad(meses_activo)} de antigüedad</span>
+    <span>📍 <b>{_esc(v_grupo)}</b> &nbsp;{zona_badge}</span>
+    <span>👤 Supervisor: <b>{_esc(v_supervisor)}</b></span>
+    <span>📅 Ingreso: <b>{_esc(fi)}</b> · {fmt_antiguedad(meses_activo)} de antigüedad</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -405,7 +414,7 @@ st.markdown('<div class="sec-header">🎯 Acción recomendada</div>', unsafe_all
 if ranking:
     ranking_items = "".join(
         f'<li style="margin-bottom:4px;">'
-        f'<b>{a[0]}</b>'
+        f'<b>{_esc(str(a[0]))}</b>'
         f'<span style="color:#aaa;font-size:11px;margin-left:8px;">'
         f'bajó el score {fmt_num(a[1], 1)} en promedio · {a[2]} '
         f'{"caso" if a[2] == 1 else "casos"}</span>'
@@ -414,21 +423,21 @@ if ranking:
     )
     st.markdown(f"""
 <div class="rec-card">
-  <div class="rec-title">Perfil: {perfil_label}</div>
-  <div class="rec-action">→ {top_accion[0]}</div>
+  <div class="rec-title">Perfil: {_esc(perfil_label)}</div>
+  <div class="rec-action">→ {_esc(str(top_accion[0]))}</div>
   <ul class="rec-list" style="margin:0;padding-left:18px;color:#444;">
     {ranking_items}
   </ul>
   <div style="font-size:11px;color:#aaa;margin-top:10px;">
     Efectividad medida sobre intervenciones reales de vendedores con perfil
-    <b>{perfil_label}</b> que siguen activos (cuánto les bajó el score después).
+    <b>{_esc(perfil_label)}</b> que siguen activos (cuánto les bajó el score después).
   </div>
 </div>
 """, unsafe_allow_html=True)
 else:
     st.markdown(f"""
 <div class="rec-card">
-  <div class="rec-title">Perfil: {perfil_label}</div>
+  <div class="rec-title">Perfil: {_esc(perfil_label)}</div>
   <div style="font-size:13px;color:#666;">
     Todavía no hay suficientes intervenciones registradas para vendedores de este
     perfil como para recomendar con datos reales. A medida que se registren

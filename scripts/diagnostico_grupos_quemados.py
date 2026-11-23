@@ -20,7 +20,7 @@ riesgo_base de su grupo, así que el lift tiene algo de optimismo; aún así sir
 para ver si la señal estructural discrimina y a qué umbral.
 
 Corre con cualquier Python (no usa pandas):
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\diagnostico_grupos_quemados.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\diagnostico_grupos_quemados.py
 """
 
 import sqlite3

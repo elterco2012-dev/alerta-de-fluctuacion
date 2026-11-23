@@ -7,6 +7,7 @@ Registro y seguimiento de intervenciones sobre vendedores en riesgo.
 import streamlit as st
 import pandas as pd
 from datetime import date
+import html as _html
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -260,17 +261,17 @@ else:
         obs = (r["observaciones"] or "")[:80] + ("…" if len(r["observaciones"] or "") > 80 else "")
 
         rows += f"""<tr>
-          <td style="color:#aaa;font-size:12px;">{r['fecha']}</td>
+          <td style="color:#aaa;font-size:12px;">{_html.escape(str(r['fecha'] or ''))}</td>
           <td>
             <div style="font-weight:700;">ID {int(r['id_vendedor'])}</div>
-            <div style="color:#aaa;font-size:11px;">{r['tipo_vendedor']} · {r['nombre_grupo']}</div>
+            <div style="color:#aaa;font-size:11px;">{_html.escape(str(r['tipo_vendedor'] or ''))} · {_html.escape(str(r['nombre_grupo'] or ''))}</div>
           </td>
-          <td><span class="bdg bdg-tipo">{r['tipo']}</span></td>
-          <td>{r['supervisor']}</td>
+          <td><span class="bdg bdg-tipo">{_html.escape(str(r['tipo'] or ''))}</span></td>
+          <td>{_html.escape(str(r['supervisor'] or ''))}</td>
           <td style="text-align:center;">{_sc(r['score_inicial'], nivel_i)}</td>
           <td style="text-align:center;">{_sc(score_a, nivel_a) if score_a else _bdg('baja', r['estado'].capitalize())}</td>
           <td>{_impacto_html(r.get('impacto'), r.get('estado',''))}</td>
-          <td style="color:#888;font-size:12px;max-width:200px;">{obs}</td>
+          <td style="color:#888;font-size:12px;max-width:200px;">{_html.escape(obs)}</td>
         </tr>"""
 
     st.markdown(f"""
@@ -307,7 +308,7 @@ else:
             bar_w = min(100, max(0, int(abs(imp) / 3 * 100)))
             bar_color = "#639922" if imp > 0 else "#E24B4A"
             res_rows += f"""<tr>
-              <td><span class="bdg bdg-tipo">{r['tipo']}</span></td>
+              <td><span class="bdg bdg-tipo">{_html.escape(str(r['tipo'] or ''))}</span></td>
               <td style="text-align:center;">{int(r['cantidad'])}</td>
               <td style="text-align:center;">{int(r['mejoraron'])}</td>
               <td>

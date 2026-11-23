@@ -32,7 +32,7 @@ CÓMO FUNCIONA (sin tocar ninguna base externa, solo lee SQLite):
      MÁS que la falsa alarma. Si no, es sobreajuste.
 
 Solo LECTURA sobre data/wurth.db. Corre con cualquier Python (no usa pandas):
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\validar_pesos.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\validar_pesos.py
 """
 
 import sqlite3

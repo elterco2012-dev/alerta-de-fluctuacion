@@ -15,7 +15,7 @@ Este script consulta Informix (DSN=MSPA) en SOLO LECTURA y reporta cuál es.
 No escribe nada en ninguna base. Solo SELECT.
 
 Ejecutar con Python 32 bits (igual que sincronizar_informix.py):
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\diagnostico_dias_venta_cero.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\diagnostico_dias_venta_cero.py
 """
 
 import sys

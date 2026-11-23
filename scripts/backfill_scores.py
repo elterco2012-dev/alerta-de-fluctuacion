@@ -8,7 +8,7 @@ Luego la pantalla pages/Precision.py cruza esto con los egresados reales
 para medir si el sistema los hubiera detectado antes de que se fueran.
 
 Lee de SQLite (no usa ODBC), así que corre con el Python 64-bit:
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\backfill_scores.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\backfill_scores.py
 
 Requiere pandas instalado en ese Python:
     "...\\Python312\\python.exe" -m pip install pandas

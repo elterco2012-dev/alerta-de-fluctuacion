@@ -5,7 +5,7 @@ ETL: lee datos de SUNDB (SQL Server, sistema SUN) y actualiza cobranza_real
 en data/wurth.db (SQLite).
 
 IMPORTANTE: Ejecutar con Python 32 bits (mismo requisito que Informix).
-   C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_sundb.py
+   C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_sundb.py
 
 Flujo:
   - Lee SALFLDGRAN (+ SALFLDGRAN2) donde ACCNT_CODE empieza en '1130'
@@ -83,7 +83,7 @@ except Exception as e:
     print("\nVerificá:")
     print("  1. Estás usando Python 32 bits")
     print("  2. El DSN 'SUNDB' está configurado en ODBC de 32 bits")
-    print("  3. El servidor CONTABLE2024 es accesible")
+    print("  3. El servidor de SUN es accesible (ver DSN 'SUNDB')")
     sys.exit(1)
 
 scur_sun = sun.cursor()

@@ -30,7 +30,7 @@ Para las señales continuas (variabilidad, caída abrupta) se barren varios
 umbrales para encontrar el punto con mejor lift OOS.
 
 Solo LECTURA sobre data/wurth.db. Corre con cualquier Python (no usa pandas):
-    "C:\\Users\\aarmoa\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\explorar_senales_nuevas.py
+    "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" scripts\\explorar_senales_nuevas.py
 """
 
 import sqlite3

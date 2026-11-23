@@ -162,7 +162,6 @@ Esta decisión es intencional y no debe cambiarse sin discutirlo.
 | % Plan en caída fuerte | ~~2.5~~ → **0** | — | **deshabilitada** |
 | Días venta cero altos | ~~2.5~~ → **0** | — | **deshabilitada** |
 | % Plan promedio bajo | 2.0 | media < 55 | activa |
-| Cobranza real < 90% teórica | 2.0 | pct_cobranza < 90 | activa |
 | Ausencias tempranas (mes 1-3) | 2.0 | > 2 días/mes no-vac | activa |
 | En ventana crítica mes 1-3 | 1.5 | mes_numero 1-3 | activa |
 | Grupo con alta rotación histórica | 1.5 | riesgo_base > 0.40 | activa |
@@ -325,8 +324,8 @@ El backfill usa `INSERT OR REPLACE`, que solo sobreescribe filas de vendedores q
 `calcular_scores()` devuelve para ese período. Si un vendedor sale del motor (ej.
 pasó a ser supervisor y lo excluye el filtro), su fila vieja —calculada con pesos
 y REF anteriores— queda **intacta** y `validar_pesos.py` reporta `[chequeo] != 0`
-al no poder reconstruirla con los pesos actuales (un caso real: vendedor 6183,
-2025-10, score 8.2 viejo vs 4.4 reconstruido). Por eso `backfill_scores.py` ahora,
+al no poder reconstruirla con los pesos actuales (un caso real: un vendedor que pasó
+a supervisor, período 2025-10, score 8.2 viejo vs 4.4 reconstruido). Por eso `backfill_scores.py` ahora,
 antes de insertar cada período, hace `DELETE ... WHERE periodo=? AND id_vendedor
 NOT IN (<ids devueltos>)`. Si el `[chequeo]` vuelve a despegarse, correr
 `scripts/diagnostico_chequeo.bat`: muestra la peor fila y si el problema es REF
@@ -354,12 +353,13 @@ en la vista global; el top de cada zona en la vista por supervisor). Las tablas
 van ordenadas por score descendente. Los niveles crítico/alto quedan como
 indicador visual de color y de urgencia, no como corte accionable rígido.
 
-Por qué REF=10 (y no más alto): tras deshabilitar las cuatro señales que no
-separan (cartera, llamadas, visitas, cobranza), REF=10 da la mejor separación
-del barrido honesto (~37) y mantiene los scores bien distribuidos para el
-ranking. Los REF altos (12-16) sólo hacían falta para contener la falsa alarma
-que metían esas señales rotas; sin ellas, subir el REF sólo apaga detección y el
-nivel crítico. Ver el barrido de niveles en `validar_pesos.py`.
+Por qué REF=8 (y no más alto): tras deshabilitar las cuatro señales que no
+separan (cartera, llamadas, visitas, cobranza), el barrido bajó progresivamente
+de REF=16 a REF=12, REF=10 y finalmente REF=8. Tras recalibrar umbrales a datos
+reales 2026, REF=8 da la mejor separación (~10.3): ~15% detección OOS con ~4.5%
+de falsa alarma. Los REF altos (12-16) solo hacían falta para contener la falsa
+alarma que metían las señales rotas; sin ellas, subir el REF solo apaga detección.
+Ver el barrido de niveles en `validar_pesos.py`.
 
 ### Banco de pruebas para auditar y descubrir señales (solo lectura SQLite)
 Dos scripts trabajan juntos para mantener el set de señales afilado, sin tocar
@@ -401,10 +401,12 @@ con **alcance jerárquico** distinto. Lo resuelve `src/acceso.py`:
 | **Director** | las zonas de los supervisores que tiene a cargo | derivado de `f040.kz3` (automático), fallback `DIRECTORES_MANUAL` |
 | **Gerencia** | toda la empresa (KPIs, grupos, costo) — lo usan gerencia y RRHH | config `STAFF` en `acceso.py` (no está en f040, lo creamos) |
 
-**Sin login con contraseña:** el usuario se identifica eligiendo su nombre en un
-selector (se asume la pantalla detrás de un acceso corporativo). La identidad
-viaja en el query param `?usuario=`. El control de acceso es real: `acceso.puede_ver()`
-bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
+**Login con contraseña (desde PR #82):** el usuario se identifica con usuario y
+clave, almacenados en `data/auth.json` (hasheadas con PBKDF2). La gestión de
+cuentas es con `scripts/usuarios.bat`. En la rama de producción (junio 2026) entraba
+eligiendo el nombre sin clave. La identidad viaja en el query param `?usuario=`. El
+control de acceso es real: `acceso.puede_ver()` bloquea ver una zona fuera del
+alcance aunque se manipule el deep-link.
 
 **De dónde sale la jerarquía:** `inicializar_db.py` la lee de `f040`:
 - **supervisor** de cada vendedor = `f040.bvertr` (resuelto a nombre). Un vendedor
@@ -412,7 +414,8 @@ bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
 - **director** de cada supervisor = `f040.kz3` (resuelto a nombre).
 - cuentas especiales `vertr` 1500/7777/9499 y los **egresados** (`austrdat` no NULL)
   se excluyen tanto de supervisores como de directores (réplica del reporte de
-  jerarquía de Access).
+  jerarquía de Access). El código 9800 se excluye adicionalmente en el motor de
+  scoring y los scripts de análisis (hardcoded `!= 9800`).
 
 `src/acceso.py` arma la jerarquía director→supervisor **sola** desde `vendedores`
 (`_directores_db()`); si la base todavía no trae esas columnas (datos seed), cae al
@@ -478,9 +481,9 @@ un vendedor mal clasificado que no se puede corregir automáticamente, agregarlo
 los links. `nav_links()` en `snippets_v3.py` lee `st.query_params` internamente y
 propaga `?usuario=` en todos los hrefs. Es la única fuente de verdad de la navegación.
 
-**Sin login con contraseña:** el usuario elige su nombre en un selector. La identidad
-se guarda en `localStorage` para auto-login en recargas. Se asume que la pantalla está
-detrás de un acceso corporativo.
+**Login con contraseña (desde PR #82):** el usuario entra con usuario y clave
+(`src/auth.py` + `data/auth.json`). En la rama de producción (junio 2026) elegía
+su nombre sin clave. La identidad se guarda en `sessionState` al autenticarse.
 
 **Problema de sandbox de Streamlit:** los iframes de `st.components.v1.html()` tienen
 `allow-same-origin allow-scripts` pero NO `allow-top-navigation`. Intentar

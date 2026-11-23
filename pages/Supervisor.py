@@ -8,6 +8,7 @@ Se accede desde el dashboard principal o directo con ?supervisor=Nombre.
 import streamlit as st
 import pandas as pd
 import sys, os
+from html import escape as _esc
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from score_engine import calcular_scores, resumen_grupos, get_connection, obtener_sparklines
@@ -135,8 +136,9 @@ def cargar_datos():
     _py  = _hoy.year if _hoy.month > 1 else _hoy.year - 1
     try:
         _prev = pd.read_sql(
-            f"SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = '{_py}-{_pm:02d}'",
+            "SELECT id_vendedor, score AS score_prev FROM score_historico WHERE periodo = ?",
             con,
+            params=(f"{_py}-{_pm:02d}",),
         )
         delta_map = dict(zip(_prev["id_vendedor"], _prev["score_prev"]))
     except Exception:
@@ -320,15 +322,15 @@ with nav_b:
         if st.button(_volver):
             st.query_params.pop("supervisor", None)
             st.rerun()
-st.markdown(page_header(f"👤 {supervisor_sel}", "/Supervisor", sub=fresh(_ts_datos)),
+st.markdown(page_header(f"👤 {_esc(supervisor_sel)}", "/Supervisor", sub=fresh(_ts_datos)),
             unsafe_allow_html=True)
 
 # Header
 st.markdown(f"""
 <div style="margin-bottom:24px;margin-top:12px;">
-  <div style="font-size:22px;font-weight:800;color:#1a1a2e;">👤 {supervisor_sel}</div>
+  <div style="font-size:22px;font-weight:800;color:#1a1a2e;">👤 {_esc(supervisor_sel)}</div>
   <div style="font-size:14px;color:#888;margin-top:4px;">
-    Zona: <b style="color:#1a1a2e;">{nombre_grupo}</b>
+    Zona: <b style="color:#1a1a2e;">{_esc(nombre_grupo)}</b>
     &nbsp;·&nbsp; {_bdg(nivel_zona, _zona_label(rb))}
   </div>
 </div>
@@ -395,8 +397,8 @@ for _, r in df_sup.iterrows():
     prev  = delta_map.get(vid)
     delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
-      <td><div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{r['nombre']}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
-          <div class="wz-vsb">{r['tipo']} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
+      <td><div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+          <div class="wz-vsb">{_esc(r['tipo'])} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>
       <td>{_spark(sparks.get(vid,[]))}</td>

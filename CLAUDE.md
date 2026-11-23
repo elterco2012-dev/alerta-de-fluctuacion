@@ -721,3 +721,19 @@ no `window.parent.location.replace()` directo.
 Ocurre cuando los links de navegación no propagan `?usuario=`. `nav_links()` en
 `snippets_v3.py` lee `st.query_params` y agrega `?usuario=X` a todos los hrefs.
 Si una página genera links propios (fuera de `nav_links`), agregar `?usuario=` manualmente.
+
+---
+
+## Reglas de sesión
+
+- **Responderle al usuario siempre en español** (lo pidió el 21/11): también los resúmenes, los avisos y los mensajes cortos.
+
+## Conocimiento compartido (desde el 21/11/2026)
+
+Lo que sabemos de SUN, MSPA, Reactor, la VM, el hosting, el negocio y las reglas comunes
+está en el repositorio privado `elterco2012-dev/conocimiento-wurth`. Al empezar cada sesión:
+sumalo para leer, leé `LEEME.md` y lo que toque a la tarea, y mirá `buzon/` por mensajes
+para este proyecto o para todos. Antes de preguntarle al usuario qué es algo, buscalo ahí.
+Lo que aprendas que les sirva a otros (una columna, una regla comprobada, algo de la VM,
+una decisión), proponelo con un PR a ese repositorio, nunca directo a `main`. Para hablar
+con otro proyecto, usá el buzón. Nunca escribas en el repositorio de otro proyecto.

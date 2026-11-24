@@ -553,9 +553,12 @@ sin expander (no esconder accionables detrás de un "Ver más").
 5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
 6. `scripts\proteger_carpeta.bat` y después `scripts\programar_dashboard.bat`, como administrador y una sola vez:
    cierran la carpeta (solo Administradores, SYSTEM y la cuenta de las tareas) y dejan el tablero siempre andando
-   con `scripts/supervisor_dashboard.py` (tarea WurthDashboard). **Ninguna tarea de este proyecto corre como
+   con `scripts/supervisor_dashboard.py` (tarea WurthAlertasTablero). **Ninguna tarea de este proyecto corre como
    SYSTEM:** por herencia de `C:\`, cualquier usuario del dominio podía modificar la carpeta, y una tarea de SYSTEM
    que corre un script de ahí le da SYSTEM a cualquiera que entre a la VM.
+   **Las tareas de este proyecto se llaman `WurthAlertas*`.** Antes de crear una, mirar `inventario.md` de
+   conocimiento-wurth: el 23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de
+   taginfo, y la pisó.
 
 **Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
 

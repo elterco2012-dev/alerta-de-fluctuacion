@@ -566,6 +566,9 @@ sin expander (no esconder accionables detrás de un "Ver más").
    renombran); antes de crear algo, mirar `inventario.md`; nunca se para ni se borra algo por un nombre ajeno; los
    procesos se cierran buscando la carpeta del proyecto en su línea de comando, nunca por nombre ni por puerto. El
    23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de taginfo, y la pisó.
+7. **Para aplicar una actualización del tablero:** `git pull` y después `scripts\programar_dashboard.bat` como
+   administrador. No alcanza con `schtasks /End` + `/Run`: frena al supervisor pero no al tablero que arrancó, y el
+   supervisor nuevo lo encuentra respondiendo y lo deja andar con el código viejo.
 
 **Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
 
@@ -719,6 +722,12 @@ en `snippets_v3.py` no tiene el parámetro `title=`, agregar `title=""` a la fir
 `inicializar_db.py` lo excluye en el INSERT pero no borraba el registro viejo. Fix ya
 aplicado: hay un DELETE explícito de `VERTR_EXCLUIDOS` post-insert. Si persiste, correr
 `inicializar_db.bat` con el código actualizado (hacer `git pull` primero).
+
+### Después de un `git pull` el tablero sigue mostrando lo viejo
+Se reinició con `schtasks /End` + `/Run`, que deja corriendo el tablero anterior (ver "Cómo correr", punto 7).
+Correr `scripts\programar_dashboard.bat` como administrador: frena el tablero buscándolo por su carpeta y arranca
+el nuevo. Un tablero arrancado antes del 24/11 (con `dashboard.py` sin la ruta completa) no lo encuentra esa
+búsqueda: frenarlo a mano una sola vez.
 
 ### Score histórico con `[chequeo] != 0`
 Entradas huérfanas en `score_historico` de vendedores que ya no salen del motor.

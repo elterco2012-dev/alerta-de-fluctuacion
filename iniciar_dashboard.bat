@@ -7,7 +7,7 @@ cd /d "%~dp0"
 :: se conectan desde sus PCs.
 :: NUNCA publicar en internet: el firewall debe tener el 8501 abierto solo
 :: para la red interna de Würth (solicitarlo a Sistemas).
-%PY64% -m streamlit run dashboard.py ^
+%PY64% -m streamlit run "%~dp0dashboard.py" ^
   --server.port 8501 ^
   --server.headless true
 

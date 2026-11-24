@@ -2,7 +2,8 @@
 
 Lo arranca la tarea WurthAlertasTablero con pythonw.exe (sin ventana) y con la cuenta LOCAL SERVICE, sin
 privilegios y nunca como SYSTEM. Levanta el tablero, comprueba cada 2 minutos que responda y, si no, lo reinicia.
-Solo detiene el proceso que escucha en el 8501, el puerto del tablero: nunca procesos de otros proyectos.
+Solo cierra sus propios procesos: los que tienen C:\\alerta-de-fluctuacion\\dashboard.py en la línea de comando
+(regla de la VM: nunca por nombre ni por puerto). Si el puerto lo ocupa otro proceso, lo anota y no lo toca.
 Lo que hace queda en data/vigilante.log y la salida de Streamlit en data/streamlit.log.
 """
 import ctypes
@@ -16,12 +17,22 @@ from datetime import datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
+TABLERO = RAIZ / "dashboard.py"
 PUERTO = 8501
 CADA_SEG = 120
 FALLAS_PARA_REINICIAR = 2
 LOG = RAIZ / "data" / "vigilante.log"
 SALIDA_STREAMLIT = RAIZ / "data" / "streamlit.log"
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# Busca los procesos por la ruta completa del tablero en su línea de comando. La ruta va por variable de entorno
+# para no tener que escaparla.
+_BUSCAR_PROPIOS = (
+    "Get-CimInstance Win32_Process | "
+    "Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and "
+    "$_.CommandLine -like ('*' + $env:ALERTA_TABLERO + '*') } | "
+    "ForEach-Object { $_.ProcessId }"
+)
 
 
 def anotar(texto: str) -> None:
@@ -37,6 +48,15 @@ def responde() -> bool:
             return r.status == 200
     except Exception:
         return False
+
+
+def pids_del_tablero() -> set[int]:
+    """Procesos de este tablero: los que tienen su dashboard.py, con la ruta completa, en la línea de comando."""
+    salida = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", _BUSCAR_PROPIOS],
+        capture_output=True, text=True, errors="replace", creationflags=SIN_VENTANA,
+        env={**os.environ, "ALERTA_TABLERO": str(TABLERO)}).stdout
+    return {int(x) for x in salida.split() if x.isdigit()}
 
 
 def pids_escuchando(salida_netstat: str, puerto: int) -> set[int]:
@@ -73,7 +93,7 @@ def iniciar() -> None:
     entorno = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     with open(SALIDA_STREAMLIT, "a", encoding="utf-8") as salida:
         proceso = subprocess.Popen(
-            [python_de_consola(), "-m", "streamlit", "run", "dashboard.py",
+            [python_de_consola(), "-m", "streamlit", "run", str(TABLERO),
              "--server.port", str(PUERTO), "--server.headless", "true",
              "--server.address", "0.0.0.0", "--browser.gatherUsageStats", "false"],
             cwd=RAIZ, env=entorno, stdin=subprocess.DEVNULL, stdout=salida, stderr=subprocess.STDOUT,
@@ -83,10 +103,14 @@ def iniciar() -> None:
 
 def reiniciar(motivo: str) -> None:
     anotar(motivo)
-    for pid in pids_en_el_puerto():
+    for pid in pids_del_tablero():
         detener(pid)
-        anotar(f"detenido el proceso {pid}, que ocupaba el puerto {PUERTO}")
+        anotar(f"detenido el proceso {pid} del tablero")
     time.sleep(5)
+    ajenos = pids_en_el_puerto()
+    if ajenos:
+        anotar(f"el puerto {PUERTO} lo ocupa otro proceso ({', '.join(map(str, sorted(ajenos)))}), "
+               "que no es de este tablero: no lo toco")
     iniciar()
 
 
@@ -115,7 +139,7 @@ def main() -> None:
                 continue
             fallas += 1
             anotar(f"el tablero no respondió ({fallas} control(es) seguido(s))")
-            if not pids_en_el_puerto():
+            if not pids_del_tablero():
                 reiniciar("el tablero no estaba corriendo; lo levanto")
                 fallas = 0
             elif fallas >= FALLAS_PARA_REINICIAR:

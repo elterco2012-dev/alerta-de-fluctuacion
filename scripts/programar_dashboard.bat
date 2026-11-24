@@ -10,6 +10,8 @@
 :: LOCAL SERVICE puede leer la carpeta del proyecto y escribir solo en data\ (este script le da esos permisos). Si algun
 :: dia hay secretos en .env, sacarle la lectura de ese archivo.
 ::
+:: Solo cierra sus propios procesos: los que tienen la carpeta del proyecto en la linea de comando (dashboard.py o el
+:: supervisor), nunca por nombre ni por puerto (regla de la VM).
 :: Solo toca su propia tarea. Si ya existe una tarea WurthAlertasTablero que no corre este supervisor, no hace nada:
 :: en la VM hay tareas de otros proyectos (el 23/11 este script uso el nombre WurthDashboard, que es de taginfo, y la
 :: piso). Antes de crear una tarea nueva, mirar inventario.md de conocimiento-wurth.
@@ -56,7 +58,7 @@ powershell -NoProfile -Command ^
   "$existente = Get-ScheduledTask -TaskName $env:TAREA -ErrorAction SilentlyContinue;" ^
   "if ($existente -and -not (($existente.Actions.Arguments -join ' ') -like '*supervisor_dashboard.py*')) { throw ('Ya existe una tarea ' + $env:TAREA + ' que no es de este proyecto. No la toque.') };" ^
   "if ($existente) { Stop-ScheduledTask -TaskName $env:TAREA };" ^
-  "Get-NetTCPConnection -LocalPort 8501 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue };" ^
+  "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like ('*' + $env:RAIZ + '\dashboard.py*') -or $_.CommandLine -like ('*' + $env:SUPERVISOR + '*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue };" ^
   "$cuenta = (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-19')).Translate([System.Security.Principal.NTAccount]).Value;" ^
   "$q = [char]34;" ^
   "$a = New-ScheduledTaskAction -Execute ($q + $env:PYW + $q) -Argument ($q + $env:SUPERVISOR + $q) -WorkingDirectory $env:RAIZ;" ^

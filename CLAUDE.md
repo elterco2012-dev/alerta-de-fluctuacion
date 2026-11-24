@@ -557,9 +557,11 @@ sin expander (no esconder accionables detrás de un "Ver más").
    usuario sin sesión falla en `LogonUserS4U` en esta VM). **Ninguna tarea de este proyecto corre como
    SYSTEM:** por herencia de `C:\`, cualquier usuario del dominio podía modificar la carpeta, y una tarea de SYSTEM
    que corre un script de ahí le da SYSTEM a cualquiera que entre a la VM.
-   **Las tareas de este proyecto se llaman `WurthAlertas*`.** Antes de crear una, mirar `inventario.md` de
-   conocimiento-wurth: el 23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de
-   taginfo, y la pisó.
+   **Reglas de la VM (`reglas.md` de conocimiento-wurth, 24/11):** lo nuevo se declara antes en `PROYECTO.json`
+   (con `ejecuta`) y lleva `Alerta…` adelante (`WurthAlertas` y `WurthAlertasTablero` ya existían y no se
+   renombran); antes de crear algo, mirar `inventario.md`; nunca se para ni se borra algo por un nombre ajeno; los
+   procesos se cierran buscando la carpeta del proyecto en su línea de comando, nunca por nombre ni por puerto. El
+   23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de taginfo, y la pisó.
 
 **Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
 

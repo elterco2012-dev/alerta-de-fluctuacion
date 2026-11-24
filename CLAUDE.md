@@ -403,10 +403,12 @@ con **alcance jerárquico** distinto. Lo resuelve `src/acceso.py`:
 
 **Login con contraseña (desde PR #82):** el usuario se identifica con usuario y
 clave, almacenados en `data/auth.json` (hasheadas con PBKDF2). La gestión de
-cuentas es con `scripts/usuarios.bat`. En la rama de producción (junio 2026) entraba
-eligiendo el nombre sin clave. La identidad viaja en el query param `?usuario=`. El
-control de acceso es real: `acceso.puede_ver()` bloquea ver una zona fuera del
-alcance aunque se manipule el deep-link.
+cuentas es con `scripts/usuarios.bat` (la clave se pide en pantalla). En la rama de
+producción (junio 2026) entraba eligiendo el nombre sin clave. **La identidad sale solo
+de la sesión autenticada** (`_auth_clave_acceso`), nunca de la dirección: hasta el 24/11
+el rol se tomaba de `?usuario=` y `pages/Supervisor.py` ni siquiera pedía clave (tenía el
+selector viejo), así que cualquiera podía verse como Gerencia. `acceso.puede_ver()`
+bloquea ver una zona fuera del alcance aunque se manipule el deep-link.
 
 **De dónde sale la jerarquía:** `inicializar_db.py` la lee de `f040`:
 - **supervisor** de cada vendedor = `f040.bvertr` (resuelto a nombre). Un vendedor
@@ -426,10 +428,9 @@ acceso total que comparten gerencia (Daniel) y RRHH.
 
 ### Matriz de acceso por página (el control está en TODAS, no solo Supervisor)
 
-Cada página llama a `acceso.requerir_acceso(roles=...)` al inicio. Si no hay
-usuario, muestra el selector de identidad; si el rol no alcanza, bloquea. La
-identidad sobrevive a `st.switch_page()` vía `st.session_state["_acc_usuario"]`
-(además del query param `?usuario=`).
+Cada página (también `Supervisor`) llama a `acceso.requerir_acceso(roles=...)` al
+inicio. Si no hay sesión, muestra el formulario de ingreso; si el acceso del usuario no
+existe, muestra un error (nunca un selector); si el rol no alcanza, bloquea.
 
 | Página | Gerencia | Director | Supervisor |
 |---|---|---|---|
@@ -438,11 +439,10 @@ identidad sobrevive a `st.switch_page()` vía `st.session_state["_acc_usuario"]`
 | `Vendedor`, `Intervenciones`, `Actividad` | ✅ todo | ✅ filtrado a su alcance | ✅ filtrado a su alcance |
 | `Supervisor` | ✅ elige zona | ✅ sus supervisores | ✅ entra directo a su zona |
 
-Helpers reutilizables en `acceso.py`: `requerir_acceso(roles)` (gate + selector),
-`barra_usuario_st(usuario)` (chip "ingresaste como…" + cambiar usuario),
+Helpers reutilizables en `acceso.py`: `requerir_acceso(roles)` (ingreso + alcance),
+`barra_usuario_st(usuario)` (chip "ingresaste como…" + cerrar sesión),
 `puede_ver(usuario, supervisor)` (chequeo de alcance, también usado en `Vendedor`
-para bloquear deep-links a vendedores fuera de la zona). Los links a `/Vendedor`
-arrastran `?usuario=` para no romper la sesión al navegar.
+para bloquear deep-links a vendedores fuera de la zona).
 
 ---
 
@@ -477,9 +477,13 @@ un vendedor mal clasificado que no se puede corregir automáticamente, agregarlo
 
 ## Navegación y login — decisiones técnicas de la UI
 
-**Identidad por query param:** el usuario viaja en `?usuario=NombreUsuario` en todos
-los links. `nav_links()` en `snippets_v3.py` lee `st.query_params` internamente y
-propaga `?usuario=` en todos los hrefs. Es la única fuente de verdad de la navegación.
+**La sesión sobrevive a la navegación con una cookie firmada:** los enlaces de
+`nav_links()` son `<a href>` comunes, y cada uno abre una sesión nueva de Streamlit
+(se pierde `st.session_state`). Al ingresar, `src/auth.py` pone la cookie `alerta_sesion`
+(HMAC-SHA256 con la clave de `data/sesion.key`, que se crea sola y no se sube; 8 horas;
+`SameSite=Strict`, y `Secure` con HTTPS). Cada sesión nueva la lee con `st.context.cookies`
+y la valida: deja de valer si vence, si al usuario lo dan de baja, o si le cambian el acceso
+o la clave. Cerrar sesión la borra. `nav_links()` oculta secciones según el rol de la sesión.
 
 **Login con contraseña (desde PR #82):** el usuario entra con usuario y clave
 (`src/auth.py` + `data/auth.json`). En la rama de producción (junio 2026) elegía
@@ -731,10 +735,12 @@ implementada inyecta un `<script>` en `window.parent.document.head`. Si vuelve a
 revisar que el componente en `acceso.py` use la técnica del parent DOM script injection,
 no `window.parent.location.replace()` directo.
 
-### Selector de perfil aparece en cada página
-Ocurre cuando los links de navegación no propagan `?usuario=`. `nav_links()` en
-`snippets_v3.py` lee `st.query_params` y agrega `?usuario=X` a todos los hrefs.
-Si una página genera links propios (fuera de `nav_links`), agregar `?usuario=` manualmente.
+### Pide el ingreso en cada página
+La sesión de una página nueva se recupera de la cookie `alerta_sesion` (ver "Navegación y
+login"). Si pide el ingreso en cada enlace: la cookie no se está guardando (mirar en el
+navegador si existe) o no valida (venció, cambió la clave del usuario, o se borró
+`data/sesion.key`, lo que invalida todas las sesiones). Nunca se arregla poniendo la
+identidad en la dirección.
 
 ---
 

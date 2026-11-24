@@ -386,10 +386,9 @@ else:
     df_show, df_extra = df.head(5), df.iloc[5:]
 
 # ── Tabla principal ────────────────────────────────────────────────────────────
-def _tabla_rows(subset, delta_map=None, usuario_clave=""):
+def _tabla_rows(subset, delta_map=None):
     if delta_map is None:
         delta_map = {}
-    _u_qs = f"&usuario={usuario_clave}" if usuario_clave else ""
     rows = ""
     for _, r in subset.iterrows():
         vid    = int(r["id_vendedor"])
@@ -401,7 +400,7 @@ def _tabla_rows(subset, delta_map=None, usuario_clave=""):
         rows += f"""
     <tr>
       <td>
-        <div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+        <div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
         <div class="wz-vsb">{_esc(r['tipo'])} · {_fmt_antiguedad(r['meses_activo'])}</div>
       </td>
       <td>{_pills(r['señales_activas'])}</td>
@@ -437,11 +436,11 @@ def _tabla_html(rows_html):
 </table>
 </div>"""
 
-st.markdown(_tabla_html(_tabla_rows(df_show, delta_map, _usuario["clave"])), unsafe_allow_html=True)
+st.markdown(_tabla_html(_tabla_rows(df_show, delta_map)), unsafe_allow_html=True)
 
 if not df_extra.empty:
     with st.expander(f"Ver {len(df_extra)} vendedores más"):
-        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map, _usuario["clave"])), unsafe_allow_html=True)
+        st.markdown(_tabla_html(_tabla_rows(df_extra, delta_map)), unsafe_allow_html=True)
 
 if busqueda_sc:
     st.caption(f"{len(df_show)} vendedores encontrados.")

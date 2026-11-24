@@ -10,9 +10,9 @@ A esta pantalla entran cuatro tipos de usuario, con distinto alcance:
   - rrhh       → ve toda la empresa
   - gerencia   → ve toda la empresa
 
-NO hay login con contraseña: el usuario se identifica eligiendo su nombre en un
-selector (la pantalla se asume detrás de un acceso corporativo). Este módulo solo
-resuelve "quién sos → qué supervisores podés ver".
+El usuario entra con usuario y clave (src/auth.py); su `clave_acceso` dice quién es.
+Este módulo resuelve "quién sos → qué supervisores podés ver" y bloquea lo que no
+le corresponde. La identidad nunca sale de la dirección (?usuario=).
 
 CÓMO COMPLETARLO CON DATOS REALES
 ---------------------------------
@@ -25,7 +25,7 @@ CÓMO COMPLETARLO CON DATOS REALES
 """
 
 from __future__ import annotations
-import sqlite3, os, json as _json
+import sqlite3, os
 from html import escape as _esc
 from typing import Optional
 
@@ -136,7 +136,7 @@ def listar_usuarios() -> list[dict]:
     Devuelve todos los usuarios seleccionables, agrupables por rol:
         [{clave, etiqueta, rol}, ...]
     El orden es: gerencia/RRHH primero, luego directores, luego supervisores.
-    `clave` es el identificador único que viaja en el query param `?usuario=`.
+    `clave` es el identificador único (la `clave_acceso` de cada usuario en data/auth.json).
     """
     usuarios: list[dict] = []
     for clave, rol in STAFF.items():
@@ -195,160 +195,39 @@ def puede_ver(usuario: Optional[dict], supervisor: str) -> bool:
 
 # ── Helpers de UI (Streamlit) ─────────────────────────────────────────────────
 
-# Clave usada en localStorage del browser para guardar el usuario recordado.
-_LS_KEY = "wurth_usuario"
-
-
-def _js_navegar(clave: Optional[str]) -> str:
-    """
-    Devuelve un fragmento HTML+JS que guarda en localStorage y navega.
-    El iframe de Streamlit no tiene allow-top-navigation, así que no puede usar
-    window.parent.location directamente. La solución: inyectar un <script> en el
-    documento padre (que corre en el contexto padre, sin restricciones de sandbox)
-    y que ESE script haga la navegación. Con allow-same-origin el iframe puede
-    acceder a window.parent.document y crear/agregar elementos DOM.
-    """
-    if clave is not None:
-        ls_set = f"localStorage.setItem({_json.dumps(_LS_KEY)}, {_json.dumps(clave)});"
-        nav_expr = (
-            f"var p=new URLSearchParams(window.location.search);"
-            f"p.set('usuario',{_json.dumps(clave)});"
-            f"window.location.replace(window.location.pathname+'?'+p.toString());"
-        )
-    else:
-        ls_set = f"localStorage.removeItem({_json.dumps(_LS_KEY)});"
-        nav_expr = (
-            f"var p=new URLSearchParams(window.location.search);"
-            f"p.delete('usuario');"
-            f"var qs=p.toString();"
-            f"window.location.replace(window.location.pathname+(qs?'?'+qs:''));"
-        )
-    return f"""<script>
-(function(){{
-  {ls_set}
-  try {{
-    var s = window.parent.document.createElement('script');
-    s.textContent = {_json.dumps(nav_expr)};
-    window.parent.document.head.appendChild(s);
-    window.parent.document.head.removeChild(s);
-  }} catch(e) {{
-    // Fallback directo (puede fallar si el sandbox lo bloquea)
-    {'window.parent.location.replace(window.parent.location.href);'}
-  }}
-}})();
-</script>"""
-
-
-def _selector_st():
-    """
-    Muestra el selector de usuario y detiene la ejecución hasta que elige.
-    Primero intenta auto-login desde localStorage: si hay usuario guardado,
-    redirige sin mostrar el formulario (el usuario no tiene que elegir de nuevo).
-    """
-    import streamlit as st
-    import streamlit.components.v1 as components
-
-    # ── Auto-login desde localStorage ────────────────────────────────────────
-    # Lee localStorage e inyecta un script en el documento padre para navegar
-    # (el iframe no tiene allow-top-navigation pero sí allow-same-origin, así
-    # que puede modificar el DOM del padre y ejecutar JS en su contexto).
-    nav_code = (
-        "var p=new URLSearchParams(window.location.search);"
-        "p.set('usuario',u);"
-        "window.location.replace(window.location.pathname+'?'+p.toString());"
-    )
-    components.html(f"""<script>
-(function(){{
-  var u = localStorage.getItem({_json.dumps(_LS_KEY)});
-  if (!u) return;
-  if (new URLSearchParams(window.parent.location.search).get('usuario') === u) return;
-  try {{
-    var s = window.parent.document.createElement('script');
-    s.textContent = 'var u=' + JSON.stringify(u) + ';{nav_code}';
-    window.parent.document.head.appendChild(s);
-    window.parent.document.head.removeChild(s);
-  }} catch(e) {{}}
-}})();
-</script>""", height=0)
-
-    # ── Formulario de selección ───────────────────────────────────────────────
-    st.markdown(
-        "<div style='max-width:460px;margin-top:8px;'>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">'
-        "¿Quién está ingresando?</div>",
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Cada usuario ve solo el alcance que le corresponde: un supervisor su zona, "
-        "un director sus supervisores, Gerencia toda la empresa. "
-        "Tu elección se recuerda en este navegador."
-    )
-    _users = listar_usuarios()
-    _opts  = {f"{u['etiqueta']}  ·  {ROL_LABEL[u['rol']]}": u["clave"] for u in _users}
-    _sel = st.selectbox(
-        "Ingresá como…", list(_opts.keys()), index=None, placeholder="Elegí tu nombre / rol"
-    )
-    if st.button("Ingresar →", type="primary", disabled=_sel is None):
-        clave_sel = _opts[_sel]
-        # Guarda en localStorage + navega con ?usuario=X (sin st.rerun para
-        # evitar race condition entre Python y el JS del browser).
-        components.html(_js_navegar(clave_sel), height=0)
-        st.stop()
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()
-
-
 def requerir_acceso(roles: Optional[list] = None) -> dict:
     """
-    Verifica que hay un usuario activo con el rol correcto.
+    Verifica que hay un usuario autenticado con el rol correcto y devuelve su alcance.
     - Si no hay sesión autenticada → muestra el formulario de login y detiene.
-    - Si no hay usuario (ni en URL ni en session_state) → muestra el selector y detiene.
-    - Si `roles` se pasa y el rol del usuario no está en la lista → muestra error y detiene.
-    - Guarda la clave en session_state para que page-switches sin ?usuario= no fuercen re-login.
+    - La identidad sale SOLO de la sesión autenticada (usuario y clave). El ?usuario= de la
+      dirección no se usa: si se usara, cualquiera podría cambiarlo y verse como otro.
+    - Si el acceso guardado del usuario no existe (ej. un supervisor que ya no está) → error y detiene.
+    - Si `roles` se pasa y el rol del usuario no está en la lista → aviso y detiene.
     Retorna el dict del usuario (nunca None).
     """
     import streamlit as st
-    import streamlit.components.v1 as components
-    from src.auth import formulario_login_st
+    from src.auth import formulario_login_st, cerrar_sesion_st
 
-    # Paso 1: autenticación con usuario + contraseña.
-    formulario_login_st()   # no-op si ya está autenticado (_auth_ok en session_state)
+    formulario_login_st()   # no-op si ya está autenticado; si no, muestra el login y detiene
 
-    # Paso 2: resolución de rol/alcance.
-    # Si venimos de un login exitoso, usar la clave_acceso guardada por auth.
-    if not st.session_state.get("_acc_usuario") and st.session_state.get("_auth_clave_acceso"):
-        st.session_state["_acc_usuario"] = st.session_state["_auth_clave_acceso"]
-
-    # URL param tiene prioridad; si no hay, usar session state (sobrevive st.switch_page).
-    clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
-    usuario = resolver(clave)
+    usuario = resolver(st.session_state.get("_auth_clave_acceso"))
     if usuario is None:
-        _selector_st()   # makes st.stop() internally
-    # Sincronizar URL y session_state.
+        st.error("Tu usuario no tiene un alcance válido en el tablero. Pedile a Sistemas que lo revise.")
+        if st.button("Cerrar sesión", key="_acc_sin_alcance"):
+            cerrar_sesion_st()
+        st.stop()
     st.session_state["_acc_usuario"] = usuario["clave"]
-    if "usuario" not in st.query_params:
-        st.query_params["usuario"] = usuario["clave"]
     if roles is not None and usuario["rol"] not in roles:
         st.warning(
             f"Esta sección es solo para **{' / '.join(ROL_LABEL[r] for r in roles)}**."
         )
-        c1, c2 = st.columns([1, 6])
-        with c1:
-            if st.button("← Cambiar usuario"):
-                components.html(_js_navegar(None), height=0)
-                st.session_state.pop("_acc_usuario", None)
-                st.stop()
         st.stop()
     return usuario
 
 
 def barra_usuario_st(usuario: dict) -> None:
-    """Chip con el usuario activo + botón para cambiar identidad (borra localStorage)."""
+    """Chip con el usuario activo + botón para cerrar la sesión."""
     import streamlit as st
-    import streamlit.components.v1 as components
     c1, c2 = st.columns([5, 1])
     with c1:
         st.markdown(

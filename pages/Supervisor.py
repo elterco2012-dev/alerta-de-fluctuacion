@@ -152,55 +152,16 @@ scores_df, grupos_df, sparks, delta_map, _ts_datos = cargar_datos()
 
 # ── Control de acceso por rol ────────────────────────────────────────────────
 # Cada usuario ve un alcance distinto: el supervisor solo su zona, el director
-# las zonas de sus supervisores, RRHH/gerencia toda la empresa. Sin login con
-# clave: el usuario se elige en un selector (ver src/acceso.py). La identidad
-# viaja en el query param ?usuario= para sobrevivir a los reruns y deep-links.
+# las zonas de sus supervisores, RRHH/gerencia toda la empresa. Como en el resto
+# de las páginas, se entra con usuario y clave y la identidad sale de la sesión
+# autenticada, nunca de la dirección (ver src/acceso.py).
 import acceso
 
-_clave = st.query_params.get("usuario", None) or st.session_state.get("_acc_usuario")
-usuario = acceso.resolver(_clave)
+usuario = acceso.requerir_acceso()
 
-if usuario is None:
-    # Pantalla de identificación: elegir quién sos antes de ver nada.
-    st.markdown(page_header("👤 Por supervisor — Wurth Argentina", "/Supervisor"),
-                unsafe_allow_html=True)
-    st.markdown("<div style='max-width:460px;margin-top:8px;'>", unsafe_allow_html=True)
-    st.markdown('<div class="sec-header">¿Quién está ingresando?</div>',
-                unsafe_allow_html=True)
-    st.caption("Cada usuario ve solo el alcance que le corresponde: un supervisor "
-               "su zona, un director sus supervisores, RRHH y gerencia toda la empresa.")
-    _users = acceso.listar_usuarios()
-    _opts  = {f"{u['etiqueta']}  ·  {acceso.ROL_LABEL[u['rol']]}": u["clave"]
-              for u in _users}
-    _sel = st.selectbox("Ingresá como…", list(_opts.keys()),
-                        index=None, placeholder="Elegí tu nombre / rol")
-    if st.button("Ingresar →", type="primary", disabled=_sel is None):
-        st.query_params["usuario"] = _opts[_sel]
-        st.query_params.pop("supervisor", None)
-        st.session_state.pop("_acc_usuario", None)
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()
-
-# Sincronizar sesión y URL.
-st.session_state["_acc_usuario"] = usuario["clave"]
-if "usuario" not in st.query_params:
-    st.query_params["usuario"] = usuario["clave"]
 
 def _barra_usuario():
-    """Chip con el usuario activo y botón para cambiar de identidad."""
-    c1, c2 = st.columns([5, 1])
-    with c1:
-        st.markdown(
-            f"<div style='font-size:12px;color:#888;margin-bottom:6px;'>Ingresaste como "
-            f"<b style='color:#1a1a2e;'>{usuario['etiqueta']}</b> "
-            f"· {acceso.ROL_LABEL[usuario['rol']]}</div>",
-            unsafe_allow_html=True)
-    with c2:
-        if st.button("Cambiar usuario", key="logout"):
-            st.query_params.clear()
-            st.session_state.pop("_acc_usuario", None)
-            st.rerun()
+    acceso.barra_usuario_st(usuario)
 
 # ── Router ─────────────────────────────────────────────────────────────────────
 supervisor_sel = st.query_params.get("supervisor", None)
@@ -307,17 +268,12 @@ nivel_zona   = _zona_nivel(rb)
 perm_zona    = grupo_info["permanencia_promedio_meses"].values[0] if not grupo_info.empty else None
 perm_general = grupos_df["permanencia_promedio_meses"].mean()
 
-# Navegación. El supervisor no tiene landing (una sola zona): su botón es
-# "Cambiar usuario". El director/staff vuelve al listado de zonas conservando
-# su identidad.
+# Navegación. El supervisor no tiene landing (una sola zona): solo tiene "Cerrar
+# sesión" en la barra. El director/staff vuelve al listado de zonas.
 _barra_usuario()
-nav_b, _ = st.columns([1, 5])
-with nav_b:
-    if usuario["rol"] == "supervisor":
-        if st.button("← Cambiar usuario"):
-            st.query_params.clear()
-            st.rerun()
-    else:
+if usuario["rol"] != "supervisor":
+    nav_b, _ = st.columns([1, 5])
+    with nav_b:
         _volver = "← Mis supervisores" if usuario["rol"] == "director" else "← Todas las zonas"
         if st.button(_volver):
             st.query_params.pop("supervisor", None)
@@ -390,14 +346,13 @@ else:
 # Tabla
 st.markdown('<div class="sec-header">📋 Mis vendedores por score de riesgo</div>',
             unsafe_allow_html=True)
-_u_qs = f"&usuario={usuario['clave']}"
 rows = ""
 for _, r in df_sup.iterrows():
     vid   = int(r["id_vendedor"]); nivel = r["nivel_riesgo"]
     prev  = delta_map.get(vid)
     delta = round(r["score"] - prev, 1) if prev is not None else None
     rows += f"""<tr>
-      <td><div class="wz-vn"><a href="/Vendedor?id={vid}{_u_qs}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
+      <td><div class="wz-vn"><a href="/Vendedor?id={vid}" target="_self">{_esc(r['nombre'])}</a> <span style="color:#888;font-weight:400;font-size:11px;">({vid})</span></div>
           <div class="wz-vsb">{_esc(r['tipo'])} · {_fmt_antiguedad(r['meses_activo'])} antigüedad</div></td>
       <td>{_pills(r['señales_activas'])}</td>
       <td><b>{fmt_num(r['pct_plan_3m'])}%</b></td>

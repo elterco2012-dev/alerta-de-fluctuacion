@@ -551,6 +551,11 @@ sin expander (no esconder accionables detrás de un "Ver más").
 3. `streamlit run dashboard.py` / `iniciar_dashboard.bat`
 4. `sync_y_alertas.bat` → automatización completa (sync + alertas)
 5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
+6. `scripts\proteger_carpeta.bat` y después `scripts\programar_dashboard.bat`, como administrador y una sola vez:
+   cierran la carpeta (solo Administradores, SYSTEM y la cuenta de las tareas) y dejan el tablero siempre andando
+   con `scripts/supervisor_dashboard.py` (tarea WurthDashboard). **Ninguna tarea de este proyecto corre como
+   SYSTEM:** por herencia de `C:\`, cualquier usuario del dominio podía modificar la carpeta, y una tarea de SYSTEM
+   que corre un script de ahí le da SYSTEM a cualquiera que entre a la VM.
 
 **Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
 

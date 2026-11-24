@@ -11,11 +11,13 @@
   "carpetas": [
     {
       "ruta": "C:\\alerta-de-fluctuacion",
-      "uso": "producción — la que usa la tarea WurthAlertas y el tablero en 8501"
+      "uso": "producción — la que usa la tarea WurthAlertas y el tablero en 8501",
+      "permisos": "solo Administradores, SYSTEM y la cuenta de las tareas; lo deja así scripts\\proteger_carpeta.bat (por herencia de C:\\, los Usuarios autentificados podían modificarla y los Usuarios leerla; icacls del 24/11)"
     },
     {
       "ruta": "C:\\alerta-test",
-      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502"
+      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502",
+      "permisos": "los mismos que producción (scripts\\proteger_carpeta.bat la cierra si existe)"
     }
   ],
   "puertos": [
@@ -37,18 +39,11 @@
   "tareas": [
     {
       "nombre": "WurthDashboard",
-      "cuenta": "la del usuario interactivo (ONLOGON)",
-      "cuando": "al iniciar sesión Windows (con 1 minuto de demora)",
-      "que_hace": "arranca el tablero Streamlit en el puerto 8501",
-      "recrear": "scripts\\programar_dashboard.bat (como administrador)"
-    },
-    {
-      "nombre": "WurthDashboard-Vigilante",
-      "cuenta": "SYSTEM",
-      "cuando": "cada 2 minutos",
-      "que_hace": "comprueba que el tablero responde en 127.0.0.1:8501/_stcore/health; si no, lo reinicia",
-      "log": "data\\vigilante.log",
-      "recrear": "scripts\\programar_dashboard.bat (como administrador)"
+      "cuenta": "la misma que WurthAlertas, sin guardar su contraseña (S4U) y sin privilegios elevados; nunca SYSTEM. Corre aunque nadie tenga la sesión iniciada. Necesita el derecho «Iniciar sesión como proceso por lotes»",
+      "cuando": "al arrancar la VM (1 minuto de demora) y cada 15 minutos; si el supervisor ya está andando, el disparo se ignora",
+      "que_hace": "corre scripts\\supervisor_dashboard.py con pythonw (sin ventana): levanta el tablero en el 8501, comprueba cada 2 minutos /_stcore/health y lo reinicia si no responde. Sin límite de tiempo de ejecución.",
+      "log": "data\\vigilante.log (lo que hace el supervisor) y data\\streamlit.log (la salida del tablero)",
+      "recrear": "scripts\\programar_dashboard.bat (como administrador). Reemplazó el 24/11 a WurthDashboard-Vigilante, que corría como SYSTEM un .bat de una carpeta que cualquier usuario del dominio podía modificar."
     },
     {
       "nombre": "WurthAlertas",
@@ -96,7 +91,7 @@
   ],
   "escribe_en": [],
   "lee_de": [],
-  "mata_procesos": "no mata procesos de otros proyectos; la tarea WurthAlertas corre los scripts y termina sola",
+  "mata_procesos": "solo el proceso que escucha en el 8501 (su propio tablero), desde el supervisor y desde programar_dashboard.bat; nunca procesos de otros proyectos. La tarea WurthAlertas corre los scripts y termina sola",
   "archivos_con_claves": [
     ".env (si se usa — gitignoreado)",
     "data/auth.json (contraseñas hasheadas PBKDF2 de los usuarios del dashboard — gitignoreado)"

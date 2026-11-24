@@ -1,0 +1,133 @@
+"""Supervisor del tablero de producción (puerto 8501).
+
+Lo arranca la tarea WurthDashboard con pythonw.exe (sin ventana) y con la cuenta de las tareas del proyecto,
+nunca como SYSTEM. Levanta el tablero, comprueba cada 2 minutos que responda y, si no, lo reinicia.
+Solo detiene el proceso que escucha en el 8501, el puerto del tablero: nunca procesos de otros proyectos.
+Lo que hace queda en data/vigilante.log y la salida de Streamlit en data/streamlit.log.
+"""
+import ctypes
+import os
+import subprocess
+import sys
+import time
+import traceback
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent.parent
+PUERTO = 8501
+CADA_SEG = 120
+FALLAS_PARA_REINICIAR = 2
+LOG = RAIZ / "data" / "vigilante.log"
+SALIDA_STREAMLIT = RAIZ / "data" / "streamlit.log"
+SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def anotar(texto: str) -> None:
+    LOG.parent.mkdir(exist_ok=True)
+    with open(LOG, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {texto}\n")
+
+
+def responde() -> bool:
+    sin_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with sin_proxy.open(f"http://127.0.0.1:{PUERTO}/_stcore/health", timeout=20) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def pids_escuchando(salida_netstat: str, puerto: int) -> set[int]:
+    """PIDs que escuchan en el puerto según `netstat -ano`. No mira el estado, que viene traducido."""
+    pids = set()
+    for linea in salida_netstat.splitlines():
+        partes = linea.split()
+        if (len(partes) == 5 and partes[0].upper().startswith("TCP")
+                and partes[1].rsplit(":", 1)[-1] == str(puerto)
+                and partes[2] in ("0.0.0.0:0", "[::]:0")
+                and partes[4].isdigit() and int(partes[4]) > 4):
+            pids.add(int(partes[4]))
+    return pids
+
+
+def pids_en_el_puerto() -> set[int]:
+    salida = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, errors="replace",
+                            creationflags=SIN_VENTANA).stdout
+    return pids_escuchando(salida, PUERTO)
+
+
+def detener(pid: int) -> None:
+    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=SIN_VENTANA)
+
+
+def python_de_consola() -> str:
+    # pythonw.exe no tiene salida de consola: Streamlit corre con el python.exe de la misma instalación
+    exe = Path(sys.executable)
+    candidato = exe.with_name("python.exe")
+    return str(candidato if candidato.exists() else exe)
+
+
+def iniciar() -> None:
+    entorno = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    with open(SALIDA_STREAMLIT, "a", encoding="utf-8") as salida:
+        proceso = subprocess.Popen(
+            [python_de_consola(), "-m", "streamlit", "run", "dashboard.py",
+             "--server.port", str(PUERTO), "--server.headless", "true",
+             "--server.address", "0.0.0.0", "--browser.gatherUsageStats", "false"],
+            cwd=RAIZ, env=entorno, stdin=subprocess.DEVNULL, stdout=salida, stderr=subprocess.STDOUT,
+            creationflags=SIN_VENTANA)
+    anotar(f"tablero iniciado (proceso {proceso.pid})")
+
+
+def reiniciar(motivo: str) -> None:
+    anotar(motivo)
+    for pid in pids_en_el_puerto():
+        detener(pid)
+        anotar(f"detenido el proceso {pid}, que ocupaba el puerto {PUERTO}")
+    time.sleep(5)
+    iniciar()
+
+
+def es_el_unico_supervisor() -> bool:
+    # Si alguien lo corre a mano con la tarea andando, el segundo se va sin hacer nada.
+    if os.name != "nt":
+        return True
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CreateMutexW(None, False, "Local\\WurthAlertaSupervisor")
+    return ctypes.get_last_error() != 183  # ERROR_ALREADY_EXISTS
+
+
+def main() -> None:
+    if not es_el_unico_supervisor():
+        return
+    anotar("supervisor iniciado")
+    if not responde():
+        reiniciar("el tablero no respondía al iniciar el supervisor; lo levanto")
+    fallas = 0
+    while True:
+        time.sleep(CADA_SEG)
+        try:
+            if responde():
+                fallas = 0
+                continue
+            fallas += 1
+            anotar(f"el tablero no respondió ({fallas} control(es) seguido(s))")
+            if not pids_en_el_puerto():
+                reiniciar("el tablero no estaba corriendo; lo levanto")
+                fallas = 0
+            elif fallas >= FALLAS_PARA_REINICIAR:
+                reiniciar("el tablero sigue sin responder; lo reinicio")
+                fallas = 0
+        except Exception:
+            anotar("error en el supervisor:\n" + traceback.format_exc())
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        anotar("el supervisor se detuvo por un error:\n" + traceback.format_exc())
+        raise

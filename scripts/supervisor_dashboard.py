@@ -1,6 +1,6 @@
 """Supervisor del tablero de producción (puerto 8501).
 
-Lo arranca la tarea WurthDashboard con pythonw.exe (sin ventana) y con la cuenta de las tareas del proyecto,
+Lo arranca la tarea WurthAlertasTablero con pythonw.exe (sin ventana) y con la cuenta de las tareas del proyecto,
 nunca como SYSTEM. Levanta el tablero, comprueba cada 2 minutos que responda y, si no, lo reinicia.
 Solo detiene el proceso que escucha en el 8501, el puerto del tablero: nunca procesos de otros proyectos.
 Lo que hace queda en data/vigilante.log y la salida de Streamlit en data/streamlit.log.

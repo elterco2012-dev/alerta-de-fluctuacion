@@ -25,3 +25,4 @@ scripts/*.txt
 scripts/output_*.txt
 *.txt
 data/*.csv
+data/*.log

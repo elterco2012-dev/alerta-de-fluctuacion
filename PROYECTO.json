@@ -39,8 +39,8 @@
   "tareas": [
     {
       "nombre": "WurthDashboard",
-      "cuenta": "la misma que WurthAlertas, en la sesión interactiva y sin privilegios elevados; nunca SYSTEM",
-      "cuando": "al iniciar sesión (1 minuto de demora) y cada 15 minutos; si el supervisor ya está andando, el disparo se ignora",
+      "cuenta": "la misma que WurthAlertas, sin guardar su contraseña (S4U) y sin privilegios elevados; nunca SYSTEM. Corre aunque nadie tenga la sesión iniciada. Necesita el derecho «Iniciar sesión como proceso por lotes»",
+      "cuando": "al arrancar la VM (1 minuto de demora) y cada 15 minutos; si el supervisor ya está andando, el disparo se ignora",
       "que_hace": "corre scripts\\supervisor_dashboard.py con pythonw (sin ventana): levanta el tablero en el 8501, comprueba cada 2 minutos /_stcore/health y lo reinicia si no responde. Sin límite de tiempo de ejecución.",
       "log": "data\\vigilante.log (lo que hace el supervisor) y data\\streamlit.log (la salida del tablero)",
       "recrear": "scripts\\programar_dashboard.bat (como administrador). Reemplazó el 24/11 a WurthDashboard-Vigilante, que corría como SYSTEM un .bat de una carpeta que cualquier usuario del dominio podía modificar."

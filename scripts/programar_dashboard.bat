@@ -1,8 +1,10 @@
 @echo off
 :: programar_dashboard.bat — registra la tarea WurthDashboard, que deja el tablero de produccion (puerto 8501)
-:: siempre andando: corre scripts\supervisor_dashboard.py con pythonw (sin ventana) y con la misma cuenta que
-:: WurthAlertas. Nada corre como SYSTEM. Se dispara al iniciar sesion y cada 15 minutos: si el supervisor ya
-:: esta andando el disparo se ignora, y si se cayo lo vuelve a levantar.
+:: siempre andando: corre scripts\supervisor_dashboard.py con pythonw y con la misma cuenta que WurthAlertas,
+:: sin guardar su contrasena (S4U). Corre aunque nadie tenga la sesion iniciada en la VM, tambien despues de un
+:: reinicio. Nada corre como SYSTEM. Se dispara al arrancar la VM y cada 15 minutos: si el supervisor ya esta
+:: andando el disparo se ignora, y si se cayo lo vuelve a levantar.
+:: La cuenta necesita el derecho "Iniciar sesion como proceso por lotes" (los administradores lo tienen).
 :: Borra tambien WurthDashboard-Vigilante, la tarea vieja que corria como SYSTEM.
 ::
 :: Ejecutar como administrador (clic derecho > Ejecutar como administrador), despues de proteger_carpeta.bat.
@@ -44,10 +46,10 @@ powershell -NoProfile -Command ^
   "$cuenta = (Get-ScheduledTask -TaskName 'WurthAlertas').Principal.UserId;" ^
   "$q = [char]34;" ^
   "$a = New-ScheduledTaskAction -Execute ($q + $env:PYW + $q) -Argument ($q + $env:SUPERVISOR + $q) -WorkingDirectory $env:RAIZ;" ^
-  "$t1 = New-ScheduledTaskTrigger -AtLogOn -User $cuenta; $t1.Delay = 'PT1M';" ^
+  "$t1 = New-ScheduledTaskTrigger -AtStartup; $t1.Delay = 'PT1M';" ^
   "$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);" ^
   "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;" ^
-  "$p = New-ScheduledTaskPrincipal -UserId $cuenta -LogonType Interactive -RunLevel Limited;" ^
+  "$p = New-ScheduledTaskPrincipal -UserId $cuenta -LogonType S4U -RunLevel Limited;" ^
   "Register-ScheduledTask -TaskName 'WurthDashboard' -Action $a -Trigger $t1,$t2 -Settings $s -Principal $p -Force | Out-Null;" ^
   "Write-Host (' [OK] WurthDashboard, con la cuenta ' + $cuenta + ' (sin SYSTEM)')"
 if errorlevel 1 goto :error
@@ -58,6 +60,7 @@ ping -n 21 127.0.0.1 >NUL
 curl.exe --noproxy "*" -sf -o NUL --max-time 20 http://127.0.0.1:8501/_stcore/health
 if errorlevel 1 (
     echo  El tablero todavia no responde. Mira %RAIZ%\data\vigilante.log y %RAIZ%\data\streamlit.log
+    powershell -NoProfile -Command "$h = '{0:X8}' -f (Get-ScheduledTaskInfo -TaskName 'WurthDashboard').LastTaskResult; Write-Host (' Resultado de la tarea: 0x' + $h); if ($h -eq '80070569') { Write-Host ' A la cuenta le falta el derecho Iniciar sesion como proceso por lotes.' }"
 ) else (
     echo  [OK] El tablero responde en el puerto 8501.
 )

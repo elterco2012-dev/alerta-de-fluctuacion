@@ -553,7 +553,8 @@ sin expander (no esconder accionables detrás de un "Ver más").
 5. `programar_alertas.bat` → registrar tarea diaria en Windows (una sola vez)
 6. `scripts\proteger_carpeta.bat` y después `scripts\programar_dashboard.bat`, como administrador y una sola vez:
    cierran la carpeta (solo Administradores, SYSTEM y la cuenta de las tareas) y dejan el tablero siempre andando
-   con `scripts/supervisor_dashboard.py` (tarea WurthAlertasTablero). **Ninguna tarea de este proyecto corre como
+   con `scripts/supervisor_dashboard.py` (tarea WurthAlertasTablero, con la cuenta LOCAL SERVICE: la cuenta del
+   usuario sin sesión falla en `LogonUserS4U` en esta VM). **Ninguna tarea de este proyecto corre como
    SYSTEM:** por herencia de `C:\`, cualquier usuario del dominio podía modificar la carpeta, y una tarea de SYSTEM
    que corre un script de ahí le da SYSTEM a cualquiera que entre a la VM.
    **Las tareas de este proyecto se llaman `WurthAlertas*`.** Antes de crear una, mirar `inventario.md` de

@@ -12,7 +12,7 @@
     {
       "ruta": "C:\\alerta-de-fluctuacion",
       "uso": "producción — la que usa la tarea WurthAlertas y el tablero en 8501",
-      "permisos": "solo Administradores, SYSTEM y la cuenta de las tareas; lo deja así scripts\\proteger_carpeta.bat (por herencia de C:\\, los Usuarios autentificados podían modificarla y los Usuarios leerla; icacls del 24/11)"
+      "permisos": "Administradores, SYSTEM y la cuenta de WurthAlertas con control (lo deja así scripts\\proteger_carpeta.bat; por herencia de C:\\, los Usuarios autentificados podían modificarla y los Usuarios leerla, icacls del 24/11). LOCAL SERVICE, que corre el tablero, lee la carpeta y escribe solo en data\\ (lo da scripts\\programar_dashboard.bat)"
     },
     {
       "ruta": "C:\\alerta-test",
@@ -39,7 +39,7 @@
   "tareas": [
     {
       "nombre": "WurthAlertasTablero",
-      "cuenta": "la misma que WurthAlertas, sin guardar su contraseña (S4U) y sin privilegios elevados; nunca SYSTEM. Corre aunque nadie tenga la sesión iniciada. Necesita el derecho «Iniciar sesión como proceso por lotes»",
+      "cuenta": "LOCAL SERVICE (SERVICIO LOCAL): la cuenta de servicio de Windows sin privilegios ni contraseña; nunca SYSTEM. Corre aunque nadie tenga la sesión iniciada. Con la cuenta del usuario sin sesión (S4U) no arranca en esta VM: falla en LogonUserS4U con 0x8007052E (24/11)",
       "cuando": "al arrancar la VM (1 minuto de demora) y cada 15 minutos; si el supervisor ya está andando, el disparo se ignora",
       "que_hace": "corre scripts\\supervisor_dashboard.py con pythonw (sin ventana): levanta el tablero en el 8501, comprueba cada 2 minutos /_stcore/health y lo reinicia si no responde. Sin límite de tiempo de ejecución.",
       "log": "data\\vigilante.log (lo que hace el supervisor) y data\\streamlit.log (la salida del tablero)",

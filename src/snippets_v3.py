@@ -133,15 +133,13 @@ def nav_links(current=""):
     - Director: no ve Precisión, Aprendizaje, Costo de rotación.
     - Supervisor: igual que Director + no ve Inicio ni Historial (ambos lo
       redirigen a /Supervisor, mostrarlo es confuso).
-    - Sin usuario aún: muestra todo (flash breve antes del selector).
-    Propaga ?usuario= en todos los links para no romper la sesión al navegar."""
+    - Sin usuario aún: muestra todo (flash breve antes del login).
+    El rol sale de la sesión autenticada, no de la dirección. Cada enlace abre una
+    sesión nueva de Streamlit; el ingreso se recupera con la cookie firmada de src/auth.py."""
     import streamlit as _st
     from acceso import resolver as _resolver
 
-    _u = _st.query_params.get("usuario", "")
-    _uq = f"?usuario={_u}" if _u else ""
-
-    _rol = (_resolver(_u) or {}).get("rol")
+    _rol = (_resolver(_st.session_state.get("_auth_clave_acceso")) or {}).get("rol")
     if _rol in ("gerencia", "rrhh"):
         _ocultas: set = set()
     elif _rol == "director":
@@ -158,7 +156,7 @@ def nav_links(current=""):
         if href == current:
             out.append(f'<span style="color:#1a1a2e;font-weight:700;white-space:nowrap;">{label}</span>')
         else:
-            out.append(f'<a href="{href}{_uq}" target="_self" '
+            out.append(f'<a href="{href}" target="_self" '
                         f'style="color:#4A90D9;text-decoration:none;white-space:nowrap;">{label}</a>')
     return ('<div style="font-size:13px; display:flex; gap:16px; flex-wrap:wrap; '
             'justify-content:flex-end;">' + "".join(out) + '</div>')

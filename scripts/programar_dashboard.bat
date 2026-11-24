@@ -1,14 +1,18 @@
 @echo off
 :: programar_dashboard.bat — registra la tarea WurthAlertasTablero, que deja el tablero de produccion (puerto 8501)
-:: siempre andando: corre scripts\supervisor_dashboard.py con pythonw y con la misma cuenta que WurthAlertas,
-:: sin guardar su contrasena (S4U). Corre aunque nadie tenga la sesion iniciada en la VM, tambien despues de un
-:: reinicio. Nada corre como SYSTEM. Se dispara al arrancar la VM y cada 15 minutos: si el supervisor ya esta
-:: andando el disparo se ignora, y si se cayo lo vuelve a levantar.
-:: La cuenta necesita el derecho "Iniciar sesion como proceso por lotes" (los administradores lo tienen).
+:: siempre andando: corre scripts\supervisor_dashboard.py con pythonw y con la cuenta LOCAL SERVICE (SERVICIO LOCAL),
+:: la cuenta de servicio de Windows sin privilegios ni contrasena. Corre aunque nadie tenga la sesion iniciada, tambien
+:: despues de un reinicio. Se dispara al arrancar la VM y cada 15 minutos: si el supervisor ya esta andando el disparo
+:: se ignora, y si se cayo lo vuelve a levantar.
 ::
-:: Solo toca su propia tarea. Si ya existe una tarea WurthAlertasTablero que no corre este supervisor, no hace
-:: nada: en la VM hay tareas de otros proyectos (el 23/11 este script uso el nombre WurthDashboard, que es de
-:: taginfo, y la piso). Antes de crear una tarea nueva, mirar inventario.md de conocimiento-wurth.
+:: Por que esa cuenta: SYSTEM es demasiado poder para una pagina web que va a estar detras de un proxy, y la cuenta del
+:: usuario sin sesion (S4U) no funciona en esta VM: falla en LogonUserS4U con 0x8007052E (24/11).
+:: LOCAL SERVICE puede leer la carpeta del proyecto y escribir solo en data\ (este script le da esos permisos). Si algun
+:: dia hay secretos en .env, sacarle la lectura de ese archivo.
+::
+:: Solo toca su propia tarea. Si ya existe una tarea WurthAlertasTablero que no corre este supervisor, no hace nada:
+:: en la VM hay tareas de otros proyectos (el 23/11 este script uso el nombre WurthDashboard, que es de taginfo, y la
+:: piso). Antes de crear una tarea nueva, mirar inventario.md de conocimiento-wurth.
 ::
 :: Ejecutar como administrador (clic derecho > Ejecutar como administrador), despues de proteger_carpeta.bat.
 setlocal
@@ -40,21 +44,28 @@ echo  Registrando el tablero de Alertas de Rotacion (%TAREA%)
 echo ============================================================
 echo.
 
+:: LOCAL SERVICE (S-1-5-19): leer la carpeta del proyecto y escribir solo en data\
+icacls "%RAIZ%" /grant "*S-1-5-19:(OI)(CI)RX" /Q >NUL
+if errorlevel 1 goto :error
+icacls "%RAIZ%\data" /grant "*S-1-5-19:(OI)(CI)M" /Q >NUL
+if errorlevel 1 goto :error
+echo  [OK] Permisos para LOCAL SERVICE: lectura en la carpeta, escritura en data
+
 powershell -NoProfile -Command ^
   "$ErrorActionPreference = 'Stop';" ^
   "$existente = Get-ScheduledTask -TaskName $env:TAREA -ErrorAction SilentlyContinue;" ^
   "if ($existente -and -not (($existente.Actions.Arguments -join ' ') -like '*supervisor_dashboard.py*')) { throw ('Ya existe una tarea ' + $env:TAREA + ' que no es de este proyecto. No la toque.') };" ^
   "if ($existente) { Stop-ScheduledTask -TaskName $env:TAREA };" ^
   "Get-NetTCPConnection -LocalPort 8501 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue };" ^
-  "$cuenta = (Get-ScheduledTask -TaskName 'WurthAlertas').Principal.UserId;" ^
+  "$cuenta = (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-19')).Translate([System.Security.Principal.NTAccount]).Value;" ^
   "$q = [char]34;" ^
   "$a = New-ScheduledTaskAction -Execute ($q + $env:PYW + $q) -Argument ($q + $env:SUPERVISOR + $q) -WorkingDirectory $env:RAIZ;" ^
   "$t1 = New-ScheduledTaskTrigger -AtStartup; $t1.Delay = 'PT1M';" ^
   "$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650);" ^
   "$s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries;" ^
-  "$p = New-ScheduledTaskPrincipal -UserId $cuenta -LogonType S4U -RunLevel Limited;" ^
+  "$p = New-ScheduledTaskPrincipal -UserId $cuenta -LogonType ServiceAccount -RunLevel Limited;" ^
   "Register-ScheduledTask -TaskName $env:TAREA -Action $a -Trigger $t1,$t2 -Settings $s -Principal $p -Force | Out-Null;" ^
-  "Write-Host (' [OK] ' + $env:TAREA + ', con la cuenta ' + $cuenta + ' (sin SYSTEM)')"
+  "Write-Host (' [OK] ' + $env:TAREA + ', con la cuenta ' + $cuenta + ' (sin privilegios, sin SYSTEM)')"
 if errorlevel 1 goto :error
 
 schtasks /Run /TN "%TAREA%" >NUL
@@ -67,8 +78,8 @@ if not errorlevel 1 goto :responde
 set /a INTENTOS+=1
 if %INTENTOS% LSS 6 goto :esperar
 
-echo  El tablero todavia no responde. Mira %RAIZ%\data\vigilante.log y %RAIZ%\data\streamlit.log
-powershell -NoProfile -Command "$h = '{0:X8}' -f (Get-ScheduledTaskInfo -TaskName $env:TAREA).LastTaskResult; Write-Host (' Estado de la tarea: ' + (Get-ScheduledTask -TaskName $env:TAREA).State + ', resultado 0x' + $h); if ($h -eq '80070569') { Write-Host ' A la cuenta le falta el derecho Iniciar sesion como proceso por lotes.' }"
+echo  El tablero todavia no responde. Esto es lo que hay para mirar:
+powershell -NoProfile -Command "$h = '{0:X8}' -f (Get-ScheduledTaskInfo -TaskName $env:TAREA).LastTaskResult; Write-Host (' Estado de la tarea: ' + (Get-ScheduledTask -TaskName $env:TAREA).State + ', resultado 0x' + $h); Get-WinEvent -LogName 'Microsoft-Windows-TaskScheduler/Operational' -MaxEvents 200 -ErrorAction SilentlyContinue | Where-Object { $_.Message -like ('*' + $env:TAREA + '*') -and $_.Id -in 101,103,104,203 } | Select-Object -First 2 | ForEach-Object { Write-Host (' ' + $_.TimeCreated + '  ' + $_.Message) }; foreach ($f in 'vigilante.log','streamlit.log') { $r = Join-Path $env:RAIZ ('data\' + $f); if (Test-Path $r) { Write-Host (' --- ultimas lineas de ' + $f); Get-Content $r -Tail 8 } }"
 goto :final
 
 :responde
@@ -81,7 +92,7 @@ goto :fin
 
 :error
 echo.
-echo  ERROR. Lee el mensaje de arriba. Revisa tambien que exista la tarea WurthAlertas y que lo hayas corrido como administrador.
+echo  ERROR. Lee el mensaje de arriba y revisa que lo hayas corrido como administrador.
 
 :fin
 echo.

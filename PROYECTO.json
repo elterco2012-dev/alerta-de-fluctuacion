@@ -16,7 +16,7 @@
     },
     {
       "ruta": "C:\\alerta-test",
-      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502",
+      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502. Creada el 25/11 con git clone y cerrada con su scripts\\proteger_carpeta.bat; tiene su propio .env (el usuario de solo lectura de SUN)",
       "permisos": "los mismos que producción, también para la cuenta de Claude: la cierra el scripts\\proteger_carpeta.bat de esta carpeta (cada copia cierra la suya; con la cuenta de Claude, primero esta)"
     },
     {
@@ -77,7 +77,7 @@
       "script": "scripts\\sync_y_alertas.bat"
     }
   ],
-  "vigila_sus_tareas": "scripts\\tareas_propias.py mira qué ejecutan WurthAlertasTablero y WurthAlertas y con qué cuenta corren, y lo compara con lo de arriba (solo lee). La corrida diaria lo corre primero y, si una cambió o no está, le manda un mail a Sistemas (AVISOS_TO en .env) con el Outlook de la sesión. El supervisor del tablero lo revisa cada 30 minutos y lo anota en data\\vigilante.log (con LOCAL SERVICE todavía no tiene cómo mandar un mail: lo va a tener con Microsoft Graph). El último resultado queda en data\\tareas_propias.json",
+  "vigila_sus_tareas": "scripts\\tareas_propias.py mira qué ejecutan WurthAlertasTablero y WurthAlertas y con qué cuenta corren, y lo compara con lo de arriba (solo lee). La corrida diaria lo corre primero y, si una cambió o no está, le manda un mail a Sistemas (AVISOS_TO en .env) con el Outlook de la sesión. El supervisor del tablero también lo intenta cada 30 minutos, pero LOCAL SERVICE no ve las tareas del Programador (Get-ScheduledTask no le devuelve ni la suya, 25/11): anota «no se pudo leer» en data\\vigilante.log, así que en la práctica las vigila la corrida diaria. El último resultado queda en data\\tareas_propias.json",
   "bases": [
     {
       "base": "MSPA (Informix)",
@@ -88,7 +88,7 @@
     {
       "base": "SUN (SQL Server)",
       "como": "DSN SUNDB, Python 32-bit, pyodbc",
-      "usuario": "el usuario de solo lectura de SUN (db_datareader, creado el 25/11): SUN_USER y SUN_PASS en .env, con Trusted_Connection=No (solo_lectura.conectar_sun). Sin ellos entra como antes, con DSN=SUNDB y la autenticación de Windows: la cuenta del usuario que corre WurthAlertas, no la de cobranza",
+      "usuario": "desde el 25/11, el usuario de solo lectura de SUN (db_datareader): SUN_USER y SUN_PASS en .env, con Trusted_Connection=No (solo_lectura.conectar_sun); probado en la VM en testing y en producción. Sin ellos entraría como antes, con DSN=SUNDB y la autenticación de Windows de la cuenta que corre WurthAlertas. Nunca usó el administrador de SUN",
       "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py)",
       "cuando": "08:00"
     },
@@ -158,8 +158,8 @@
   ],
   "pendientes_con_otros": [
     {
-      "que": "Usuarios de solo lectura para SUN y MSPA (hasta entonces, el candado del código)",
-      "con": "Sistemas y quien administra MSPA"
+      "que": "Usuario de solo lectura para MSPA (hasta entonces, el candado del código). SUN ya lo tiene desde el 25/11",
+      "con": "quien administra MSPA"
     },
     {
       "que": "Las dos aplicaciones de Entra ID: mails por Microsoft Graph y el ingreso con la cuenta Microsoft",

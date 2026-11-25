@@ -11,17 +11,13 @@ Ejecutar:
 
 import sys
 import os
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
 import pyodbc
 
 # Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 from solo_lectura import conectar  # noqa: E402
+from entorno import cargar  # noqa: E402  (el .env está en claves\: ver src/entorno.py)
+cargar()
 
 DSN = os.getenv("INFORMIX_DSN", "MSPA")
 UID = os.getenv("INFORMIX_UID", "")

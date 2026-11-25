@@ -17,6 +17,7 @@ from unittest import mock
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
+import entorno  # noqa: E402
 import solo_lectura  # noqa: E402
 from solo_lectura import ConsultaNoPermitida, cadena_sun, envolver, exigir_select  # noqa: E402
 
@@ -99,6 +100,47 @@ class ExigirSelect(unittest.TestCase):
             with self.subTest(sql=sql):
                 with self.assertRaises(ConsultaNoPermitida):
                     exigir_select(sql)
+
+    def test_frena_lo_que_traba(self):
+        # Casos de la prueba del candado de la VM (conocimiento-wurth, coordinacion/vm/candado), 25/11:
+        # traban aunque el usuario sea de solo lectura.
+        for sql in (
+            "SELECT * FROM t LIMIT 1 LOCK IN SHARE MODE",             # Reactor
+            "SELECT * FROM t LIMIT 1 FOR UPDATE",
+            "SELECT TOP 1 * FROM t WITH (TABLOCKX)",                  # SUN
+            "SELECT TOP 1 * FROM t WITH (UPDLOCK, HOLDLOCK)",
+            "SELECT TOP (5) * FROM t (TABLOCKX)",
+            "SELECT * FROM t WITH (XLOCK)",
+            "SELECT * FROM t WITH (PAGLOCK)",
+            "SELECT * FROM t WITH (TABLOCK)",
+            "SELECT * FROM t WITH (SERIALIZABLE)",
+            "SELECT * FROM t WITH (REPEATABLEREAD)",
+            "SELECT 1 WAITFOR DELAY '00:00:05'",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaises(ConsultaNoPermitida):
+                    exigir_select(sql)
+
+    def test_frena_los_nombres_de_cuatro_partes(self):
+        # salen de SUN a otro servidor por un servidor vinculado
+        for sql in (
+            "SELECT TOP (5) * FROM servidor.base.dbo.t",
+            "SELECT TOP (5) * FROM [servidor].[base]..[t]",
+            "SELECT * FROM servidor . base . dbo . t",
+        ):
+            with self.subTest(sql=sql):
+                with self.assertRaises(ConsultaNoPermitida):
+                    exigir_select(sql)
+
+    def test_deja_pasar_lo_que_se_parece_y_no_traba(self):
+        for sql in (
+            "SELECT * FROM dbo.SALFLDGRAN WITH (NOLOCK)",
+            "SELECT clock, bloqueo FROM t",
+            "SELECT CASE WHEN a = 1 THEN 1 ELSE 0 END FROM base.dbo.t",
+            "SELECT 1.5, 2.25 FROM t",
+        ):
+            with self.subTest(sql=sql):
+                self.assertEqual(exigir_select(sql), sql)
 
     def test_los_comentarios_no_esconden_nada(self):
         for sql in (
@@ -216,14 +258,18 @@ class CadenaSun(unittest.TestCase):
         carpeta = tempfile.TemporaryDirectory()
         self.addCleanup(carpeta.cleanup)
         self.raiz = Path(carpeta.name)
-        for parche in (mock.patch.object(solo_lectura, "RAIZ", self.raiz), mock.patch.dict(os.environ)):
+        (self.raiz / "claves").mkdir()
+        self.ruta = self.raiz / "claves" / ".env"
+        for parche in (mock.patch.object(entorno, "RUTA", self.ruta),
+                       mock.patch.object(entorno, "_RUTA_VIEJA", self.raiz / ".env"),
+                       mock.patch.dict(os.environ)):
             parche.start()
             self.addCleanup(parche.stop)
         os.environ.pop("SUN_USER", None)
         os.environ.pop("SUN_PASS", None)
 
     def env(self, texto):
-        (self.raiz / ".env").write_text(texto, encoding="utf-8")
+        self.ruta.write_text(texto, encoding="utf-8")
 
     def test_sin_usuario_entra_como_antes(self):
         self.assertEqual(cadena_sun(), "DSN=SUNDB")
@@ -251,12 +297,31 @@ class CadenaSun(unittest.TestCase):
             self.assertEqual(cadena_sun(), "DSN=SUNDB")
 
     def test_el_env_del_bloc_de_notas_con_bom_y_crlf(self):
-        (self.raiz / ".env").write_bytes("\ufeffSUN_USER=lector\r\nSUN_PASS=abc\r\n".encode("utf-8"))
+        self.ruta.write_bytes("\ufeffSUN_USER=lector\r\nSUN_PASS=abc\r\n".encode("utf-8"))
         self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={abc};Trusted_Connection=No")
 
     def test_el_env_en_ansi(self):
-        (self.raiz / ".env").write_bytes("SUN_USER=lector\r\nSUN_PASS=añ1\r\n".encode("cp1252"))
+        self.ruta.write_bytes("SUN_USER=lector\r\nSUN_PASS=añ1\r\n".encode("cp1252"))
         self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={añ1};Trusted_Connection=No")
+
+
+class Conectar(unittest.TestCase):
+    """conectar() abre con autocommit, salvo que se pida otra cosa."""
+
+    def conectar_con_pyodbc_falso(self, **opciones):
+        falso = mock.Mock()
+        falso.connect.return_value = _ConexionFalsa()
+        with mock.patch.dict(sys.modules, {"pyodbc": falso}):
+            solo_lectura.conectar("DSN=X", **opciones)
+        return falso.connect.call_args
+
+    def test_con_autocommit(self):
+        llamada = self.conectar_con_pyodbc_falso(timeout=15)
+        self.assertEqual(llamada.kwargs, {"timeout": 15, "autocommit": True})
+
+    def test_respeta_lo_que_se_pide(self):
+        llamada = self.conectar_con_pyodbc_falso(autocommit=False)
+        self.assertEqual(llamada.kwargs, {"autocommit": False})
 
 
 class NadieSeConectaSinElCandado(unittest.TestCase):

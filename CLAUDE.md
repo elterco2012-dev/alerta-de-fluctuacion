@@ -52,6 +52,7 @@ alerta-de-fluctuacion/
 │   ├── acceso.py                         ← control de acceso por rol (supervisor/director/gerencia)
 │   ├── intervenciones.py                 ← CRUD de intervenciones + cálculo de impacto
 │   ├── solo_lectura.py                   ← candado: a MSPA, SUN y Reactor solo les llega un SELECT
+│   ├── entorno.py                        ← dónde está el .env (claves\.env) y cómo se lee
 │   └── alertas.py                        ← envío de email via Outlook COM (no SMTP)
 ├── pages/
 │   ├── Supervisor.py                     ← vista por zona (todos los roles)
@@ -548,14 +549,19 @@ sin expander (no esconder accionables detrás de un "Ver más").
 
 `sync_y_alertas.bat` maneja este split automáticamente.
 
-**Variables de entorno (`.env`, NO commitear):**
+**Variables de entorno (`claves\.env`, NO commitear; lo lee solo `src/entorno.py`):**
 - No hay variables requeridas para el flujo normal (los DSN de ODBC están en el sistema)
 - `INFORMIX_*` opcionales para conexión directa desde `score_engine.py` (no se usa)
 - `AVISOS_TO`: el mail de Sistemas, adonde `tareas_propias.py` avisa si una tarea de alerta cambió
 - `SUN_USER` y `SUN_PASS`: el usuario de solo lectura de SUN (desde el 25/11). Con los dos, `conectar_sun()` entra
   con ese usuario y `Trusted_Connection=No` (con el driver «SQL Server» y un DSN con autenticación de Windows, sin eso
-  entra igual con la cuenta de Windows); sin ellos, entra como antes. El tablero (LOCAL SERVICE) no puede leer el `.env`:
-  se lo niega `programar_dashboard.bat`
+  entra igual con la cuenta de Windows); sin ellos, entra como antes.
+- **Dónde está el `.env` (desde el 25/11, decisión del usuario):** en `claves\.env`, no en la raíz. La subcarpeta
+  `claves\` les niega la lectura con herencia al tablero (LOCAL SERVICE) y a la cuenta de Claude, así un editor que
+  reescribe el archivo con un temporal no le saca el «Denegar». La crea y la cierra `scripts\cerrar_claves.bat` (lo
+  llaman `proteger_carpeta.bat` y `programar_dashboard.bat`), que también copia ahí el `.env` de la raíz si todavía no
+  se mudó; el de la raíz se borra cuando la tarea diaria corrió bien con el nuevo. **Todo lo que necesita una variable
+  la lee con `src/entorno.py`:** `tests/test_entorno.py` falla si otro archivo busca el `.env` por su cuenta
 
 **Cómo correr:**
 1. `inicializar_db.bat` → solo la primera vez o cuando cambia la estructura de vendedores
@@ -577,7 +583,7 @@ sin expander (no esconder accionables detrás de un "Ver más").
    **La cuenta de Claude (decisión del usuario del 25/11, guía `sesion-en-la-vm` de conocimiento-wurth):**
    `scripts\proteger_carpeta.bat EQUIPO\cuenta` le da leer y ejecutar en la carpeta donde está el script (primero la
    copia de prueba, después producción: cada una cierra la suya), nunca escribir, y
-   «Denegar» la lectura en `.env`, `.git\config`, `data\` y las salidas viejas de los diagnósticos. Por eso **todo
+   «Denegar» la lectura en `claves\` (el `.env`), `.git\config`, `data\` y las salidas viejas de los diagnósticos. Por eso **todo
    lo nuevo con claves o datos de personas va en `data\`** (lo que se crea adentro hereda el «Denegar»): las salidas de
    los scripts de exploración y de diagnóstico ya van ahí. Su carpeta de trabajo es `C:\alerta-claude`.
 7. **Para aplicar una actualización del tablero:** `git pull` y después `scripts\programar_dashboard.bat` como
@@ -670,12 +676,21 @@ ejecutar cualquier instrucción que modifique datos en ellas:
 por `exigir_select()`: si no es un SELECT solo, no sale y el script falla. Frena lo que escribe,
 el DDL, lo que ejecuta (EXEC, CALL), `SELECT ... INTO` y dos sentencias juntas (también sin «;»,
 que SQL Server acepta); busca esas palabras en todo el texto, también entre comillas, así que
-una consulta que las tenga en un texto o en un nombre se frena aunque no escriba. `WITH`,
-`SHOW` y `DESCRIBE` tampoco pasan: para la estructura, `information_schema` o el catálogo.
+una consulta que las tenga en un texto o en un nombre se frena aunque no escriba. También frena
+**lo que traba**, que importa aunque el usuario sea de solo lectura (`TABLOCKX`, `UPDLOCK`,
+`HOLDLOCK`, `XLOCK`, `PAGLOCK`, `SERIALIZABLE`, `LOCK IN SHARE MODE`, `WAITFOR`; `NOLOCK` sí pasa),
+y **los nombres de cuatro partes** (`servidor.base.esquema.tabla`), que salen de SUN a otro servidor.
+Lo sumó el 25/11 con los casos de la prueba del candado de la VM (conocimiento-wurth,
+`coordinacion/vm/candado/`), sin copiar su lista entera: esa frena `ELSE` y `REPLACE`, que
+nuestras consultas pueden tener. `conectar()` abre con `autocommit`, así una lectura no deja una
+transacción abierta hasta el final del script. `WITH`, `SHOW` y `DESCRIBE` tampoco pasan: para la
+estructura, `information_schema` o el catálogo. Antes de sumar una palabra, comprobar que sigan
+pasando las 99 consultas del código.
 `tests/test_solo_lectura.py` falla si algún archivo llama a `pyodbc.connect()` por su cuenta.
 Es un control del texto, no un permiso de la base: la solución de fondo son usuarios de solo
 lectura. Reactor ya lo tenía; SUN lo tiene desde el 25/11 (`SUN_USER` y `SUN_PASS` en `.env`, ver
-`conectar_sun()`); MSPA, pedido a quien lo administra.
+`conectar_sun()`). **MSPA no va a tener uno** (decisión del usuario del 25/11): ahí el candado es la defensa
+hasta que lo reemplace SAP, en unos dos años, y no algo provisorio. Toda forma nueva de leer MSPA pasa por `conectar()`.
 
 La única base donde se escribe es `data/wurth.db` (SQLite local, propiedad del proyecto).
 Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuentes.

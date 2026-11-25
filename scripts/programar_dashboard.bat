@@ -8,8 +8,8 @@
 :: Por que esa cuenta: SYSTEM es demasiado poder para una pagina web que va a estar detras de un proxy, y la cuenta del
 :: usuario sin sesion (S4U) no funciona en esta VM: falla en LogonUserS4U con 0x8007052E (24/11).
 :: LOCAL SERVICE puede leer la carpeta del proyecto y escribir solo en data\ (este script le da esos permisos), pero no
-:: el .env: tiene claves que el tablero no necesita (la del usuario de SUN, la del correo). Si el .env se crea despues,
-:: volver a correrlo.
+:: el .env: tiene claves que el tablero no necesita (la del usuario de SUN, la del correo). El .env vive en claves\, que
+:: se lo niega con herencia (cerrar_claves.bat, que tambien lo muda ahi si todavia esta en la raiz).
 ::
 :: Solo cierra sus propios procesos: los que tienen la carpeta del proyecto en la linea de comando (dashboard.py o el
 :: supervisor), nunca por nombre ni por puerto (regla de la VM).
@@ -53,11 +53,8 @@ if errorlevel 1 goto :error
 icacls "%RAIZ%\data" /grant "*S-1-5-19:(OI)(CI)M" /Q >NUL
 if errorlevel 1 goto :error
 echo  [OK] Permisos para LOCAL SERVICE: lectura en la carpeta, escritura en data
-if exist "%RAIZ%\.env" (
-    icacls "%RAIZ%\.env" /deny "*S-1-5-19:R" /Q >NUL
-    if errorlevel 1 goto :error
-    echo  [OK] LOCAL SERVICE no puede leer el .env
-)
+call "%RAIZ%\scripts\cerrar_claves.bat" "%RAIZ%"
+if errorlevel 1 goto :error
 
 powershell -NoProfile -Command ^
   "$ErrorActionPreference = 'Stop';" ^

@@ -11,13 +11,6 @@ Ejecutar desde la carpeta del proyecto:
 import sys
 import os
 
-# Cargar credenciales desde .env si existe
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # sin python-dotenv, usar variables de entorno directas
-
 try:
     import pyodbc
 except ImportError:
@@ -28,6 +21,8 @@ except ImportError:
 # Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 from solo_lectura import conectar  # noqa: E402
+from entorno import cargar  # noqa: E402  (el .env está en claves\: ver src/entorno.py)
+cargar()
 
 # ── Configuración de conexión ──────────────────────────────────────────────────
 # Usando el DSN ya configurado en Windows (el más simple)

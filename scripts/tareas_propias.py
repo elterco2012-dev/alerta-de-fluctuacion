@@ -156,17 +156,10 @@ def guardar(resultados: list[dict]) -> None:
 
 
 def _cargar_env() -> None:
-    env = RAIZ / ".env"
-    if not env.exists():
-        return
-    try:
-        texto = env.read_bytes().decode("utf-8-sig")
-    except (OSError, UnicodeDecodeError):
-        return
-    for linea in texto.splitlines():
-        if "=" in linea and not linea.strip().startswith("#"):
-            clave, valor = linea.strip().split("=", 1)
-            os.environ.setdefault(clave.strip(), valor.strip())
+    # El .env está en claves\ (ver src/entorno.py)
+    sys.path.insert(0, str(RAIZ / "src"))
+    from entorno import cargar
+    cargar()
 
 
 def avisar(malas: list[dict]) -> None:

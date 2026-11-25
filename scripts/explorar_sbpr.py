@@ -8,6 +8,7 @@ Ejecutar:
     python scripts/explorar_sbpr.py > output_sbpr.txt
 """
 
+import sys
 import os
 try:
     from dotenv import load_dotenv
@@ -17,12 +18,16 @@ except ImportError:
 
 import pyodbc
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN = os.getenv("INFORMIX_DSN", "MSPA")
 UID = os.getenv("INFORMIX_UID", "")
 PWD = os.getenv("INFORMIX_PWD", "")
 
 print("Conectando...", end=" ")
-con = pyodbc.connect(f"DSN={DSN};UID={UID};PWD={PWD};", timeout=10)
+con = conectar(f"DSN={DSN};UID={UID};PWD={PWD};", timeout=10)
 print("OK\n")
 cur = con.cursor()
 

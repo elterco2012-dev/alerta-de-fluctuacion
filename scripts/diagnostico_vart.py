@@ -21,6 +21,10 @@ try:
 except ImportError:
     sys.exit("ERROR: pyodbc no instalado.")
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN_INFORMIX = "MSPA"
 FIRMA        = 1
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
@@ -42,7 +46,7 @@ print(f"Activos en SQLite: {len(ids_activos)}")
 # ── 2. Leer vart y vgrp desde Informix ────────────────────────────────────────
 print("Conectando a Informix (MSPA)...", end=" ", flush=True)
 try:
-    con_inf = pyodbc.connect(f"DSN={DSN_INFORMIX}", autocommit=True)
+    con_inf = conectar(f"DSN={DSN_INFORMIX}", autocommit=True)
 except Exception as e:
     sys.exit(f"ERROR conectando a Informix: {e}")
 print("OK")

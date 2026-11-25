@@ -25,6 +25,10 @@ except ImportError:
     print("Ejecutá: pip install pyodbc")
     sys.exit(1)
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 # ── Configuración de conexión ──────────────────────────────────────────────────
 # Usando el DSN ya configurado en Windows (el más simple)
 DSN      = os.getenv("INFORMIX_DSN", "MSPA")
@@ -44,7 +48,7 @@ print()
 
 try:
     print("Conectando...", end=" ")
-    con = pyodbc.connect(CONN_STR, timeout=10)
+    con = conectar(CONN_STR, timeout=10)
     print("✓ CONEXIÓN EXITOSA")
 except Exception as e:
     print(f"✗ FALLÓ")

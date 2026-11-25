@@ -15,7 +15,12 @@ Ejecutar con Python 32 bits:
 Genera: reactor_nuevas_estructura.txt
 """
 
+import os
 import pyodbc, sys, datetime
+
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
 
 DSN    = "Wurth Reactor Produccion"
 OUTPUT = "reactor_nuevas_estructura.txt"
@@ -31,7 +36,7 @@ TABLAS_OBJETIVO = [
 
 print(f"Conectando a '{DSN}'...", end=" ", flush=True)
 try:
-    con = pyodbc.connect(f"DSN={DSN}", timeout=10)
+    con = conectar(f"DSN={DSN}", timeout=10)
     print("OK")
 except Exception as e:
     print(f"\nERROR: {e}")

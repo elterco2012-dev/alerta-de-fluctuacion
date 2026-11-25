@@ -136,6 +136,10 @@ except Exception as e:
     IDS_TELEVENTAS = []
     IDS_VIAJANTES  = []
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 # Helpers para armar cláusula IN en MySQL
 def _in_clause(ids):
     """Devuelve 'IN (1,2,3)' o 'IN (0)' si la lista está vacía (sin resultados)."""
@@ -148,7 +152,7 @@ IN_AMBOS      = _in_clause(list(set(IDS_TELEVENTAS + IDS_VIAJANTES)))
 # ── Conectar a Reactor MySQL ───────────────────────────────────────────────────
 print("\nConectando a Reactor CRM (MySQL)...", end=" ", flush=True)
 try:
-    rcn  = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
+    rcn  = conectar(f"DSN={DSN_REACTOR}", timeout=15)
     rcur = rcn.cursor()
     print("OK")
 except Exception as e:

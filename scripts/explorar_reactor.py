@@ -13,8 +13,13 @@ Si falla con error de arquitectura, usar Python 32 bits:
 Genera: reactor_estructura.txt en la carpeta actual.
 """
 
+import os
 import pyodbc
 import sys
+
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
 
 DSN = "Wurth Reactor Produccion"
 OUTPUT = "reactor_estructura.txt"
@@ -28,7 +33,7 @@ KEYWORDS = [
 
 print(f"Conectando a '{DSN}'...", end=" ", flush=True)
 try:
-    con = pyodbc.connect(f"DSN={DSN}", timeout=10)
+    con = conectar(f"DSN={DSN}", timeout=10)
     print("OK")
 except Exception as e:
     print(f"\nERROR: {e}")
@@ -39,7 +44,11 @@ cur = con.cursor()
 lines = []
 
 # ── Todas las tablas ──────────────────────────────────────────────────────────
-cur.execute("SHOW TABLES")
+# SHOW TABLES y DESCRIBE no pasan el candado (solo SELECT): se leen de information_schema.
+cur.execute(
+    "SELECT table_name FROM information_schema.tables "
+    "WHERE table_schema = DATABASE() ORDER BY table_name"
+)
 tablas = [r[0] for r in cur.fetchall()]
 lines.append(f"=== {len(tablas)} TABLAS EN wurth_ar_reactor_prod ===\n")
 print(f"\n{len(tablas)} tablas encontradas.")
@@ -60,7 +69,11 @@ lines.append("\n\n=== DETALLE DE TABLAS RELEVANTES ===\n")
 for tabla in relevantes:
     lines.append(f"\n--- {tabla} ---")
     try:
-        cur.execute(f"DESCRIBE `{tabla}`")
+        cur.execute(
+            "SELECT column_name, column_type FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position",
+            tabla,
+        )
         cols = cur.fetchall()
         col_names = [c[0] for c in cols]
         for c in cols:
@@ -79,7 +92,11 @@ for tabla in tablas:
         continue  # ya está arriba
     lines.append(f"\n--- {tabla} ---")
     try:
-        cur.execute(f"DESCRIBE `{tabla}`")
+        cur.execute(
+            "SELECT column_name, column_type FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position",
+            tabla,
+        )
         cols = cur.fetchall()
         for c in cols:
             lines.append(f"  {c[0]:<40} {c[1]}")

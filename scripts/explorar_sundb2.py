@@ -8,11 +8,16 @@ Ejecutar con:
 Genera: sundb_estructura.txt en la carpeta actual.
 """
 
+import os
 import pyodbc, sys
+
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
 
 OUTPUT = "sundb_estructura.txt"
 
-con = pyodbc.connect("DSN=SUNDB", timeout=10)
+con = conectar("DSN=SUNDB", timeout=10)
 cur = con.cursor()
 
 lines = []

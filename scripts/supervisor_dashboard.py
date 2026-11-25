@@ -5,6 +5,7 @@ privilegios y nunca como SYSTEM. Levanta el tablero, comprueba cada 2 minutos qu
 Solo cierra sus propios procesos: los que tienen C:\\alerta-de-fluctuacion\\dashboard.py en la línea de comando
 (regla de la VM: nunca por nombre ni por puerto). Si el puerto lo ocupa otro proceso, lo anota y no lo toca.
 Lo que hace queda en data/vigilante.log y la salida de Streamlit en data/streamlit.log.
+Cada 30 minutos revisa también que las tareas de alerta sigan siendo suyas (tareas_propias.py) y anota lo que cambie.
 """
 import ctypes
 import os
@@ -21,6 +22,7 @@ TABLERO = RAIZ / "dashboard.py"
 PUERTO = 8501
 CADA_SEG = 120
 FALLAS_PARA_REINICIAR = 2
+CADA_SEG_TAREAS = 30 * 60
 LOG = RAIZ / "data" / "vigilante.log"
 SALIDA_STREAMLIT = RAIZ / "data" / "streamlit.log"
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -114,6 +116,20 @@ def reiniciar(motivo: str) -> None:
     iniciar()
 
 
+def revisar_tareas(anterior: str) -> str:
+    """Revisa que las tareas de alerta sigan siendo suyas; anota solo cuando el resultado cambia."""
+    try:
+        import tareas_propias
+        resultados = tareas_propias.revisar(propia="WurthAlertasTablero")
+        tareas_propias.guardar(resultados)
+        actual = tareas_propias.resumen(resultados)
+    except Exception as e:
+        actual = f"no pude revisar las tareas ({e})"
+    if actual != anterior:
+        anotar("tareas de alerta: " + actual)
+    return actual
+
+
 def es_el_unico_supervisor() -> bool:
     # Si alguien lo corre a mano con la tarea andando, el segundo se va sin hacer nada.
     if os.name != "nt":
@@ -131,9 +147,14 @@ def main() -> None:
     if not responde():
         reiniciar("el tablero no respondía al iniciar el supervisor; lo levanto")
     fallas = 0
+    tareas = revisar_tareas("")
+    proxima_revision = time.monotonic() + CADA_SEG_TAREAS
     while True:
         time.sleep(CADA_SEG)
         try:
+            if time.monotonic() >= proxima_revision:
+                proxima_revision = time.monotonic() + CADA_SEG_TAREAS
+                tareas = revisar_tareas(tareas)
             if responde():
                 fallas = 0
                 continue

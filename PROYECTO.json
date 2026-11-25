@@ -1,13 +1,13 @@
 {
   "proyecto": "alerta-de-fluctuacion",
   "que_es": "Detección temprana de riesgo de fuga de vendedores. Score 1-10 por vendedor, alertas por mail, dashboard Streamlit para gerencia y supervisores.",
-  "actualizado": "2026-11-21",
+  "actualizado": "2026-11-25",
   "repositorio": "elterco2012-dev/alerta-de-fluctuacion",
   "ramas": {
-    "produccion": "claude/sales-turnover-alerts-l8pO6 (sin cambios en GitHub desde 12/06; lo nuevo está en PR #82, todavía no mergeado)",
-    "en_revision": "claude/busy-johnson-r5fhqc (PR #82: seguridad + features + mantenimiento, pendiente de merge)"
+    "produccion": "main: es lo que corre en la VM (se aplica con git pull y, para el tablero, scripts\\programar_dashboard.bat)",
+    "trabajo": "claude/busy-johnson-r5fhqc: cada cambio entra a main con un PR"
   },
-  "vm": "DASHBOARD-DANIE. Corre con el Python del perfil del usuario (no SYSTEM); lo exige Outlook COM para el mail.",
+  "vm": "DASHBOARD-DANIE. El tablero corre con LOCAL SERVICE y el Python de 64 bits de Program Files; la tarea diaria, en la sesión del usuario, con el Python de 32 bits de su perfil (ODBC) y el de 64 bits (Outlook COM para el mail). Nada corre como SYSTEM.",
   "carpetas": [
     {
       "ruta": "C:\\alerta-de-fluctuacion",
@@ -36,6 +36,18 @@
       "publicado": "no: solo para el equipo de desarrollo"
     }
   ],
+  "reglas_firewall": [
+    {
+      "nombre": "Alerta - tablero (8501)",
+      "que": "entrada TCP 8501 en el firewall de Windows de la VM, solo desde las redes de las oficinas",
+      "estado": "por pedir a Sistemas (el ticket está listo desde el 24/11); todavía no existe"
+    },
+    {
+      "nombre": "Alerta - tablero de prueba (8502)",
+      "que": "entrada TCP 8502 en el firewall de Windows de la VM, solo desde las redes de las oficinas",
+      "estado": "por pedir a Sistemas (el ticket está listo desde el 24/11); todavía no existe"
+    }
+  ],
   "tareas": [
     {
       "nombre": "WurthAlertasTablero",
@@ -52,29 +64,31 @@
       "ejecuta": "C:\\alerta-de-fluctuacion\\scripts\\sync_y_alertas.bat",
       "cuenta": "la del usuario interactivo (schtasks /IT — necesario para Outlook COM y los DSN del usuario)",
       "cuando": "todos los días a las 08:00",
-      "que_hace": "sync Informix + Reactor + SUN → snapshot de scores → alertas por mail",
+      "que_hace": "revisa que las tareas de alerta sigan siendo suyas (tareas_propias.py) → sync Informix + Reactor + SUN → snapshot de scores → alertas por mail",
       "dependencia": "requiere que la sesión del usuario esté abierta a las 08:00: un reinicio antes de esa hora deja ese día sin alertas. Informar a Sistemas.",
-      "recrear": "schtasks /Create está bloqueado por la protección anti-persistencia de la VM; usar Register-ScheduledTask de PowerShell para recrearla si se borra",
+      "recrear": "scripts\\programar_alertas.bat, con la cuenta del usuario que la va a tener: usa Register-ScheduledTask (schtasks /Create está bloqueado por la protección anti-persistencia de la VM) y se niega a tocar una tarea con ese nombre que no ejecute el sync_y_alertas.bat de esta carpeta",
       "script": "scripts\\sync_y_alertas.bat"
     }
   ],
+  "vigila_sus_tareas": "scripts\\tareas_propias.py mira qué ejecutan WurthAlertasTablero y WurthAlertas y con qué cuenta corren, y lo compara con lo de arriba (solo lee). La corrida diaria lo corre primero y, si una cambió o no está, le manda un mail a Sistemas (AVISOS_TO en .env) con el Outlook de la sesión. El supervisor del tablero lo revisa cada 30 minutos y lo anota en data\\vigilante.log (con LOCAL SERVICE todavía no tiene cómo mandar un mail: lo va a tener con Microsoft Graph). El último resultado queda en data\\tareas_propias.json",
   "bases": [
     {
       "base": "MSPA (Informix)",
       "como": "DSN MSPA, Python 32-bit, pyodbc",
-      "acceso": "solo lectura (SELECT)",
+      "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py): toda conexión se abre con solo_lectura.conectar() y lo que no es un SELECT solo no sale",
       "cuando": "08:00 (tarea WurthAlertas)"
     },
     {
       "base": "SUN (SQL Server)",
       "como": "DSN SUNDB, Python 32-bit, pyodbc",
-      "acceso": "solo lectura (SELECT)",
+      "usuario": "el código conecta con DSN=SUNDB, sin usuario ni clave: con el driver de SQL Server eso es la autenticación de Windows, o sea la cuenta del usuario que corre WurthAlertas, no la de cobranza. A confirmar en la VM (Orígenes de datos ODBC de 32 bits, DSN SUNDB)",
+      "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py)",
       "cuando": "08:00"
     },
     {
       "base": "Reactor (MySQL)",
       "como": "DSN Wurth Reactor Produccion, Python 32-bit, pyodbc",
-      "acceso": "solo lectura (SELECT)",
+      "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py)",
       "cuando": "08:00"
     },
     {
@@ -89,7 +103,9 @@
       "que": "Correo",
       "como": "Outlook COM (win32com) sobre Outlook clásico — no SMTP (el tenant tiene SMTP AUTH deshabilitado)",
       "cuando": "al final de WurthAlertas si hay vendedores críticos nuevos o sin realerta en 7 días",
-      "cuenta": "la sesión de Outlook del usuario — sin credencial separada"
+      "cuenta": "la sesión de Outlook del usuario — sin credencial separada",
+      "avisos": "los avisos de las tareas (tareas_propias.py) van a Sistemas: AVISOS_TO en .env",
+      "pendiente": "pasar a Microsoft Graph con una aplicación limitada a un buzón compartido, y el ingreso con la cuenta Microsoft: pedido preparado el 24/11 para IT del grupo (ticket en el ITSM, en español y en inglés)"
     }
   ],
   "escribe_en": [],
@@ -101,6 +117,11 @@
   ],
   "archivos_entre_proyectos": [],
   "decisiones": [
+    {
+      "fecha": "2026-11-25",
+      "que": "Candado en el código para MSPA, SUN y Reactor: toda conexión se abre con src/solo_lectura.py, que solo deja salir un SELECT solo (frena lo que escribe, el DDL, lo que ejecuta, SELECT ... INTO y dos sentencias juntas, también sin «;»). Una prueba falla si algún archivo llama a pyodbc.connect() por su cuenta. Y un vigilante de las tareas propias (tareas_propias.py), por la regla 4 de la VM",
+      "afecta_a": ["todos"]
+    },
     {
       "fecha": "2026-11-24",
       "que": "Las tareas programadas de alerta se llaman WurthAlertas*. El tablero se había registrado como WurthDashboard, el nombre de la tarea de producción de taginfo, y la pisó (23/11 y 24/11); ahora es WurthAlertasTablero y programar_dashboard.bat se niega a tocar una tarea con ese nombre que no sea suya.",
@@ -123,6 +144,14 @@
     }
   ],
   "pendientes_con_otros": [
+    {
+      "que": "Usuarios de solo lectura para SUN y MSPA (hasta entonces, el candado del código)",
+      "con": "Sistemas y quien administra MSPA"
+    },
+    {
+      "que": "Las dos aplicaciones de Entra ID: mails por Microsoft Graph y el ingreso con la cuenta Microsoft",
+      "con": "IT del grupo Würth"
+    },
     {
       "que": "Configurar el tablero para escuchar solo en 127.0.0.1 (el puerto 8501 ya está fijado y queda fuera del rango 8763-8769)",
       "con": "cobranza"

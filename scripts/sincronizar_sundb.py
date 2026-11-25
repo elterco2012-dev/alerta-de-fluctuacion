@@ -34,6 +34,10 @@ except ImportError:
     print("ERROR: pyodbc no instalado.")
     sys.exit(1)
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 # ── Configuración ─────────────────────────────────────────────────────────────
 DSN_SUN  = "SUNDB"
 DB_PATH  = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
@@ -76,7 +80,7 @@ print(f"\n  Período desde: {anio_inicio}/{mes_inicio:02d} (PERIOD >= {periodo_i
 # ── Conectar a SUNDB ──────────────────────────────────────────────────────────
 print("\nConectando a SUNDB...", end=" ", flush=True)
 try:
-    sun = pyodbc.connect(f"DSN={DSN_SUN}", timeout=15)
+    sun = conectar(f"DSN={DSN_SUN}", timeout=15)
     print("OK")
 except Exception as e:
     print(f"FALLÓ\nError: {e}")

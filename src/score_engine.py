@@ -62,7 +62,8 @@ def get_connection():
 
     server = os.getenv("INFORMIX_SERVER", "").strip()
     if server:
-        import pyodbc
+        # Con el candado: a Informix solo le llega un SELECT (ver solo_lectura.py).
+        from solo_lectura import conectar
         conn_str = (
             f"DRIVER={{IBM INFORMIX ODBC DRIVER}};"
             f"SERVER={server};"
@@ -71,7 +72,7 @@ def get_connection():
             f"UID={os.getenv('INFORMIX_UID', '')};"
             f"PWD={os.getenv('INFORMIX_PWD', '')};"
         )
-        return pyodbc.connect(conn_str)
+        return conectar(conn_str)
 
     return sqlite3.connect(DB_PATH)
 

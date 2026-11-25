@@ -670,8 +670,16 @@ ejecutar cualquier instrucción que modifique datos en ellas:
 por `exigir_select()`: si no es un SELECT solo, no sale y el script falla. Frena lo que escribe,
 el DDL, lo que ejecuta (EXEC, CALL), `SELECT ... INTO` y dos sentencias juntas (también sin «;»,
 que SQL Server acepta); busca esas palabras en todo el texto, también entre comillas, así que
-una consulta que las tenga en un texto o en un nombre se frena aunque no escriba. `WITH`,
-`SHOW` y `DESCRIBE` tampoco pasan: para la estructura, `information_schema` o el catálogo.
+una consulta que las tenga en un texto o en un nombre se frena aunque no escriba. También frena
+**lo que traba**, que importa aunque el usuario sea de solo lectura (`TABLOCKX`, `UPDLOCK`,
+`HOLDLOCK`, `XLOCK`, `PAGLOCK`, `SERIALIZABLE`, `LOCK IN SHARE MODE`, `WAITFOR`; `NOLOCK` sí pasa),
+y **los nombres de cuatro partes** (`servidor.base.esquema.tabla`), que salen de SUN a otro servidor.
+Lo sumó el 25/11 con los casos de la prueba del candado de la VM (conocimiento-wurth,
+`coordinacion/vm/candado/`), sin copiar su lista entera: esa frena `ELSE` y `REPLACE`, que
+nuestras consultas pueden tener. `conectar()` abre con `autocommit`, así una lectura no deja una
+transacción abierta hasta el final del script. `WITH`, `SHOW` y `DESCRIBE` tampoco pasan: para la
+estructura, `information_schema` o el catálogo. Antes de sumar una palabra, comprobar que sigan
+pasando las 99 consultas del código.
 `tests/test_solo_lectura.py` falla si algún archivo llama a `pyodbc.connect()` por su cuenta.
 Es un control del texto, no un permiso de la base: la solución de fondo son usuarios de solo
 lectura. Reactor ya lo tenía; SUN lo tiene desde el 25/11 (`SUN_USER` y `SUN_PASS` en `.env`, ver

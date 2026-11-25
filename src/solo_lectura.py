@@ -13,8 +13,13 @@ No se usa para data/wurth.db (SQLite): esa base es nuestra y se escribe.
 Qué frena `exigir_select()`:
 - lo que no empieza con SELECT, después de espacios y comentarios;
 - más de una sentencia (un «;» que no sea el último carácter);
-- una palabra que escribe o ejecuta (INSERT, UPDATE, DELETE, DROP, CREATE, EXEC,
-  INTO...) en cualquier parte del texto, también dentro de comillas y comentarios.
+- una palabra que escribe, ejecuta o traba (INSERT, UPDATE, DELETE, DROP, CREATE,
+  EXEC, INTO, TABLOCKX, HOLDLOCK, LOCK, WAITFOR...) en cualquier parte del texto,
+  también dentro de comillas y comentarios. Las que traban importan aunque el
+  usuario sea de solo lectura: un SELECT con TABLOCKX o UPDLOCK en SUN, o con
+  LOCK IN SHARE MODE en Reactor, frena a los que escriben mientras dura;
+- un nombre de cuatro partes (servidor.base.esquema.tabla): sale de SUN a otro
+  servidor por un servidor vinculado.
   SQL Server acepta otra sentencia después de un SELECT sin «;», y SELECT ... INTO
   crea una tabla (en MySQL, escribe un archivo en el servidor). Si una de esas
   palabras aparece en un texto o en un nombre, la consulta se frena aunque no
@@ -49,9 +54,14 @@ _SELECT = re.compile(r"SELECT\b", re.I)
 _PROHIBIDAS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|DROP|ALTER|CREATE|RENAME|GRANT|REVOKE|"
     r"DENY|EXEC|EXECUTE|CALL|INTO|BULK|BACKUP|RESTORE|DBCC|KILL|SHUTDOWN|"
-    r"RECONFIGURE|OPENQUERY|OPENROWSET|OPENDATASOURCE)\b",
+    r"RECONFIGURE|OPENQUERY|OPENROWSET|OPENDATASOURCE|"
+    # lo que traba (casos de la prueba del candado de la VM, 25/11); NOLOCK no traba y pasa
+    r"LOCK|TABLOCK|TABLOCKX|UPDLOCK|HOLDLOCK|XLOCK|PAGLOCK|SERIALIZABLE|REPEATABLEREAD|WAITFOR)\b",
     re.I,
 )
+# servidor.base.esquema.tabla (también con corchetes o con el esquema vacío: base..tabla)
+_NOMBRE = r"(?:\[[^\]]*\]|\w+)"
+_CUATRO_PARTES = re.compile(_NOMBRE + r"\s*\.\s*(?:(?:\[[^\]]*\]|\w*)\s*\.\s*){2}" + _NOMBRE)
 
 
 def _muestra(sql):
@@ -80,8 +90,12 @@ def exigir_select(sql):
     prohibida = _PROHIBIDAS.search(sql)
     if prohibida:
         raise ConsultaNoPermitida(
-            f"La consulta tiene «{prohibida.group(1).upper()}», que escribe o ejecuta: "
+            f"La consulta tiene «{prohibida.group(1).upper()}», que escribe, ejecuta o traba: "
             + _muestra(sql)
+        )
+    if _CUATRO_PARTES.search(sql):
+        raise ConsultaNoPermitida(
+            "Un nombre de cuatro partes sale a otro servidor (servidor vinculado): " + _muestra(sql)
         )
     return sql
 
@@ -163,10 +177,13 @@ def conectar(cadena, **opciones):
 
     Es la única forma en que el proyecto se conecta a esas bases: la prueba
     tests/test_solo_lectura.py falla si algún archivo llama a pyodbc.connect()
-    por su cuenta.
+    por su cuenta. Con autocommit, salvo que se pida otra cosa: así una lectura
+    no deja abierta una transacción, con lo que haya trabado, hasta que el
+    script cierra la conexión.
     """
     import pyodbc
 
+    opciones.setdefault("autocommit", True)
     return envolver(pyodbc.connect(cadena, **opciones))
 
 

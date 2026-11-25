@@ -470,7 +470,7 @@ de runs anteriores. Si el diagnóstico muestra a 1500 (Kalpokas) con DISCREPANCI
 es porque `inicializar_db.bat` no corrió con el código nuevo.
 
 **Script de verificación:** `scripts/diagnostico_vart.py` cruza f040 de Informix con
-SQLite y exporta `scripts/vart_diagnostico.csv`. Correrlo después de cada `inicializar_db.bat`
+SQLite y exporta `data/vart_diagnostico.csv`. Correrlo después de cada `inicializar_db.bat`
 para confirmar 0 discrepancias. Acepta `--inspeccionar-f040` para ver los campos raw.
 
 **`TIPO_MANUAL`** en `inicializar_db.py`: dict vacío por ahora. Si en el futuro aparece
@@ -570,6 +570,11 @@ sin expander (no esconder accionables detrás de un "Ver más").
    renombran); antes de crear algo, mirar `inventario.md`; nunca se para ni se borra algo por un nombre ajeno; los
    procesos se cierran buscando la carpeta del proyecto en su línea de comando, nunca por nombre ni por puerto. El
    23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de taginfo, y la pisó.
+   **La cuenta de Claude (decisión del usuario del 25/11, guía `sesion-en-la-vm` de conocimiento-wurth):**
+   `scripts\proteger_carpeta.bat EQUIPO\cuenta` le da leer y ejecutar en producción y testing, nunca escribir, y
+   «Denegar» la lectura en `.env`, `.git\config`, `data\` y las salidas viejas de los diagnósticos. Por eso **todo
+   lo nuevo con claves o datos de personas va en `data\`** (lo que se crea adentro hereda el «Denegar»): las salidas de
+   los scripts de exploración y de diagnóstico ya van ahí. Su carpeta de trabajo es `C:\alerta-claude`.
 7. **Para aplicar una actualización del tablero:** `git pull` y después `scripts\programar_dashboard.bat` como
    administrador. No alcanza con `schtasks /End` + `/Run`: frena al supervisor pero no al tablero que arrancó, y el
    supervisor nuevo lo encuentra respondiendo y lo deja andar con el código viejo.

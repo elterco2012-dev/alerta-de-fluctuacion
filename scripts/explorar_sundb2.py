@@ -5,7 +5,7 @@ Guarda la estructura completa de SUNDB en un archivo de texto.
 Ejecutar con:
     C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_sundb2.py
 
-Genera: sundb_estructura.txt en la carpeta actual.
+Genera: data\\sundb_estructura.txt.
 """
 
 import os
@@ -15,7 +15,8 @@ import pyodbc, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 from solo_lectura import conectar  # noqa: E402
 
-OUTPUT = "sundb_estructura.txt"
+# En data\, que la cuenta de Claude no puede leer: trae filas de muestra.
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "sundb_estructura.txt")
 
 con = conectar("DSN=SUNDB", timeout=10)
 cur = con.cursor()
@@ -58,6 +59,7 @@ for schema, tabla in tablas:
 
 con.close()
 
+os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 with open(OUTPUT, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 

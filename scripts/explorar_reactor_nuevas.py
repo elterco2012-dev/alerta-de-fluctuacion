@@ -12,7 +12,7 @@ Explora las tablas nuevas de Reactor CRM que alimentarán las nuevas señales:
 Ejecutar con Python 32 bits:
     C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor_nuevas.py
 
-Genera: reactor_nuevas_estructura.txt
+Genera: data\\reactor_nuevas_estructura.txt
 """
 
 import os
@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from solo_lectura import conectar  # noqa: E402
 
 DSN    = "Wurth Reactor Produccion"
-OUTPUT = "reactor_nuevas_estructura.txt"
+# En data\, que la cuenta de Claude no puede leer: trae filas de muestra.
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "reactor_nuevas_estructura.txt")
 
 TABLAS_OBJETIVO = [
     "supervisor_schedule",
@@ -179,6 +180,7 @@ for tabla in TABLAS_OBJETIVO:
 con.close()
 
 output = "\n".join(lines)
+os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 with open(OUTPUT, "w", encoding="utf-8") as f:
     f.write(output)
 

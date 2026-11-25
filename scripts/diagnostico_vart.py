@@ -11,7 +11,7 @@ Fuentes:
 Uso (Python 32-bit con ODBC):
   python scripts\\diagnostico_vart.py
 
-Salida: scripts\\vart_diagnostico.csv
+Salida: data\\vart_diagnostico.csv
 """
 
 import os, sys, sqlite3, csv
@@ -28,7 +28,8 @@ from solo_lectura import conectar  # noqa: E402
 DSN_INFORMIX = "MSPA"
 FIRMA        = 1
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
-OUT_CSV      = os.path.join(os.path.dirname(__file__), 'vart_diagnostico.csv')
+# En data\, que la cuenta de Claude no puede leer: trae datos de los vendedores.
+OUT_CSV      = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'vart_diagnostico.csv')
 
 # ── 1. Leer activos de SQLite ──────────────────────────────────────────────────
 con_local = sqlite3.connect(DB_PATH)
@@ -82,6 +83,7 @@ for vid in sorted(ids_activos):
         "ok":           "OK" if tipo_erp == s["tipo_actual"] else "DISCREPANCIA",
     })
 
+os.makedirs(os.path.dirname(OUT_CSV), exist_ok=True)
 with open(OUT_CSV, "w", newline="", encoding="utf-8-sig") as f:
     w = csv.DictWriter(f, fieldnames=["id_vendedor","nombre","nombre_grupo",
                                       "vart_erp","zone_erp","tipo_erp","tipo_actual","ok"])

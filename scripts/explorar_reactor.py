@@ -10,7 +10,7 @@ Probar primero con Python 64 bits:
 Si falla con error de arquitectura, usar Python 32 bits:
     C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_reactor.py
 
-Genera: reactor_estructura.txt en la carpeta actual.
+Genera: data\\reactor_estructura.txt.
 """
 
 import os
@@ -22,7 +22,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from solo_lectura import conectar  # noqa: E402
 
 DSN = "Wurth Reactor Produccion"
-OUTPUT = "reactor_estructura.txt"
+# En data\, que la cuenta de Claude no puede leer: trae filas de muestra.
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "reactor_estructura.txt")
 
 KEYWORDS = [
     "llamad", "visita", "call", "visit", "actividad", "activity",
@@ -105,6 +106,7 @@ for tabla in tablas:
 
 con.close()
 
+os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 with open(OUTPUT, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 

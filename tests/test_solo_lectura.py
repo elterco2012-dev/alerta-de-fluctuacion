@@ -247,8 +247,16 @@ class CadenaSun(unittest.TestCase):
 
     def test_un_env_que_no_se_puede_leer_no_rompe(self):
         self.env("SUN_USER=lector\nSUN_PASS=abc\n")
-        with mock.patch.object(Path, "read_text", side_effect=PermissionError("denegado")):
+        with mock.patch.object(Path, "read_bytes", side_effect=PermissionError("denegado")):
             self.assertEqual(cadena_sun(), "DSN=SUNDB")
+
+    def test_el_env_del_bloc_de_notas_con_bom_y_crlf(self):
+        (self.raiz / ".env").write_bytes("\ufeffSUN_USER=lector\r\nSUN_PASS=abc\r\n".encode("utf-8"))
+        self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={abc};Trusted_Connection=No")
+
+    def test_el_env_en_ansi(self):
+        (self.raiz / ".env").write_bytes("SUN_USER=lector\r\nSUN_PASS=añ1\r\n".encode("cp1252"))
+        self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={añ1};Trusted_Connection=No")
 
 
 class NadieSeConectaSinElCandado(unittest.TestCase):

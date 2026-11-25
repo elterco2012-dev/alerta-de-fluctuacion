@@ -159,7 +159,11 @@ def _cargar_env() -> None:
     env = RAIZ / ".env"
     if not env.exists():
         return
-    for linea in env.read_text(encoding="utf-8").splitlines():
+    try:
+        texto = env.read_bytes().decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return
+    for linea in texto.splitlines():
         if "=" in linea and not linea.strip().startswith("#"):
             clave, valor = linea.strip().split("=", 1)
             os.environ.setdefault(clave.strip(), valor.strip())

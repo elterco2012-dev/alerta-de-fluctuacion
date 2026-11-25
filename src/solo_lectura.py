@@ -170,14 +170,24 @@ def conectar(cadena, **opciones):
     return envolver(pyodbc.connect(cadena, **opciones))
 
 
+def _lineas_env(ruta):
+    """Las líneas del .env. Acepta lo que guarda el Bloc de notas: UTF-8 con o sin BOM, o ANSI."""
+    try:
+        datos = ruta.read_bytes()
+    except OSError:
+        return []
+    try:
+        texto = datos.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        texto = datos.decode("cp1252", errors="replace")
+    return texto.splitlines()
+
+
 def _leer_env(nombre):
     """El valor de una variable: del entorno o, si no está, del .env del proyecto ("" si no hay)."""
     if os.environ.get(nombre):
         return os.environ[nombre]
-    try:
-        lineas = (RAIZ / ".env").read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return ""
+    lineas = _lineas_env(RAIZ / ".env")
     for linea in lineas:
         clave, igual, valor = linea.strip().partition("=")
         if igual and clave.strip() == nombre:

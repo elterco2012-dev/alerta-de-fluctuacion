@@ -571,7 +571,8 @@ sin expander (no esconder accionables detrás de un "Ver más").
    procesos se cierran buscando la carpeta del proyecto en su línea de comando, nunca por nombre ni por puerto. El
    23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de taginfo, y la pisó.
    **La cuenta de Claude (decisión del usuario del 25/11, guía `sesion-en-la-vm` de conocimiento-wurth):**
-   `scripts\proteger_carpeta.bat EQUIPO\cuenta` le da leer y ejecutar en producción y testing, nunca escribir, y
+   `scripts\proteger_carpeta.bat EQUIPO\cuenta` le da leer y ejecutar en la carpeta donde está el script (primero la
+   copia de prueba, después producción: cada una cierra la suya), nunca escribir, y
    «Denegar» la lectura en `.env`, `.git\config`, `data\` y las salidas viejas de los diagnósticos. Por eso **todo
    lo nuevo con claves o datos de personas va en `data\`** (lo que se crea adentro hereda el «Denegar»): las salidas de
    los scripts de exploración y de diagnóstico ya van ahí. Su carpeta de trabajo es `C:\alerta-claude`.

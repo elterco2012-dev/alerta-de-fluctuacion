@@ -17,7 +17,7 @@
     {
       "ruta": "C:\\alerta-test",
       "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502",
-      "permisos": "los mismos que producción (scripts\\proteger_carpeta.bat la cierra si existe), también para la cuenta de Claude"
+      "permisos": "los mismos que producción, también para la cuenta de Claude: la cierra el scripts\\proteger_carpeta.bat de esta carpeta (cada copia cierra la suya; con la cuenta de Claude, primero esta)"
     },
     {
       "ruta": "C:\\alerta-claude",

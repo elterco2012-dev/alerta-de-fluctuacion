@@ -13,13 +13,20 @@
 :: No acepta como cuenta de Claude una que necesitan el tablero, las tareas o Windows: el "Denegar" las frenaria.
 ::
 :: Ejecutar como administrador (clic derecho > Ejecutar como administrador). Se puede repetir.
-:: Hace lo mismo con C:\alerta-test si existe.
-:: Para volver atras: icacls C:\ /restore C:\alerta-de-fluctuacion_permisos_antes.txt
+:: Cierra la carpeta donde esta: C:\alerta-de-fluctuacion o la copia de prueba, C:\alerta-test. Para las dos, correr el
+:: de cada una; con la cuenta de Claude, primero el de la copia de prueba.
+:: Para volver atras: icacls C:\ /restore C:\alerta-de-fluctuacion_permisos_antes.txt (o el de alerta-test)
 setlocal
 
 net session >NUL 2>&1
 if errorlevel 1 (
     echo  Hay que ejecutarlo como administrador: clic derecho ^> Ejecutar como administrador.
+    goto :fin
+)
+
+for %%d in ("%~dp0..") do set "CARPETA_PROPIA=%%~fd"
+if /i not "%CARPETA_PROPIA%"=="C:\alerta-de-fluctuacion" if /i not "%CARPETA_PROPIA%"=="C:\alerta-test" (
+    echo  Este script cierra C:\alerta-de-fluctuacion o C:\alerta-test, la carpeta donde esta. Esta en otra. No cambie nada.
     goto :fin
 )
 
@@ -39,9 +46,7 @@ if errorlevel 1 goto :fin
 
 :carpetas
 echo.
-for %%c in ("C:\alerta-de-fluctuacion" "C:\alerta-test") do (
-    if exist "%%~c\" call :cerrar "%%~c"
-)
+call :cerrar "%CARPETA_PROPIA%"
 goto :fin
 
 :revisar_claude

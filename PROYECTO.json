@@ -82,7 +82,7 @@
     {
       "base": "MSPA (Informix)",
       "como": "DSN MSPA, Python 32-bit, pyodbc",
-      "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py): toda conexión se abre con solo_lectura.conectar() y lo que no es un SELECT solo no sale",
+      "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py): toda conexión se abre con solo_lectura.conectar() y lo que no es un SELECT solo no sale. MSPA no va a tener un usuario de solo lectura (decisión del usuario del 25/11): el candado es su defensa hasta que lo reemplace SAP, en unos dos años",
       "cuando": "08:00 (tarea WurthAlertas)"
     },
     {
@@ -132,6 +132,11 @@
   "decisiones": [
     {
       "fecha": "2026-11-25",
+      "que": "MSPA no va a tener un usuario de solo lectura (decisión del usuario; mensaje mspa-hasta-sap de conocimiento-wurth): el candado del código (src/solo_lectura.py) es la defensa de MSPA hasta SAP, no algo provisorio. Toda forma nueva de leer MSPA pasa por conectar()",
+      "afecta_a": ["alerta"]
+    },
+    {
+      "fecha": "2026-11-25",
       "que": "Candado en el código para MSPA, SUN y Reactor: toda conexión se abre con src/solo_lectura.py, que solo deja salir un SELECT solo (frena lo que escribe, el DDL, lo que ejecuta, SELECT ... INTO y dos sentencias juntas, también sin «;»). Una prueba falla si algún archivo llama a pyodbc.connect() por su cuenta. Y un vigilante de las tareas propias (tareas_propias.py), por la regla 4 de la VM",
       "afecta_a": ["todos"]
     },
@@ -157,10 +162,6 @@
     }
   ],
   "pendientes_con_otros": [
-    {
-      "que": "Usuario de solo lectura para MSPA (hasta entonces, el candado del código). SUN ya lo tiene desde el 25/11",
-      "con": "quien administra MSPA"
-    },
     {
       "que": "Las dos aplicaciones de Entra ID: mails por Microsoft Graph y el ingreso con la cuenta Microsoft",
       "con": "IT del grupo Würth"

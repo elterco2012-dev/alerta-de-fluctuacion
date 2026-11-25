@@ -675,7 +675,8 @@ una consulta que las tenga en un texto o en un nombre se frena aunque no escriba
 `tests/test_solo_lectura.py` falla si algún archivo llama a `pyodbc.connect()` por su cuenta.
 Es un control del texto, no un permiso de la base: la solución de fondo son usuarios de solo
 lectura. Reactor ya lo tenía; SUN lo tiene desde el 25/11 (`SUN_USER` y `SUN_PASS` en `.env`, ver
-`conectar_sun()`); MSPA, pedido a quien lo administra.
+`conectar_sun()`). **MSPA no va a tener uno** (decisión del usuario del 25/11): ahí el candado es la defensa
+hasta que lo reemplace SAP, en unos dos años, y no algo provisorio. Toda forma nueva de leer MSPA pasa por `conectar()`.
 
 La única base donde se escribe es `data/wurth.db` (SQLite local, propiedad del proyecto).
 Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuentes.

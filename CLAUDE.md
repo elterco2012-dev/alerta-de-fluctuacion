@@ -552,6 +552,10 @@ sin expander (no esconder accionables detrás de un "Ver más").
 - No hay variables requeridas para el flujo normal (los DSN de ODBC están en el sistema)
 - `INFORMIX_*` opcionales para conexión directa desde `score_engine.py` (no se usa)
 - `AVISOS_TO`: el mail de Sistemas, adonde `tareas_propias.py` avisa si una tarea de alerta cambió
+- `SUN_USER` y `SUN_PASS`: el usuario de solo lectura de SUN (desde el 25/11). Con los dos, `conectar_sun()` entra
+  con ese usuario y `Trusted_Connection=No` (con el driver «SQL Server» y un DSN con autenticación de Windows, sin eso
+  entra igual con la cuenta de Windows); sin ellos, entra como antes. El tablero (LOCAL SERVICE) no puede leer el `.env`:
+  se lo niega `programar_dashboard.bat`
 
 **Cómo correr:**
 1. `inicializar_db.bat` → solo la primera vez o cuando cambia la estructura de vendedores
@@ -670,7 +674,8 @@ una consulta que las tenga en un texto o en un nombre se frena aunque no escriba
 `SHOW` y `DESCRIBE` tampoco pasan: para la estructura, `information_schema` o el catálogo.
 `tests/test_solo_lectura.py` falla si algún archivo llama a `pyodbc.connect()` por su cuenta.
 Es un control del texto, no un permiso de la base: la solución de fondo son usuarios de solo
-lectura en SUN y MSPA (pedidos a Sistemas; Reactor ya lo tiene).
+lectura. Reactor ya lo tenía; SUN lo tiene desde el 25/11 (`SUN_USER` y `SUN_PASS` en `.env`, ver
+`conectar_sun()`); MSPA, pedido a quien lo administra.
 
 La única base donde se escribe es `data/wurth.db` (SQLite local, propiedad del proyecto).
 Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuentes.

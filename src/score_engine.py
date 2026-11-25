@@ -57,7 +57,8 @@ def get_connection():
     try:
         from dotenv import load_dotenv
         load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-    except ImportError:
+    except (ImportError, OSError):
+        # El tablero corre con LOCAL SERVICE, que no puede leer el .env (tiene claves que no necesita).
         pass
 
     server = os.getenv("INFORMIX_SERVER", "").strip()

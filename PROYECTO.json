@@ -88,7 +88,7 @@
     {
       "base": "SUN (SQL Server)",
       "como": "DSN SUNDB, Python 32-bit, pyodbc",
-      "usuario": "el código conecta con DSN=SUNDB, sin usuario ni clave: con el driver de SQL Server eso es la autenticación de Windows, o sea la cuenta del usuario que corre WurthAlertas, no la de cobranza. A confirmar en la VM (Orígenes de datos ODBC de 32 bits, DSN SUNDB)",
+      "usuario": "el usuario de solo lectura de SUN (db_datareader, creado el 25/11): SUN_USER y SUN_PASS en .env, con Trusted_Connection=No (solo_lectura.conectar_sun). Sin ellos entra como antes, con DSN=SUNDB y la autenticación de Windows: la cuenta del usuario que corre WurthAlertas, no la de cobranza",
       "acceso": "solo lectura (SELECT), con el candado del código desde el 25/11 (src/solo_lectura.py)",
       "cuando": "08:00"
     },
@@ -119,7 +119,7 @@
   "lee_de": [],
   "mata_procesos": "solo los suyos, buscando la carpeta del proyecto en la línea de comando (C:\\alerta-de-fluctuacion\\dashboard.py y su supervisor), desde el supervisor y desde programar_dashboard.bat; nunca por nombre ni por puerto (regla de la VM del 24/11). Si el 8501 lo ocupa otro proceso, el supervisor lo anota y no lo toca. La tarea WurthAlertas corre los scripts y termina sola",
   "archivos_con_claves": [
-    ".env (si se usa — gitignoreado)",
+    ".env (gitignoreado): SUN_USER y SUN_PASS (el usuario de solo lectura de SUN) y la configuración del correo. LOCAL SERVICE no lo puede leer (lo niega scripts\\programar_dashboard.bat) y la cuenta de Claude tampoco (scripts\\proteger_carpeta.bat)",
     "data/auth.json (contraseñas hasheadas PBKDF2 de los usuarios del dashboard — gitignoreado)",
     "data/sesion.key (la clave que firma las sesiones del tablero — gitignoreado)"
   ],

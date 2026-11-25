@@ -6,15 +6,19 @@ Correr desde la carpeta del proyecto, con cualquiera de los dos Python:
 No necesitan pyodbc ni conexión a ninguna base.
 """
 
+import os
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
-from solo_lectura import ConsultaNoPermitida, envolver, exigir_select  # noqa: E402
+import solo_lectura  # noqa: E402
+from solo_lectura import ConsultaNoPermitida, cadena_sun, envolver, exigir_select  # noqa: E402
 
 
 class ExigirSelect(unittest.TestCase):
@@ -203,6 +207,48 @@ class ConexionEnvuelta(unittest.TestCase):
 
     def test_envolver_dos_veces_no_cambia_nada(self):
         self.assertIs(envolver(self.con), self.con)
+
+
+class CadenaSun(unittest.TestCase):
+    """SUN con el usuario de solo lectura de .env (SUN_USER, SUN_PASS); si no está, como antes."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        self.raiz = Path(carpeta.name)
+        for parche in (mock.patch.object(solo_lectura, "RAIZ", self.raiz), mock.patch.dict(os.environ)):
+            parche.start()
+            self.addCleanup(parche.stop)
+        os.environ.pop("SUN_USER", None)
+        os.environ.pop("SUN_PASS", None)
+
+    def env(self, texto):
+        (self.raiz / ".env").write_text(texto, encoding="utf-8")
+
+    def test_sin_usuario_entra_como_antes(self):
+        self.assertEqual(cadena_sun(), "DSN=SUNDB")
+
+    def test_con_el_usuario_del_env_y_sin_la_cuenta_de_windows(self):
+        self.env("# comentario\nALERT_TO=alguien\nSUN_USER=lector\nSUN_PASS=abc123\n")
+        self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={abc123};Trusted_Connection=No")
+
+    def test_una_clave_con_caracteres_raros_no_rompe_la_cadena(self):
+        self.env('SUN_USER=lector\nSUN_PASS="a;b}c=d"\n')
+        self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={a;b}}c=d};Trusted_Connection=No")
+
+    def test_sin_clave_no_usa_el_usuario(self):
+        self.env("SUN_USER=lector\nSUN_PASS=\n")
+        self.assertEqual(cadena_sun(), "DSN=SUNDB")
+
+    def test_el_entorno_gana_al_archivo(self):
+        self.env("SUN_USER=archivo\nSUN_PASS=archivo\n")
+        os.environ["SUN_USER"], os.environ["SUN_PASS"] = "entorno", "otra"
+        self.assertEqual(cadena_sun("OTRO"), "DSN=OTRO;UID={entorno};PWD={otra};Trusted_Connection=No")
+
+    def test_un_env_que_no_se_puede_leer_no_rompe(self):
+        self.env("SUN_USER=lector\nSUN_PASS=abc\n")
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError("denegado")):
+            self.assertEqual(cadena_sun(), "DSN=SUNDB")
 
 
 class NadieSeConectaSinElCandado(unittest.TestCase):

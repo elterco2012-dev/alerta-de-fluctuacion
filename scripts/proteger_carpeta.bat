@@ -2,14 +2,16 @@
 :: proteger_carpeta.bat — cierra la carpeta del proyecto: quedan solo Administradores, SYSTEM y la cuenta con la que
 :: corren las tareas (la de WurthAlertas). Por herencia de C:\, "Usuarios" podia leer todo (la base con datos de
 :: vendedores, las claves del tablero, el .env) y "Usuarios autentificados" podia cambiar los scripts que corren
-:: las tareas programadas. Lo de LOCAL SERVICE (el tablero) no lo toca: lo da programar_dashboard.bat.
+:: las tareas programadas. Lo de LOCAL SERVICE (el tablero) lo da programar_dashboard.bat.
+:: El .env vive en claves\ (decision del usuario del 25/11): cerrar_claves.bat la crea, le niega la lectura a LOCAL
+:: SERVICE con herencia y copia ahi el .env de la raiz si todavia no se mudo.
 ::
 :: Con la cuenta de Claude (decision del usuario del 25/11, guia sesion-en-la-vm de conocimiento-wurth):
 ::     scripts\proteger_carpeta.bat EQUIPO\cuenta     (el nombre como lo muestra Windows; no va en el repositorio)
 :: esa cuenta queda con leer y ejecutar, nunca escribir, y con "Denegar" la lectura en lo que tiene claves o datos de
-:: personas: el .env, .git\config, data\ (la base con los puntajes de los vendedores, las claves del tablero, los
-:: registros) y las salidas viejas de los diagnosticos que quedaron fuera de data\. Lo nuevo con datos va a data\:
-:: lo que se crea adentro hereda el "Denegar". Si despues se crea el .env, volver a correrlo.
+:: personas: claves\ (el .env), .git\config, data\ (la base con los puntajes de los vendedores, las claves del tablero,
+:: los registros), el .env viejo de la raiz mientras exista y las salidas viejas de los diagnosticos que quedaron fuera
+:: de data\. claves\ y data\ van con herencia: lo que se crea adentro hereda el "Denegar".
 :: No acepta como cuenta de Claude una que necesitan el tablero, las tareas o Windows: el "Denegar" las frenaria.
 ::
 :: Ejecutar como administrador (clic derecho > Ejecutar como administrador). Se puede repetir.
@@ -24,6 +26,7 @@ if errorlevel 1 (
     goto :fin
 )
 
+set "SCRIPTS=%~dp0"
 for %%d in ("%~dp0..") do set "CARPETA_PROPIA=%%~fd"
 if /i not "%CARPETA_PROPIA%"=="C:\alerta-de-fluctuacion" if /i not "%CARPETA_PROPIA%"=="C:\alerta-test" (
     echo  Este script cierra C:\alerta-de-fluctuacion o C:\alerta-test, la carpeta donde esta. Esta en otra. No cambie nada.
@@ -79,6 +82,11 @@ if errorlevel 1 (
     echo  ERROR: no se pudo cerrar %CARPETA%.
     exit /b 1
 )
+call "%SCRIPTS%cerrar_claves.bat" "%CARPETA%"
+if errorlevel 1 (
+    echo  ERROR: no se pudo cerrar %CARPETA%\claves.
+    exit /b 1
+)
 if defined CLAUDE_SID (
     call :leer_claude
     if errorlevel 1 exit /b 1
@@ -106,6 +114,10 @@ if exist "%CARPETA%\data\" (
     icacls "%CARPETA%\data" /deny "*%CLAUDE_SID%:(OI)(CI)R" /Q >NUL
     if errorlevel 1 set "FALLO=1"
 )
+if exist "%CARPETA%\claves\" (
+    icacls "%CARPETA%\claves" /deny "*%CLAUDE_SID%:(OI)(CI)R" /Q >NUL
+    if errorlevel 1 set "FALLO=1"
+)
 for %%f in (".env" ".git\config" "scripts\vart_diagnostico.csv") do (
     if exist "%CARPETA%\%%~f" (
         icacls "%CARPETA%\%%~f" /deny "*%CLAUDE_SID%:R" /Q >NUL
@@ -125,8 +137,7 @@ if defined FALLO (
     echo  ERROR: no se pudo denegar algo a la cuenta de Claude en %CARPETA%. Revisalo antes de prender la lectura.
     exit /b 1
 )
-echo  Cuenta de Claude en %CARPETA%: leer y ejecutar; denegado en .env, .git\config, data\ y las salidas viejas.
-if not exist "%CARPETA%\.env" echo  No hay .env: si lo creas despues, volve a correr este script.
+echo  Cuenta de Claude en %CARPETA%: leer y ejecutar; denegado en claves\, .git\config, data\ y las salidas viejas.
 exit /b 0
 
 :fin

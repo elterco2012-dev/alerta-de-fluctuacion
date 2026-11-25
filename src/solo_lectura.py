@@ -29,16 +29,14 @@ Es un control del texto de la consulta, no un permiso de la base: la solución d
 fondo siguen siendo los usuarios de solo lectura.
 
 SUN ya tiene el suyo (25/11): `conectar_sun()` entra con SUN_USER y SUN_PASS del
-.env, con Trusted_Connection=No (con el driver «SQL Server» y un DSN con
+.env (claves\\.env, ver entorno.py), con Trusted_Connection=No (con el driver «SQL Server» y un DSN con
 autenticación de Windows, sin eso entra igual con la cuenta de Windows). Si no
 están, entra como antes, con la cuenta de Windows de quien corre el script.
 """
 
-import os
 import re
-from pathlib import Path
 
-RAIZ = Path(__file__).resolve().parent.parent
+import entorno
 
 
 class ConsultaNoPermitida(RuntimeError):
@@ -187,37 +185,9 @@ def conectar(cadena, **opciones):
     return envolver(pyodbc.connect(cadena, **opciones))
 
 
-def _lineas_env(ruta):
-    """Las líneas del .env. Acepta lo que guarda el Bloc de notas: UTF-8 con o sin BOM, o ANSI."""
-    try:
-        datos = ruta.read_bytes()
-    except OSError:
-        return []
-    try:
-        texto = datos.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        texto = datos.decode("cp1252", errors="replace")
-    return texto.splitlines()
-
-
-def _leer_env(nombre):
-    """El valor de una variable: del entorno o, si no está, del .env del proyecto ("" si no hay)."""
-    if os.environ.get(nombre):
-        return os.environ[nombre]
-    lineas = _lineas_env(RAIZ / ".env")
-    for linea in lineas:
-        clave, igual, valor = linea.strip().partition("=")
-        if igual and clave.strip() == nombre:
-            valor = valor.strip()
-            if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in "\"'":
-                valor = valor[1:-1]
-            return valor
-    return ""
-
-
 def credenciales_sun():
     """(usuario, clave) del usuario de solo lectura de SUN: SUN_USER y SUN_PASS. Vacíos si no están."""
-    return _leer_env("SUN_USER"), _leer_env("SUN_PASS")
+    return entorno.leer("SUN_USER"), entorno.leer("SUN_PASS")
 
 
 def _valor_odbc(valor):

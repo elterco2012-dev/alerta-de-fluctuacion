@@ -12,11 +12,11 @@
     {
       "ruta": "C:\\alerta-de-fluctuacion",
       "uso": "producción — la que usa la tarea WurthAlertas y el tablero en 8501",
-      "permisos": "Administradores, SYSTEM y la cuenta de WurthAlertas con control (lo deja así scripts\\proteger_carpeta.bat; por herencia de C:\\, los Usuarios autentificados podían modificarla y los Usuarios leerla, icacls del 24/11). LOCAL SERVICE, que corre el tablero, lee la carpeta y escribe solo en data\\ (lo da scripts\\programar_dashboard.bat). Cuando se prenda la lectura para Claude: la cuenta de Claude con leer y ejecutar, nunca escribir, y «Denegar» en .env, .git\\config, data\\ y las salidas viejas de los diagnósticos (scripts\\proteger_carpeta.bat <cuenta>)"
+      "permisos": "Administradores, SYSTEM y la cuenta de WurthAlertas con control (lo deja así scripts\\proteger_carpeta.bat; por herencia de C:\\, los Usuarios autentificados podían modificarla y los Usuarios leerla, icacls del 24/11). LOCAL SERVICE, que corre el tablero, lee la carpeta y escribe solo en data\\ (lo da scripts\\programar_dashboard.bat). Cuando se prenda la lectura para Claude: la cuenta de Claude con leer y ejecutar, nunca escribir, y «Denegar» en claves\\ (el .env), .git\\config, data\\ y las salidas viejas de los diagnósticos (scripts\\proteger_carpeta.bat <cuenta>)"
     },
     {
       "ruta": "C:\\alerta-test",
-      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502. Creada el 25/11 con git clone y cerrada con su scripts\\proteger_carpeta.bat; tiene su propio .env (el usuario de solo lectura de SUN)",
+      "uso": "testing — copia del repo para probar cambios antes de pasar a producción; tablero en 8502. Creada el 25/11 con git clone y cerrada con su scripts\\proteger_carpeta.bat; tiene su propio .env (el usuario de solo lectura de SUN), que pasa a claves\\.env al correr su proteger_carpeta.bat",
       "permisos": "los mismos que producción, también para la cuenta de Claude: la cierra el scripts\\proteger_carpeta.bat de esta carpeta (cada copia cierra la suya; con la cuenta de Claude, primero esta)"
     },
     {
@@ -119,7 +119,7 @@
   "lee_de": [],
   "mata_procesos": "solo los suyos, buscando la carpeta del proyecto en la línea de comando (C:\\alerta-de-fluctuacion\\dashboard.py y su supervisor), desde el supervisor y desde programar_dashboard.bat; nunca por nombre ni por puerto (regla de la VM del 24/11). Si el 8501 lo ocupa otro proceso, el supervisor lo anota y no lo toca. La tarea WurthAlertas corre los scripts y termina sola",
   "archivos_con_claves": [
-    ".env (gitignoreado): SUN_USER y SUN_PASS (el usuario de solo lectura de SUN) y la configuración del correo. LOCAL SERVICE no lo puede leer (lo niega scripts\\programar_dashboard.bat) y la cuenta de Claude tampoco (scripts\\proteger_carpeta.bat)",
+    "claves\\.env (gitignoreado; desde el 25/11, antes en la raíz): SUN_USER y SUN_PASS (el usuario de solo lectura de SUN) y la configuración del correo. Lo lee solo src/entorno.py (una prueba falla si otro archivo lo busca). claves\\ les niega la lectura con herencia a LOCAL SERVICE (scripts\\cerrar_claves.bat, que llaman proteger_carpeta.bat y programar_dashboard.bat) y a la cuenta de Claude (proteger_carpeta.bat <cuenta>): un editor que reescribe el archivo con un temporal no le saca el «Denegar». El .env viejo de la raíz se borra cuando la tarea diaria corrió bien con el nuevo",
     "data/auth.json (contraseñas hasheadas PBKDF2 de los usuarios del dashboard — gitignoreado)",
     "data/sesion.key (la clave que firma las sesiones del tablero — gitignoreado)"
   ],

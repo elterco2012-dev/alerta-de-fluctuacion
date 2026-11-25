@@ -17,6 +17,7 @@ from unittest import mock
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ / "src"))
 
+import entorno  # noqa: E402
 import solo_lectura  # noqa: E402
 from solo_lectura import ConsultaNoPermitida, cadena_sun, envolver, exigir_select  # noqa: E402
 
@@ -257,14 +258,18 @@ class CadenaSun(unittest.TestCase):
         carpeta = tempfile.TemporaryDirectory()
         self.addCleanup(carpeta.cleanup)
         self.raiz = Path(carpeta.name)
-        for parche in (mock.patch.object(solo_lectura, "RAIZ", self.raiz), mock.patch.dict(os.environ)):
+        (self.raiz / "claves").mkdir()
+        self.ruta = self.raiz / "claves" / ".env"
+        for parche in (mock.patch.object(entorno, "RUTA", self.ruta),
+                       mock.patch.object(entorno, "_RUTA_VIEJA", self.raiz / ".env"),
+                       mock.patch.dict(os.environ)):
             parche.start()
             self.addCleanup(parche.stop)
         os.environ.pop("SUN_USER", None)
         os.environ.pop("SUN_PASS", None)
 
     def env(self, texto):
-        (self.raiz / ".env").write_text(texto, encoding="utf-8")
+        self.ruta.write_text(texto, encoding="utf-8")
 
     def test_sin_usuario_entra_como_antes(self):
         self.assertEqual(cadena_sun(), "DSN=SUNDB")
@@ -292,11 +297,11 @@ class CadenaSun(unittest.TestCase):
             self.assertEqual(cadena_sun(), "DSN=SUNDB")
 
     def test_el_env_del_bloc_de_notas_con_bom_y_crlf(self):
-        (self.raiz / ".env").write_bytes("\ufeffSUN_USER=lector\r\nSUN_PASS=abc\r\n".encode("utf-8"))
+        self.ruta.write_bytes("\ufeffSUN_USER=lector\r\nSUN_PASS=abc\r\n".encode("utf-8"))
         self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={abc};Trusted_Connection=No")
 
     def test_el_env_en_ansi(self):
-        (self.raiz / ".env").write_bytes("SUN_USER=lector\r\nSUN_PASS=añ1\r\n".encode("cp1252"))
+        self.ruta.write_bytes("SUN_USER=lector\r\nSUN_PASS=añ1\r\n".encode("cp1252"))
         self.assertEqual(cadena_sun(), "DSN=SUNDB;UID={lector};PWD={añ1};Trusted_Connection=No")
 
 

@@ -97,7 +97,7 @@ data/wurth.db            ← base de datos local con datos del ERP
 data/estado_alertas.json ← timestamps de última alerta
 data/auth.json           ← usuarios y contraseñas hasheadas
 data/auth_fails.json     ← conteo de intentos fallidos de login
-.env                     ← variables de entorno con credenciales
+claves/.env              ← variables de entorno con credenciales (desde el 25/11; ver src/entorno.py)
 scripts/*.txt            ← salidas viejas de scripts de exploración/diagnóstico (las nuevas van a data/)
 data/*.txt, data/*.csv   ← salidas de los scripts de exploración y de diagnóstico
 ```

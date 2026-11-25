@@ -28,3 +28,4 @@ scripts/output_*.txt
 data/*.csv
 data/*.log
 data/tareas_propias.json
+claves/

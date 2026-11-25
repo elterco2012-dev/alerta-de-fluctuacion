@@ -4,25 +4,17 @@ enviar_alertas.py
 Detecta vendedores que subieron a nivel crítico (o siguen críticos hace 7+ días)
 y envía email. Requiere Python 64-bit. Ejecutar DESPUÉS de sincronizar_informix.py.
 
-Configuración: crear un archivo .env en la raíz del proyecto (ver .env.example).
+Configuración: el .env va en claves\\.env (ver .env.example y src/entorno.py).
 """
 
 import os
 import sys
 
-# Cargar .env si existe (acepta tanto python-dotenv instalado como carga manual)
-_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if os.path.exists(_env_path):
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(_env_path)
-    except ImportError:
-        for _line in open(_env_path, encoding="utf-8"):
-            if "=" in _line and not _line.strip().startswith("#"):
-                _k, _v = _line.strip().split("=", 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# El .env (claves\.env): ver src/entorno.py
+from entorno import cargar  # noqa: E402
+cargar()
 
 from score_engine import calcular_scores
 from alertas import (cargar_estado, detectar_nuevos_criticos,

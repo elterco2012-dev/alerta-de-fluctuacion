@@ -1,22 +1,13 @@
 """test_email.py — Envía un email de prueba para verificar el canal de alertas."""
 import os, sys
 
-# Cargar .env (acepta python-dotenv instalado o, si no está, lo lee a mano)
-_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if not os.path.exists(_env_path):
-    print(f"No existe el archivo .env en: {os.path.abspath(_env_path)}")
-    print("Crealo en la raiz del proyecto con SMTP_USER, SMTP_PWD y ALERT_TO.")
-    sys.exit(1)
-try:
-    from dotenv import load_dotenv
-    load_dotenv(_env_path)
-except ImportError:
-    for _line in open(_env_path, encoding="utf-8"):
-        if "=" in _line and not _line.strip().startswith("#"):
-            _k, _v = _line.strip().split("=", 1)
-            os.environ.setdefault(_k.strip(), _v.strip())
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+from entorno import cargar, ruta  # noqa: E402  (el .env está en claves\: ver src/entorno.py)
+if not os.path.exists(ruta()):
+    print(f"No existe el archivo .env en: {ruta()}")
+    print("Crealo con SMTP_USER, SMTP_PWD y ALERT_TO, y corré scripts\\proteger_carpeta.bat como administrador.")
+    sys.exit(1)
+cargar()
 from alertas import _email_html, enviar_email_outlook, _buscar_outlook_clasico, _obtener_outlook
 import pandas as pd
 

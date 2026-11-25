@@ -54,12 +54,9 @@ def get_connection():
 
     Para activar Informix: copiá .env.example → .env y completá las variables.
     """
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-    except (ImportError, OSError):
-        # El tablero corre con LOCAL SERVICE, que no puede leer el .env (tiene claves que no necesita).
-        pass
+    # El .env está en claves\ (ver entorno.py). El tablero corre con LOCAL SERVICE, que no lo puede leer: no lo necesita.
+    from entorno import cargar
+    cargar()
 
     server = os.getenv("INFORMIX_SERVER", "").strip()
     if server:

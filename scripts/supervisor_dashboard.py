@@ -5,7 +5,8 @@ privilegios y nunca como SYSTEM. Levanta el tablero, comprueba cada 2 minutos qu
 Solo cierra sus propios procesos: los que tienen C:\\alerta-de-fluctuacion\\dashboard.py en la línea de comando
 (regla de la VM: nunca por nombre ni por puerto). Si el puerto lo ocupa otro proceso, lo anota y no lo toca.
 Lo que hace queda en data/vigilante.log y la salida de Streamlit en data/streamlit.log.
-Cada 30 minutos revisa también que las tareas de alerta sigan siendo suyas (tareas_propias.py) y anota lo que cambie.
+Cada 30 minutos intenta revisar también que las tareas de alerta sigan siendo suyas (tareas_propias.py) y anota lo que
+cambie. En la VM, LOCAL SERVICE no ve las tareas (25/11): anota «no se pudo leer» y las vigila la corrida diaria.
 """
 import ctypes
 import os

@@ -37,6 +37,10 @@ except ImportError:
     print("ERROR: pyodbc no instalado.  pip install pyodbc")
     sys.exit(1)
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN_INFORMIX = "MSPA"
 DSN_REACTOR  = "Wurth Reactor Produccion"  # work_days_log (días hábiles) vive acá, no en Informix
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
@@ -117,7 +121,7 @@ IN_ACTIVOS = f"({','.join(IDS_ACTIVOS)})" if IDS_ACTIVOS else "(0)"
 # ── Conectar a Informix ───────────────────────────────────────────────────────
 print("\nConectando a Informix (MSPA)...", end=" ", flush=True)
 try:
-    icon = pyodbc.connect(f"DSN={DSN_INFORMIX}", timeout=15)
+    icon = conectar(f"DSN={DSN_INFORMIX}", timeout=15)
     icur = icon.cursor()
     print("OK")
 except Exception as e:
@@ -402,7 +406,7 @@ else:
 print("[3b4/4] Días hábiles (work_days_log @ Reactor)...", end=" ", flush=True)
 dias_habiles = {}  # (anio, mes) → int
 try:
-    rcon = pyodbc.connect(f"DSN={DSN_REACTOR}", timeout=15)
+    rcon = conectar(f"DSN={DSN_REACTOR}", timeout=15)
     rcur = rcon.cursor()
     rcur.execute("""
         SELECT YEAR(real_date), MONTH(real_date), COUNT(*)

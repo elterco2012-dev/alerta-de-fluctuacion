@@ -15,14 +15,20 @@ la pantalla Tag Info 2 (Daily Info 2 Sales):
 Ejecutar con Python 32 bits (mismo DSN que Informix):
     C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_taginfo.py
 
-Genera: taginfo_estructura.txt
+Genera: data\\taginfo_estructura.txt
 """
 
+import os
 import pyodbc
 import sys
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN    = "MSPA"
-OUTPUT = "taginfo_estructura.txt"
+# En data\, que la cuenta de Claude no puede leer: trae filas de muestra.
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "taginfo_estructura.txt")
 FIRMA  = 1  # ajustar si la firma es distinta
 
 KEYWORDS_PEDIDOS = [
@@ -37,7 +43,7 @@ KEYWORDS_PEDIDOS = [
 
 print(f"Conectando a '{DSN}'...", end=" ", flush=True)
 try:
-    con = pyodbc.connect(f"DSN={DSN}", timeout=10)
+    con = conectar(f"DSN={DSN}", timeout=10)
     print("OK")
 except Exception as e:
     print(f"\nERROR: {e}")
@@ -106,6 +112,7 @@ for tabla in tablas:
 
 con.close()
 
+os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 with open(OUTPUT, "w", encoding="utf-8") as f:
     f.write("\n".join(lines))
 

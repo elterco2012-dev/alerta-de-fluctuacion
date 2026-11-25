@@ -27,3 +27,4 @@ scripts/output_*.txt
 *.txt
 data/*.csv
 data/*.log
+data/tareas_propias.json

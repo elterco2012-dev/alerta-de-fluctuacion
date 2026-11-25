@@ -13,6 +13,10 @@ import os
 import sqlite3
 import pyodbc
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN_INFORMIX = "MSPA"
 DB_PATH      = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
 FIRMA        = 1
@@ -25,7 +29,7 @@ print("=" * 65)
 # ── Conectar a Informix ───────────────────────────────────────────────────────
 print("\nConectando a Informix...", end=" ", flush=True)
 try:
-    icon = pyodbc.connect(f"DSN={DSN_INFORMIX}", timeout=15)
+    icon = conectar(f"DSN={DSN_INFORMIX}", timeout=15)
     icur = icon.cursor()
     print("OK")
 except Exception as e:

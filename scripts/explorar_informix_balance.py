@@ -9,18 +9,24 @@ y la variedad de productos:
 Ejecutar con Python 32 bits:
     C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\explorar_informix_balance.py
 
-Genera: informix_balance_estructura.txt
+Genera: data\\informix_balance_estructura.txt
 """
 
+import os
 import pyodbc, sys, datetime
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN    = "MSPA"
-OUTPUT = "informix_balance_estructura.txt"
+# En data\, que la cuenta de Claude no puede leer: trae filas de muestra.
+OUTPUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "informix_balance_estructura.txt")
 FIRMA  = 1
 
 print(f"Conectando a '{DSN}'...", end=" ", flush=True)
 try:
-    con = pyodbc.connect(f"DSN={DSN}", timeout=10)
+    con = conectar(f"DSN={DSN}", timeout=10)
     print("OK")
 except Exception as e:
     print(f"\nERROR: {e}")
@@ -151,6 +157,7 @@ except Exception as e:
 con.close()
 
 output = "\n".join(lines)
+os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 with open(OUTPUT, "w", encoding="utf-8") as f:
     f.write(output)
 

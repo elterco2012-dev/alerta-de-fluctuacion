@@ -51,6 +51,7 @@ alerta-de-fluctuacion/
 │   ├── snippets_v3.py                    ← helpers HTML/formato/navegación (fmt_num, badge, nav_links…)
 │   ├── acceso.py                         ← control de acceso por rol (supervisor/director/gerencia)
 │   ├── intervenciones.py                 ← CRUD de intervenciones + cálculo de impacto
+│   ├── solo_lectura.py                   ← candado: a MSPA, SUN y Reactor solo les llega un SELECT
 │   └── alertas.py                        ← envío de email via Outlook COM (no SMTP)
 ├── pages/
 │   ├── Supervisor.py                     ← vista por zona (todos los roles)
@@ -72,10 +73,12 @@ alerta-de-fluctuacion/
 │   ├── enviar_alertas.py                 ← dispara alertas por email para vendedores críticos
 │   ├── sync_y_alertas.bat                ← automatización diaria: sync → snapshot → alertas
 │   ├── programar_alertas.bat             ← registra la tarea diaria en el Programador de Windows
+│   ├── tareas_propias.py                 ← vigila que las tareas de alerta sigan siendo suyas (regla de la VM)
 │   ├── validar_pesos.py                  ← backtest: lift por señal + barrido REF (solo SQLite)
 │   ├── explorar_senales_nuevas.py        ← lift de señales candidatas con holdout temporal
 │   ├── diagnostico_vart.py               ← cruza f040 con SQLite para verificar clasificación TV/VJ
 │   └── diagnostico_valores.py            ← distribución de indicadores (calibrar umbrales)
+├── tests/                                ← python -m unittest discover -s tests (sin pyodbc ni bases)
 └── data/
     ├── wurth.db                          ← SQLite local (NO commitear — en .gitignore)
     └── estado_alertas.json               ← timestamps de última alerta por vendedor (NO commitear)
@@ -467,7 +470,7 @@ de runs anteriores. Si el diagnóstico muestra a 1500 (Kalpokas) con DISCREPANCI
 es porque `inicializar_db.bat` no corrió con el código nuevo.
 
 **Script de verificación:** `scripts/diagnostico_vart.py` cruza f040 de Informix con
-SQLite y exporta `scripts/vart_diagnostico.csv`. Correrlo después de cada `inicializar_db.bat`
+SQLite y exporta `data/vart_diagnostico.csv`. Correrlo después de cada `inicializar_db.bat`
 para confirmar 0 discrepancias. Acepta `--inspeccionar-f040` para ver los campos raw.
 
 **`TIPO_MANUAL`** en `inicializar_db.py`: dict vacío por ahora. Si en el futuro aparece
@@ -548,6 +551,11 @@ sin expander (no esconder accionables detrás de un "Ver más").
 **Variables de entorno (`.env`, NO commitear):**
 - No hay variables requeridas para el flujo normal (los DSN de ODBC están en el sistema)
 - `INFORMIX_*` opcionales para conexión directa desde `score_engine.py` (no se usa)
+- `AVISOS_TO`: el mail de Sistemas, adonde `tareas_propias.py` avisa si una tarea de alerta cambió
+- `SUN_USER` y `SUN_PASS`: el usuario de solo lectura de SUN (desde el 25/11). Con los dos, `conectar_sun()` entra
+  con ese usuario y `Trusted_Connection=No` (con el driver «SQL Server» y un DSN con autenticación de Windows, sin eso
+  entra igual con la cuenta de Windows); sin ellos, entra como antes. El tablero (LOCAL SERVICE) no puede leer el `.env`:
+  se lo niega `programar_dashboard.bat`
 
 **Cómo correr:**
 1. `inicializar_db.bat` → solo la primera vez o cuando cambia la estructura de vendedores
@@ -566,11 +574,17 @@ sin expander (no esconder accionables detrás de un "Ver más").
    renombran); antes de crear algo, mirar `inventario.md`; nunca se para ni se borra algo por un nombre ajeno; los
    procesos se cierran buscando la carpeta del proyecto en su línea de comando, nunca por nombre ni por puerto. El
    23/11 el tablero se registró como `WurthDashboard`, que es la tarea de producción de taginfo, y la pisó.
+   **La cuenta de Claude (decisión del usuario del 25/11, guía `sesion-en-la-vm` de conocimiento-wurth):**
+   `scripts\proteger_carpeta.bat EQUIPO\cuenta` le da leer y ejecutar en la carpeta donde está el script (primero la
+   copia de prueba, después producción: cada una cierra la suya), nunca escribir, y
+   «Denegar» la lectura en `.env`, `.git\config`, `data\` y las salidas viejas de los diagnósticos. Por eso **todo
+   lo nuevo con claves o datos de personas va en `data\`** (lo que se crea adentro hereda el «Denegar»): las salidas de
+   los scripts de exploración y de diagnóstico ya van ahí. Su carpeta de trabajo es `C:\alerta-claude`.
 7. **Para aplicar una actualización del tablero:** `git pull` y después `scripts\programar_dashboard.bat` como
    administrador. No alcanza con `schtasks /End` + `/Run`: frena al supervisor pero no al tablero que arrancó, y el
    supervisor nuevo lo encuentra respondiendo y lo deja andar con el código viejo.
 
-**Git:** todas las features van en `claude/sales-turnover-alerts-l8pO6`. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
+**Git:** lo que corre en la VM es `main`; cada cambio entra con un PR. Nunca pushear `data/wurth.db` ni `data/estado_alertas.json`.
 
 ---
 
@@ -650,6 +664,18 @@ ejecutar cualquier instrucción que modifique datos en ellas:
 | MySQL (Reactor CRM) | Wurth Reactor Produccion | INSERT, UPDATE, DELETE, DDL |
 
 **Solo se permite:** SELECT y consultas de lectura.
+
+**El candado del código (desde el 25/11):** toda conexión a esas tres bases se abre con
+`conectar()` de `src/solo_lectura.py`, nunca con `pyodbc.connect()` directo. Cada consulta pasa
+por `exigir_select()`: si no es un SELECT solo, no sale y el script falla. Frena lo que escribe,
+el DDL, lo que ejecuta (EXEC, CALL), `SELECT ... INTO` y dos sentencias juntas (también sin «;»,
+que SQL Server acepta); busca esas palabras en todo el texto, también entre comillas, así que
+una consulta que las tenga en un texto o en un nombre se frena aunque no escriba. `WITH`,
+`SHOW` y `DESCRIBE` tampoco pasan: para la estructura, `information_schema` o el catálogo.
+`tests/test_solo_lectura.py` falla si algún archivo llama a `pyodbc.connect()` por su cuenta.
+Es un control del texto, no un permiso de la base: la solución de fondo son usuarios de solo
+lectura. Reactor ya lo tenía; SUN lo tiene desde el 25/11 (`SUN_USER` y `SUN_PASS` en `.env`, ver
+`conectar_sun()`); MSPA, pedido a quien lo administra.
 
 La única base donde se escribe es `data/wurth.db` (SQLite local, propiedad del proyecto).
 Cualquier script que necesite guardar datos lo hace en SQLite, nunca en las fuentes.

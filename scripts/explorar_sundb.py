@@ -9,12 +9,17 @@ Ejecutar desde C:\\alerta-de-fluctuacion con:
 No modifica nada. Solo lectura.
 """
 
+import os
 import pyodbc
 import sys
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar_sun  # noqa: E402
+
 print("Conectando a SUNDB...", end=" ", flush=True)
 try:
-    con = pyodbc.connect("DSN=SUNDB", timeout=10)
+    con = conectar_sun("SUNDB", timeout=10)
     print("OK")
 except Exception as e:
     print(f"\nERROR al conectar: {e}")

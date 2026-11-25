@@ -9,6 +9,7 @@ Requiere Python 32 bits (ejemplo de ruta):
   python312-32 scripts/diagnostico_f040_campo_egreso.py
 """
 
+import os
 import sys
 try:
     import pyodbc
@@ -16,12 +17,16 @@ except ImportError:
     print("ERROR: pyodbc no instalado.")
     sys.exit(1)
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
+
 DSN_INFORMIX = "MSPA"
 ID_VENDEDOR  = 1407
 
 print(f"Conectando a Informix ({DSN_INFORMIX})...", end=" ", flush=True)
 try:
-    con = pyodbc.connect(f"DSN={DSN_INFORMIX}", timeout=15)
+    con = conectar(f"DSN={DSN_INFORMIX}", timeout=15)
     cur = con.cursor()
     print("OK")
 except Exception as e:

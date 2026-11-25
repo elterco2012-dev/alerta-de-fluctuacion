@@ -13,6 +13,7 @@ Ejecutar con Python 32 bits (ODBC):
     "C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe" scripts\\explorar_sbas_columnas.py
 """
 
+import os
 import sys
 from datetime import date
 
@@ -21,6 +22,10 @@ try:
 except ImportError:
     print("ERROR: pyodbc no instalado en este Python.")
     sys.exit(1)
+
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar  # noqa: E402
 
 DSN_INFORMIX = "MSPA"
 FIRMA        = 1
@@ -32,7 +37,7 @@ print("=" * 68)
 
 print("\nConectando a Informix (MSPA)...", end=" ", flush=True)
 try:
-    cn  = pyodbc.connect(f"DSN={DSN_INFORMIX}", timeout=15)
+    cn  = conectar(f"DSN={DSN_INFORMIX}", timeout=15)
     cur = cn.cursor()
     print("OK")
 except Exception as e:

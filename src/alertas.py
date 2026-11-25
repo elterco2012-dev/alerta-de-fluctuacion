@@ -357,6 +357,17 @@ def enviar_email_outlook(to: list, nuevos: pd.DataFrame) -> bool:
     return True
 
 
+def enviar_aviso_outlook(to: list, asunto: str, texto: str) -> bool:
+    """Manda un aviso de texto (no de vendedores) con el Outlook clásico: lo usa tareas_propias.py."""
+    outlook = _obtener_outlook()
+    mail = outlook.CreateItem(0)
+    mail.To = "; ".join(to)
+    mail.Subject = asunto
+    mail.Body = texto
+    mail.Send()
+    return True
+
+
 def enviar_email(smtp_config: dict, nuevos: pd.DataFrame) -> bool:
     """
     Envía alerta por email. Intenta primero via Outlook COM (sin SMTP AUTH),

@@ -98,8 +98,8 @@ data/estado_alertas.json ← timestamps de última alerta
 data/auth.json           ← usuarios y contraseñas hasheadas
 data/auth_fails.json     ← conteo de intentos fallidos de login
 .env                     ← variables de entorno con credenciales
-scripts/*.txt            ← salidas de scripts de exploración/diagnóstico
-scripts/vart_diagnostico.csv
+scripts/*.txt            ← salidas viejas de scripts de exploración/diagnóstico (las nuevas van a data/)
+data/*.txt, data/*.csv   ← salidas de los scripts de exploración y de diagnóstico
 ```
 
 ---

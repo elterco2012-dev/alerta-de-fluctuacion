@@ -34,6 +34,10 @@ except ImportError:
     print("ERROR: pyodbc no instalado.")
     sys.exit(1)
 
+# Candado: a MSPA, SUN y Reactor solo les llega un SELECT (ver src/solo_lectura.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from solo_lectura import conectar_sun, credenciales_sun  # noqa: E402
+
 # ── Configuración ─────────────────────────────────────────────────────────────
 DSN_SUN  = "SUNDB"
 DB_PATH  = os.path.join(os.path.dirname(__file__), '..', 'data', 'wurth.db')
@@ -74,9 +78,12 @@ periodo_inicio_sun = anio_inicio * 1000 + mes_inicio
 print(f"\n  Período desde: {anio_inicio}/{mes_inicio:02d} (PERIOD >= {periodo_inicio_sun})")
 
 # ── Conectar a SUNDB ──────────────────────────────────────────────────────────
-print("\nConectando a SUNDB...", end=" ", flush=True)
+if all(credenciales_sun()):
+    print("\nConectando a SUNDB con el usuario de solo lectura (SUN_USER en .env)...", end=" ", flush=True)
+else:
+    print("\nConectando a SUNDB con la cuenta de Windows (no hay SUN_USER y SUN_PASS en .env)...", end=" ", flush=True)
 try:
-    sun = pyodbc.connect(f"DSN={DSN_SUN}", timeout=15)
+    sun = conectar_sun(DSN_SUN, timeout=15)
     print("OK")
 except Exception as e:
     print(f"FALLÓ\nError: {e}")
@@ -84,6 +91,7 @@ except Exception as e:
     print("  1. Estás usando Python 32 bits")
     print("  2. El DSN 'SUNDB' está configurado en ODBC de 32 bits")
     print("  3. El servidor de SUN es accesible (ver DSN 'SUNDB')")
+    print("  4. Con el usuario de solo lectura: SUN_USER y SUN_PASS bien escritos en .env")
     sys.exit(1)
 
 scur_sun = sun.cursor()

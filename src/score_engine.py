@@ -57,12 +57,14 @@ def get_connection():
     try:
         from dotenv import load_dotenv
         load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-    except ImportError:
+    except (ImportError, OSError):
+        # El tablero corre con LOCAL SERVICE, que no puede leer el .env (tiene claves que no necesita).
         pass
 
     server = os.getenv("INFORMIX_SERVER", "").strip()
     if server:
-        import pyodbc
+        # Con el candado: a Informix solo le llega un SELECT (ver solo_lectura.py).
+        from solo_lectura import conectar
         conn_str = (
             f"DRIVER={{IBM INFORMIX ODBC DRIVER}};"
             f"SERVER={server};"
@@ -71,7 +73,7 @@ def get_connection():
             f"UID={os.getenv('INFORMIX_UID', '')};"
             f"PWD={os.getenv('INFORMIX_PWD', '')};"
         )
-        return pyodbc.connect(conn_str)
+        return conectar(conn_str)
 
     return sqlite3.connect(DB_PATH)
 

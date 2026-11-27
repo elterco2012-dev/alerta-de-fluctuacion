@@ -8,7 +8,7 @@ IMPORTANTE: Ejecutar con Python 32 bits (mismo requisito que Informix).
    C:\\Users\\<usuario>\\AppData\\Local\\Programs\\Python\\Python312-32\\python.exe scripts\\sincronizar_sundb.py
 
 Flujo:
-  - Lee SALFLDGRAN (+ SALFLDGRAN2) donde ACCNT_CODE empieza en '1130'
+  - Lee SALFLDGRAN (no SALFLDGRAN2, una copia vieja) donde ACCNT_CODE empieza en '1130'
   - D_C = 'D' → factura emitida (venta)   → agrega a venta_sun
   - D_C = 'C' → cobro recibido (cobranza) → agrega a cobranza_real
   - ANAL_T2 = ID del vendedor (char, trim)
@@ -102,7 +102,7 @@ if args.diagnostico:
     print("DIAGNÓSTICO: tipos de journal en cuentas de clientes (1130...)")
     print("─" * 65)
 
-    for tabla in ("dbo.SALFLDGRAN", "dbo.SALFLDGRAN2"):
+    for tabla in ("dbo.SALFLDGRAN",):
         print(f"\n  Tabla: {tabla}")
         try:
             scur_sun.execute(f"""
@@ -165,9 +165,9 @@ scur_sq = sqlite.cursor()
 print("OK")
 
 
-# ── PASO 1: Agregar ventas y cobranzas desde SALFLDGRAN + SALFLDGRAN2 ─────────
+# ── PASO 1: Agregar ventas y cobranzas desde SALFLDGRAN ─────────────────────────
 print("\n" + "─" * 65)
-print("PASO 1: Leyendo ventas y cobranza de SALFLDGRAN + SALFLDGRAN2...")
+print("PASO 1: Leyendo ventas y cobranza de SALFLDGRAN...")
 
 # Construir UNION de las tablas disponibles
 def _tabla_existe(cur, tabla):
@@ -179,7 +179,8 @@ def _tabla_existe(cur, tabla):
         return False
 
 tablas_sun = []
-for t in ("dbo.SALFLDGRAN", "dbo.SALFLDGRAN2"):
+# SALFLDGRAN2 no: es una copia vieja de SALFLDGRAN (12/2015-02/2020, sin índices): sumarla duplicaba esos meses.
+for t in ("dbo.SALFLDGRAN",):
     if _tabla_existe(scur_sun, t):
         tablas_sun.append(t)
         print(f"  {t}: encontrada")

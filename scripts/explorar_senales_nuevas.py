@@ -63,6 +63,17 @@ def cargar(con):
         d["pnum"] = d["anio"] * 100 + d["mes"]
         ventas.setdefault(d["id_vendedor"], []).append(d)
 
+    # ausencias (Reactor) por vendedor y mes: días que no son vacaciones. Un mes sin fila es 0 días.
+    # Pedido del buzón (los-que-se-van-en-reactor, 27/11): mirarlas como señal para todos, no solo en meses 1-3.
+    try:
+        cur.execute("SELECT id_vendedor, anio, mes, SUM(dias_no_vac) FROM ausencias_mensual GROUP BY id_vendedor, anio, mes")
+        ausencias = {(v, a * 100 + m): d or 0 for v, a, m, d in cur.fetchall()}
+    except sqlite3.Error:
+        ausencias = {}
+    for vid, filas in ventas.items():
+        for d in filas:
+            d["dias_no_vac"] = ausencias.get((vid, d["pnum"]), 0)
+
     # vendedores + riesgo_base del grupo
     cur.execute("""
         SELECT v.id_vendedor, v.activo, v.fecha_egreso, COALESCE(g.riesgo_base, 0)
@@ -191,6 +202,25 @@ def sig_cobranza_empeorando(filas, rb, umbral):
     return pend < -umbral
 
 
+def sig_ausencias_3m(filas, rb, umbral):
+    """Ausencias que no son vacaciones en la ventana, para cualquier antigüedad: días en total > U.
+    En Reactor, la sesión de la VM midió 65 % de los que se van con alguna ausencia en sus 3 últimos
+    meses, contra 31 % de los que siguen (27/11). Ojo: las ausencias de empleados sin usuario de
+    Reactor no llegan a la sincronización."""
+    if not filas:
+        return None
+    return sum(r.get("dias_no_vac", 0) for r in filas) > umbral
+
+def sig_ausencias_3m_mas_de_6(filas, rb, umbral):
+    """Lo mismo, solo para los de 7 meses o más: la señal de hoy mira solo los meses 1 a 3."""
+    if not filas:
+        return None
+    mes_num = filas[-1]["mes_numero"]
+    if not mes_num or mes_num <= 6:
+        return None
+    return sum(r.get("dias_no_vac", 0) for r in filas) > umbral
+
+
 # (función, etiqueta, lista de umbrales a barrer)
 CANDIDATAS = [
     (sig_variabilidad_plan,    "Variabilidad %plan (desvío > U)",       [10, 15, 20, 25, 30]),
@@ -200,6 +230,8 @@ CANDIDATAS = [
     (sig_cobranza_empeorando,  "Cobranza empeorando (pend < -U)",       [2, 4, 6, 8]),
     (sig_tenure_grupo,         "Tenure 1-3 × grupo quemado (rb > U)",   [0.30, 0.40, 0.50]),
     (sig_tenure_grupo_amplio,  "Tenure 1-6 × grupo quemado (rb > U)",   [0.30, 0.40, 0.50]),
+    (sig_ausencias_3m,         "Ausencias no-vac en 3 meses, todos (días > U)", [0, 2, 5, 10]),
+    (sig_ausencias_3m_mas_de_6, "Ausencias no-vac en 3 meses, mes 7+ (días > U)", [0, 2, 5, 10]),
 ]
 
 
